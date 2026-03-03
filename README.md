@@ -11,8 +11,8 @@ SyncChat is a real-time chat application with private messaging, group chat, cal
 
 ## Requirements
 
-- Node.js `16.17.1`
-- npm `8.19.2`
+- Node.js `24.14.0`
+- npm `11.9.0`
 - MySQL running and configured
 
 ## Setup
@@ -87,3 +87,24 @@ syncchat/
 - `uploads/` stores runtime uploaded files.
 - `logs/` contains runtime logs.
 - `client/public/` contains built frontend assets.
+
+## Version
+
+- App version: `1.0.0`
+- Node.js: `24.14.0`
+- npm: `11.9.0`
+- Last updated: `2026-03-03`
+
+## Recent Changes (2026-03-03)
+
+- Added private chat lock (per-user) with lock/unlock/change-password flow.
+- Added app-level lock in Settings (enable, remove with password verify, change password).
+- Added post-login app unlock screen when app lock is enabled.
+- App unlock is remembered for current browser tab session (no repeated prompt on refresh).
+- Improved chat list unread behavior:
+  - unread filters now count unread chats
+  - per-chat unread badge shows unread message count
+  - unread rows show bold visual state
+- Fixed popup/modal layering and clipping using centered portal rendering.
+- Improved sidebar unread badge counting to match unread chat count logic.
+- Improved webpack compile performance with filesystem + babel caching and faster dev sourcemap.

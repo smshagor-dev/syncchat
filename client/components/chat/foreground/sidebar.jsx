@@ -17,8 +17,10 @@ function Sidebar({ inboxes }) {
 
   const unreadChats = (inboxes || []).reduce((sum, item) => {
     const isIncoming = item?.content?.from && item.content.from !== master?._id;
-    if (!isIncoming) return sum;
-    return sum + (item.unreadMessage || 0);
+    const hasServerUnread = isIncoming && (item?.unreadMessage || 0) > 0;
+    const hasManualUnread =
+      Array.isArray(item?.markUnreadBy) && item.markUnreadBy.includes(master?._id);
+    return sum + (hasServerUnread || hasManualUnread ? 1 : 0);
   }, 0);
   const unreadCount = unreadChats > 99 ? '99+' : unreadChats;
 
@@ -27,6 +29,9 @@ function Sidebar({ inboxes }) {
     !page.setting &&
     !page.status &&
     !page.calls &&
+    !page.archive &&
+    !page.list &&
+    !page.communities &&
     !page.media &&
     !page.profile &&
     !page.selectParticipant;
@@ -37,6 +42,9 @@ function Sidebar({ inboxes }) {
       'setting',
       'status',
       'calls',
+      'communities',
+      'archive',
+      'list',
       'media',
       'profile',
       'selectParticipant',
@@ -51,6 +59,9 @@ function Sidebar({ inboxes }) {
       'setting',
       'status',
       'calls',
+      'communities',
+      'archive',
+      'list',
       'media',
       'profile',
       'selectParticipant',
@@ -91,11 +102,25 @@ function Sidebar({ inboxes }) {
       onClick: () => openPagePanel('contact'),
     },
     {
+      target: 'communities',
+      icon: <ri.RiCommunityLine size={21} />,
+      badge: null,
+      active: !!page.communities,
+      onClick: () => openPagePanel('communities'),
+    },
+    {
       target: 'archive',
       icon: <bi.BiArchiveIn size={21} />,
       badge: null,
-      active: !!page.setting,
-      onClick: () => openPagePanel('setting'),
+      active: !!page.archive,
+      onClick: () => openPagePanel('archive'),
+    },
+    {
+      target: 'list',
+      icon: <bi.BiListUl size={21} />,
+      badge: null,
+      active: !!page.list,
+      onClick: () => openPagePanel('list'),
     },
   ];
 

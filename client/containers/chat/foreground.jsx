@@ -17,8 +17,10 @@ function ForeGround() {
 
   const [inboxes, setInboxes] = useState(null);
   const [search, setSearch] = useState('');
+  const [chatFilter, setChatFilter] = useState('all');
   const [deepLink, setDeepLink] = useState({
     username: null,
+    groupToken: null,
     started: false,
     completed: false,
   });
@@ -51,6 +53,7 @@ function ForeGround() {
   const clearDeepLinkParam = () => {
     const params = new URLSearchParams(window.location.search);
     params.delete('u');
+    params.delete('g');
     const next = `${window.location.pathname}${
       params.toString() ? `?${params.toString()}` : ''
     }${window.location.hash || ''}`;
@@ -81,13 +84,58 @@ function ForeGround() {
   }, [refreshInbox, search]);
 
   useEffect(() => {
-    const username = (new URLSearchParams(window.location.search).get('u') || '')
+    setChatFilter('all');
+  }, [search]);
+
+  const isFavouriteInbox = (inbox) =>
+    !!(
+      inbox?.isFavourite ||
+      inbox?.isFavorite ||
+      inbox?.favourite ||
+      inbox?.favorite ||
+      (Array.isArray(inbox?.favouriteBy) &&
+        inbox.favouriteBy.includes(master?._id)) ||
+      (Array.isArray(inbox?.favoriteBy) &&
+        inbox.favoriteBy.includes(master?._id))
+    );
+
+  const visibleInboxes = (inboxes || []).filter(
+    (elem) => !elem.deletedBy.includes(master._id)
+  );
+
+  const hasUnreadForMe = (elem) => {
+    const isIncoming = elem?.content?.from !== master?._id;
+    const manualUnread =
+      Array.isArray(elem?.markUnreadBy) && elem.markUnreadBy.includes(master?._id);
+    return manualUnread || (isIncoming && (elem?.unreadMessage || 0) > 0);
+  };
+
+  const unreadCount = visibleInboxes.filter((elem) => hasUnreadForMe(elem)).length;
+
+  const favouriteUnreadCount = visibleInboxes.filter(
+    (elem) => isFavouriteInbox(elem) && hasUnreadForMe(elem)
+  ).length;
+
+  const groupUnreadCount = visibleInboxes.filter(
+    (elem) => elem.roomType === 'group' && hasUnreadForMe(elem)
+  ).length;
+
+  useEffect(() => {
+    const username = (
+      new URLSearchParams(window.location.search).get('u') || ''
+    )
+      .trim()
+      .toLowerCase();
+    const groupToken = (
+      new URLSearchParams(window.location.search).get('g') || ''
+    )
       .trim()
       .toLowerCase();
 
-    if (username) {
+    if (username || groupToken) {
       setDeepLink({
-        username,
+        username: username || null,
+        groupToken: groupToken || null,
         started: false,
         completed: false,
       });
@@ -95,7 +143,72 @@ function ForeGround() {
   }, []);
 
   useEffect(() => {
-    const username = deepLink.username;
+    const token = deepLink.groupToken;
+    if (!token || deepLink.completed || !master) return;
+
+    if (deepLink.started) return;
+
+    const joinGroupByLink = async () => {
+      setDeepLink((prev) => ({ ...prev, started: true }));
+
+      try {
+        const { data: metaData } = await axios.get(`/groups/link/${token}/meta`);
+        let password = '';
+        if (metaData?.payload?.requiresPassword) {
+          // eslint-disable-next-line no-alert
+          password = window.prompt('Enter private group password') || '';
+          if (!password) {
+            clearDeepLinkParam();
+            setDeepLink((prev) => ({ ...prev, completed: true }));
+            return;
+          }
+        }
+
+        await axios.post('/groups/join-link', { token, password });
+        dispatch(setRefreshInbox(uuidv4()));
+
+        setTimeout(() => {
+          setDeepLink((prev) => ({ ...prev, completed: true }));
+          clearDeepLinkParam();
+        }, 400);
+      } catch (error0) {
+        console.error(error0?.response?.data?.message || error0.message);
+        setDeepLink((prev) => ({ ...prev, completed: true }));
+        clearDeepLinkParam();
+      }
+    };
+
+    joinGroupByLink();
+  }, [deepLink.groupToken, deepLink.started, deepLink.completed, master]);
+
+  useEffect(() => {
+    const token = deepLink.groupToken;
+    if (!token || deepLink.completed || !Array.isArray(inboxes)) return;
+
+    const groupInbox = inboxes.find(
+      (elem) =>
+        elem.roomType === 'group' &&
+        String(elem?.group?.link || '').replace('/group/+', '').toLowerCase() ===
+          token
+    );
+
+    if (!groupInbox) return;
+
+    dispatch(
+      setChatRoom({
+        isOpen: true,
+        refreshId: groupInbox.roomId,
+        data: groupInbox,
+      })
+    );
+
+    setDeepLink((prev) => ({ ...prev, completed: true }));
+    clearDeepLinkParam();
+  }, [deepLink.groupToken, deepLink.completed, inboxes]);
+
+  useEffect(() => {
+    const { username, groupToken } = deepLink;
+    if (groupToken) return;
     if (!username || deepLink.completed || !master) return;
 
     if ((master.username || '').toLowerCase() === username) {
@@ -197,6 +310,7 @@ function ForeGround() {
       <page.status />
       <page.media />
       <page.contact />
+      <page.communities />
       <page.profile />
       <page.newGroup />
 
@@ -204,8 +318,22 @@ function ForeGround() {
       <fg.openContact />
       <Sidebar inboxes={inboxes} />
       <div className="grid grid-rows-[auto_1fr] overflow-hidden">
-        <fg.header setSearch={setSearch} />
-        <fg.inbox inboxes={inboxes} setInboxes={setInboxes} />
+        <fg.header
+          setSearch={setSearch}
+          chatFilter={chatFilter}
+          setChatFilter={setChatFilter}
+          filterCounts={{
+            all: visibleInboxes.length,
+            unread: unreadCount,
+            favouriteUnread: favouriteUnreadCount,
+            groupUnread: groupUnreadCount,
+          }}
+        />
+        <fg.inbox
+          inboxes={inboxes}
+          setInboxes={setInboxes}
+          chatFilter={chatFilter}
+        />
       </div>
     </div>
   );

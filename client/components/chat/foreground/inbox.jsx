@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import * as ri from 'react-icons/ri';
 import * as bi from 'react-icons/bi';
+import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import socket from '../../../helpers/socket';
 import { setChatRoom } from '../../../redux/features/room';
 import InboxMenu from '../../modals/inboxMenu';
 import { setModal } from '../../../redux/features/modal';
+import { setRefreshInbox } from '../../../redux/features/chore';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
 
 import {
@@ -19,7 +22,7 @@ import notification from '../../../helpers/notification';
 const EVENT_PREFIX = '__event__::';
 const POLL_PREFIX = '__poll__::';
 
-function Inbox({ inboxes, setInboxes }) {
+function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
   const dispatch = useDispatch();
   const {
     user: { master, setting },
@@ -29,23 +32,69 @@ function Inbox({ inboxes, setInboxes }) {
   } = useSelector((state) => state);
   const [callLogs, setCallLogs] = React.useState([]);
   const [callLogsLoading, setCallLogsLoading] = React.useState(false);
+  const [unlockDialog, setUnlockDialog] = React.useState({
+    open: false,
+    mode: 'group',
+    inbox: null,
+    password: '',
+    error: '',
+    loading: false,
+  });
+  const [lockChatDialog, setLockChatDialog] = React.useState({
+    password: '',
+    oldPassword: '',
+    newPassword: '',
+    loading: false,
+    error: '',
+  });
+  const unlockResolverRef = React.useRef(null);
 
-  const handleContextMenu = (e, elem) => {
+  const openMenuForInbox = ({ elem, x, y }) => {
     const inbox = document.querySelector('#inbox');
+    if (!inbox) return;
+    const bounds = inbox.getBoundingClientRect();
 
-    const x = e.clientX > inbox.clientWidth / 2 ? e.clientX - 160 : e.clientX;
-    const y = e.clientY > inbox.clientHeight / 2 ? e.clientY - 56 : e.clientY;
+    const menuWidth = Math.min(224, Math.max(160, inbox.clientWidth - 16));
+    const menuHeight = 360;
+    const margin = 8;
+
+    const minX = margin;
+    const maxX = Math.max(margin, inbox.clientWidth - menuWidth - margin);
+    const minY = margin;
+    const maxY = Math.max(margin, inbox.clientHeight - menuHeight - margin);
+
+    const desiredX = x + 6;
+    const desiredY = y + 8;
+
+    const menuX = Math.max(minX, Math.min(desiredX, maxX));
+    const menuY =
+      desiredY > maxY
+        ? Math.max(minY, y - menuHeight - 8)
+        : Math.max(minY, Math.min(desiredY, maxY));
 
     dispatch(
       setModal({
         target: 'inboxMenu',
         data: {
           inbox: elem,
-          x,
-          y,
+          x: bounds.left + menuX,
+          y: bounds.top + menuY,
+          width: menuWidth,
         },
       })
     );
+  };
+  const handleContextMenu = (e, elem) => {
+    const inbox = document.querySelector('#inbox');
+    const bounds = inbox?.getBoundingClientRect();
+    const localX = bounds ? e.clientX - bounds.left : e.clientX;
+    const localY = bounds ? e.clientY - bounds.top : e.clientY;
+
+    openMenuForInbox({
+      elem,
+      x: localX,
+      y: localY,
+    });
   };
   const isAudioFile = (file) => {
     if (!file) return false;
@@ -157,8 +206,12 @@ function Inbox({ inboxes, setInboxes }) {
     return /^poll\s*:/i.test(text.trim()) || /^poll$/i.test(text.trim());
   };
 
-  const openInboxRoom = (elem) => {
-    if (chatRoom.data?.roomId === elem.roomId) return;
+  const openInboxRoom = async (elem) => {
+    const chatUnlocked = await verifyPrivateChatLockAccess(elem);
+    if (!chatUnlocked) return false;
+    const groupUnlocked = await verifyPrivateGroupAccess(elem);
+    if (!groupUnlocked) return false;
+    if (chatRoom.data?.roomId === elem.roomId) return true;
 
     if (elem.roomType === 'private') {
       const profile = elem.owners.find((x) => x.userId !== master._id);
@@ -183,7 +236,7 @@ function Inbox({ inboxes, setInboxes }) {
           },
         })
       );
-      return;
+      return true;
     }
 
     dispatch(
@@ -193,10 +246,213 @@ function Inbox({ inboxes, setInboxes }) {
         data: elem,
       })
     );
+
+    return true;
   };
 
-  const startCallFromInbox = (elem, mediaType) => {
-    openInboxRoom(elem);
+  const isFavouriteInbox = (inbox) =>
+    !!(
+      inbox?.isFavourite ||
+      inbox?.isFavorite ||
+      inbox?.favourite ||
+      inbox?.favorite ||
+      (Array.isArray(inbox?.favouriteBy) &&
+        inbox.favouriteBy.includes(master?._id)) ||
+      (Array.isArray(inbox?.favoriteBy) &&
+        inbox.favoriteBy.includes(master?._id))
+    );
+  const isArchivedInbox = (inbox) =>
+    Array.isArray(inbox?.archivedBy) && inbox.archivedBy.includes(master?._id);
+  const isListedInbox = (inbox) =>
+    Array.isArray(inbox?.listedBy) && inbox.listedBy.includes(master?._id);
+  const isPinnedInbox = (inbox) =>
+    Array.isArray(inbox?.pinnedBy) && inbox.pinnedBy.includes(master?._id);
+  const isManuallyUnreadInbox = (inbox) =>
+    Array.isArray(inbox?.markUnreadBy) &&
+    inbox.markUnreadBy.includes(master?._id);
+  const isMutedInbox = (inbox) =>
+    Array.isArray(inbox?.mutedBy) && inbox.mutedBy.includes(master?._id);
+  const isPrivateChatLocked = (inbox) =>
+    inbox?.roomType === 'private' &&
+    Array.isArray(inbox?.chatLockBy) &&
+    inbox.chatLockBy.includes(master?._id);
+  const isPrivateLockedGroup = (inbox) =>
+    inbox?.roomType === 'group' && inbox?.group?.accessType === 'private';
+
+  const closeUnlockDialog = (result = false) => {
+    if (unlockResolverRef.current) {
+      unlockResolverRef.current(result);
+      unlockResolverRef.current = null;
+    }
+    setUnlockDialog({
+      open: false,
+      mode: 'group',
+      inbox: null,
+      password: '',
+      error: '',
+      loading: false,
+    });
+  };
+
+  const requestUnlockDialog = (inbox, mode = 'group') =>
+    new Promise((resolve) => {
+      unlockResolverRef.current = resolve;
+      setUnlockDialog({
+        open: true,
+        mode,
+        inbox,
+        password: '',
+        error: '',
+        loading: false,
+      });
+    });
+
+  const closeLockChatDialog = () => {
+    setLockChatDialog({
+      password: '',
+      oldPassword: '',
+      newPassword: '',
+      loading: false,
+      error: '',
+    });
+    dispatch(setModal({ target: 'lockChat', data: false }));
+  };
+
+  const submitLockChatDialog = async () => {
+    try {
+      const lockState = modal.lockChat;
+      if (!lockState?.inbox?.roomId) return;
+
+      setLockChatDialog((prev) => ({
+        ...prev,
+        loading: true,
+        error: '',
+      }));
+
+      if (lockState.type === 'lock') {
+        if (String(lockChatDialog.password || '').length < 4) {
+          throw new Error('Password must be at least 4 characters');
+        }
+        await axios.patch(`/inboxes/${lockState.inbox.roomId}/preferences`, {
+          action: 'chatLock',
+          value: { password: lockChatDialog.password },
+        });
+      } else {
+        if (String(lockChatDialog.newPassword || '').length < 4) {
+          throw new Error('New password must be at least 4 characters');
+        }
+        await axios.patch(`/inboxes/${lockState.inbox.roomId}/preferences`, {
+          action: 'chatLockPassword',
+          value: {
+            oldPassword: lockChatDialog.oldPassword,
+            newPassword: lockChatDialog.newPassword,
+          },
+        });
+      }
+
+      dispatch(setRefreshInbox(uuidv4()));
+      closeLockChatDialog();
+    } catch (error0) {
+      setLockChatDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const submitUnlockDialog = async () => {
+    try {
+      const targetInbox = unlockDialog.inbox;
+      if (!targetInbox?.roomId) return;
+      if (String(unlockDialog.password || '').length < 1) {
+        setUnlockDialog((prev) => ({
+          ...prev,
+          error: 'Password is required',
+        }));
+        return;
+      }
+
+      setUnlockDialog((prev) => ({
+        ...prev,
+        loading: true,
+        error: '',
+      }));
+
+      if (unlockDialog.mode === 'private-chat') {
+        await axios.post(`/inboxes/${targetInbox.roomId}/verify-lock`, {
+          password: unlockDialog.password,
+        });
+      } else {
+        if (!targetInbox?.group?._id) return;
+        await axios.post(`/groups/${targetInbox.group._id}/verify-password`, {
+          password: unlockDialog.password,
+        });
+      }
+
+      closeUnlockDialog(true);
+    } catch (error0) {
+      setUnlockDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: error0?.response?.data?.message || 'Invalid password',
+      }));
+    }
+  };
+
+  const verifyPrivateGroupAccess = async (inbox) => {
+    if (!isPrivateLockedGroup(inbox)) return true;
+    return requestUnlockDialog(inbox, 'group');
+  };
+
+  const verifyPrivateChatLockAccess = async (inbox) => {
+    if (inbox?.roomType !== 'private') return true;
+
+    try {
+      const { data } = await axios.post(`/inboxes/${inbox.roomId}/verify-lock`);
+      if (data?.payload?.locked && !data?.payload?.verified) {
+        return requestUnlockDialog(inbox, 'private-chat');
+      }
+      return true;
+    } catch (error0) {
+      if (isPrivateChatLocked(inbox)) {
+        return requestUnlockDialog(inbox, 'private-chat');
+      }
+      return true;
+    }
+  };
+
+  const baseInboxes = (inboxes || [])
+    .filter((elem) => !elem.deletedBy.includes(master._id))
+    .filter((elem) =>
+      page.archive ? isArchivedInbox(elem) : !isArchivedInbox(elem)
+    )
+    .filter((elem) => (page.list ? isListedInbox(elem) : true))
+    .filter((elem) => {
+      if (chatFilter === 'all') return true;
+      if (chatFilter === 'unread') {
+        const hasServerUnread =
+          elem.content.from !== master._id && elem.unreadMessage > 0;
+        return hasServerUnread || isManuallyUnreadInbox(elem);
+      }
+      if (chatFilter === 'favourite') return isFavouriteInbox(elem);
+      if (chatFilter === 'group') return elem.roomType === 'group';
+      return true;
+    });
+  const filteredInboxes = [...baseInboxes].sort((left, right) => {
+    const leftPinned = isPinnedInbox(left);
+    const rightPinned = isPinnedInbox(right);
+    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+
+    const leftTs = new Date(left.content?.time || 0).getTime();
+    const rightTs = new Date(right.content?.time || 0).getTime();
+    return rightTs - leftTs;
+  });
+
+  const startCallFromInbox = async (elem, mediaType) => {
+    const opened = await openInboxRoom(elem);
+    if (!opened) return;
+
     dispatch(
       setModal({
         target: 'callPanel',
@@ -212,6 +468,21 @@ function Inbox({ inboxes, setInboxes }) {
       })
     );
   };
+
+  useEffect(() => {
+    if (!modal.inboxMenu) return undefined;
+
+    const handleOutsidePointerDown = (event) => {
+      if (event.target?.closest?.('#inbox-context-menu')) return;
+      dispatch(setModal({ target: 'inboxMenu', data: false }));
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointerDown);
+    };
+  }, [modal.inboxMenu]);
 
   useEffect(() => {
     socket.on('inbox/read', (payload) => {
@@ -285,8 +556,9 @@ function Inbox({ inboxes, setInboxes }) {
       });
 
       const isNotSender = payload.content.from !== master._id;
+      const isMuted = isMutedInbox(payload);
 
-      if (isNotSender && !setting.mute) {
+      if (isNotSender && !setting.mute && !isMuted) {
         const audio = new Audio('assets/sound/default-ringtone.mp3');
         audio.volume = 1;
 
@@ -297,6 +569,9 @@ function Inbox({ inboxes, setInboxes }) {
           (elem) => elem.userId === payload.content.from
         );
         const notificationBody = (() => {
+          if (isPrivateLockedGroup(payload) || isPrivateChatLocked(payload)) {
+            return 'Locked content';
+          }
           if (isEventMessage(payload.content.text)) return 'Event';
           if (isPollMessage(payload.content.text)) return 'Poll';
           return payload.content.text;
@@ -320,11 +595,204 @@ function Inbox({ inboxes, setInboxes }) {
     };
   }, [setting.mute]);
 
+  useEffect(
+    () => () => {
+      if (unlockResolverRef.current) {
+        unlockResolverRef.current(false);
+        unlockResolverRef.current = null;
+      }
+    },
+    []
+  );
+
   return (
     <div
       id="inbox"
-      className="pb-16 md:pb-0 z-0 flex flex-col overflow-y-auto bg-white scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400 dark:bg-spill-950 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600"
+      className="relative pb-16 md:pb-0 z-0 flex flex-col overflow-y-auto bg-white scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400 dark:bg-spill-950 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600"
     >
+      {unlockDialog.open && (
+        <div
+          className="absolute inset-0 z-[320] grid place-items-center bg-slate-900/50 px-4"
+          aria-hidden
+          onClick={() => closeUnlockDialog(false)}
+        >
+          <div
+            aria-hidden
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-spill-700 dark:bg-spill-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <i className="text-amber-600 dark:text-amber-400">
+                <bi.BiLockAlt size={18} />
+              </i>
+              <h3 className="text-base font-semibold">
+                {unlockDialog.mode === 'private-chat'
+                  ? 'Enter Chat Password'
+                  : 'Enter Group Password'}
+              </h3>
+            </div>
+            <p className="text-sm opacity-75 mb-3">
+              {unlockDialog.mode === 'private-chat'
+                ? 'This chat is locked for your account.'
+                : `${unlockDialog.inbox?.group?.name || 'Private group'} is locked.`}
+            </p>
+            <label
+              htmlFor="group-unlock-password"
+              className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+            >
+              <input
+                id="group-unlock-password"
+                type="password"
+                value={unlockDialog.password}
+                onChange={(e) =>
+                  setUnlockDialog((prev) => ({
+                    ...prev,
+                    password: e.target.value,
+                    error: '',
+                  }))
+                }
+                placeholder={
+                  unlockDialog.mode === 'private-chat'
+                    ? 'Chat password'
+                    : 'Group password'
+                }
+                className="w-full bg-transparent text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitUnlockDialog();
+                  }
+                }}
+              />
+            </label>
+            {unlockDialog.error && (
+              <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                {unlockDialog.error}
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-9 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={() => closeUnlockDialog(false)}
+                disabled={unlockDialog.loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="h-9 px-3 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                onClick={submitUnlockDialog}
+                disabled={unlockDialog.loading}
+              >
+                {unlockDialog.loading ? 'Checking...' : 'Unlock'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {modal.lockChat &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[980] grid place-items-center bg-slate-900/50 px-4"
+            aria-hidden
+            onClick={closeLockChatDialog}
+          >
+            <div
+              aria-hidden
+              className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-spill-700 dark:bg-spill-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold">
+                {modal.lockChat?.type === 'lock'
+                  ? 'Lock This Chat'
+                  : 'Change Chat Lock Password'}
+              </h3>
+              <p className="mt-1 text-sm opacity-70">
+                {modal.lockChat?.type === 'lock'
+                  ? 'Set password to lock this chat on your side only.'
+                  : 'Update your personal lock password for this chat.'}
+              </p>
+              <div className="mt-3 grid gap-2">
+                {modal.lockChat?.type === 'lock' && (
+                  <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                    <input
+                      type="password"
+                      value={lockChatDialog.password}
+                      onChange={(e) =>
+                        setLockChatDialog((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                          error: '',
+                        }))
+                      }
+                      placeholder="New password"
+                      className="w-full bg-transparent text-sm"
+                    />
+                  </label>
+                )}
+                {modal.lockChat?.type === 'change' && (
+                  <>
+                    <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                      <input
+                        type="password"
+                        value={lockChatDialog.oldPassword}
+                        onChange={(e) =>
+                          setLockChatDialog((prev) => ({
+                            ...prev,
+                            oldPassword: e.target.value,
+                            error: '',
+                          }))
+                        }
+                        placeholder="Current password"
+                        className="w-full bg-transparent text-sm"
+                      />
+                    </label>
+                    <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                      <input
+                        type="password"
+                        value={lockChatDialog.newPassword}
+                        onChange={(e) =>
+                          setLockChatDialog((prev) => ({
+                            ...prev,
+                            newPassword: e.target.value,
+                            error: '',
+                          }))
+                        }
+                        placeholder="New password"
+                        className="w-full bg-transparent text-sm"
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              {lockChatDialog.error && (
+                <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                  {lockChatDialog.error}
+                </p>
+              )}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="h-9 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
+                  onClick={closeLockChatDialog}
+                  disabled={lockChatDialog.loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="h-9 px-3 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                  onClick={submitLockChatDialog}
+                  disabled={lockChatDialog.loading}
+                >
+                  {lockChatDialog.loading ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       {modal.inboxMenu && <InboxMenu />}
       {page.calls && (
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/95">
@@ -457,53 +925,88 @@ function Inbox({ inboxes, setInboxes }) {
         </div>
       )}
       {!page.calls &&
-        inboxes &&
-        inboxes
-          .filter((elem) => !elem.deletedBy.includes(master._id))
-          .map((elem) => {
-            const callStatus = getCallStatusMeta(elem.content?.text);
-            const eventStatus = isEventMessage(elem.content?.text);
-            const pollStatus = isPollMessage(elem.content?.text);
-            let previewContent = null;
+        filteredInboxes &&
+        filteredInboxes.map((elem) => {
+          const lockedPrivate = isPrivateLockedGroup(elem);
+          const lockedChat = isPrivateChatLocked(elem);
+          const isLockedPreview = lockedPrivate || lockedChat;
+          const showUnreadBadge =
+            isManuallyUnreadInbox(elem) ||
+            (elem.content.from !== master._id &&
+              (elem.unreadMessage > 0 ||
+                (lockedChat && !elem.content.readed)));
+          const hasUnreadForMe = showUnreadBadge;
+          const unreadBadgeCount = elem.unreadMessage > 0 ? elem.unreadMessage : 1;
+          const callStatus = getCallStatusMeta(elem.content?.text);
+          const eventStatus = isEventMessage(elem.content?.text);
+          const pollStatus = isPollMessage(elem.content?.text);
+          let previewContent = null;
 
-            if (callStatus) {
-              previewContent = (
-                <span
-                  className={`truncate text-sm flex items-center gap-1 ${callStatus.toneClass}`}
-                >
-                  <callStatus.icon />
-                  <p className="truncate">{callStatus.label}</p>
-                </span>
-              );
-            } else if (eventStatus) {
-              previewContent = (
-                <span className="truncate text-sm flex items-center gap-1 text-sky-600 dark:text-sky-400">
-                  <bi.BiCalendarEvent />
-                  <p className="truncate">Event</p>
-                </span>
-              );
-            } else if (pollStatus) {
-              previewContent = (
-                <span className="truncate text-sm flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                  <bi.BiBarChartAlt2 />
-                  <p className="truncate">Poll</p>
-                </span>
-              );
-            } else {
-              previewContent = (
-                <p className="truncate text-sm text-slate-600 dark:text-spill-300">
-                  {elem.file && isAudioFile(elem.file)
-                    ? 'Voice'
-                    : elem.content.text}
-                </p>
-              );
-            }
+          if (isLockedPreview) {
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 text-amber-600 dark:text-amber-400 ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <bi.BiLockAlt />
+                <p className="truncate">Locked content</p>
+              </span>
+            );
+          } else if (callStatus) {
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 ${callStatus.toneClass} ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <callStatus.icon />
+                <p className="truncate">{callStatus.label}</p>
+              </span>
+            );
+          } else if (eventStatus) {
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 text-sky-600 dark:text-sky-400 ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <bi.BiCalendarEvent />
+                <p className="truncate">Event</p>
+              </span>
+            );
+          } else if (pollStatus) {
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 text-emerald-600 dark:text-emerald-400 ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <bi.BiBarChartAlt2 />
+                <p className="truncate">Poll</p>
+              </span>
+            );
+          } else {
+            previewContent = (
+              <p
+                className={`truncate text-sm ${
+                  hasUnreadForMe
+                    ? 'font-semibold text-slate-800 dark:text-spill-100'
+                    : 'text-slate-600 dark:text-spill-300'
+                }`}
+              >
+                {elem.file && isAudioFile(elem.file)
+                  ? 'Voice'
+                  : elem.content.text}
+              </p>
+            );
+          }
 
-            return (
-              <div
-                key={elem._id}
-                aria-hidden
-                className={`
+          return (
+            <div
+              key={elem._id}
+              aria-hidden
+              className={`
               ${
                 (chatRoom.data?.roomId === elem.roomId ||
                   modal.inboxMenu?.inboxId === elem._id) &&
@@ -513,122 +1016,174 @@ function Inbox({ inboxes, setInboxes }) {
               border-0 border-b border-solid border-slate-200
               hover:bg-slate-100 dark:border-spill-700 dark:hover:bg-spill-800
             `}
-                onClick={() => openInboxRoom(elem)}
-                onContextMenu={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
+              onClick={() => openInboxRoom(elem)}
+              onContextMenu={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
 
-                  handleContextMenu(e, elem);
-                }}
-                onTouchStart={(e) => {
-                  touchAndHoldStart(() => handleContextMenu(e, elem));
-                }}
-                onTouchMove={() => touchAndHoldEnd()}
-                onTouchEnd={() => touchAndHoldEnd()}
-              >
-                <img
-                  src={
-                    resolveUploadUrl(
-                      elem.roomType === 'private'
-                        ? elem.owners.find((x) => x.userId !== master._id)
-                            ?.avatar
-                        : elem.group.avatar
-                    ) ||
-                    (elem.roomType === 'private'
-                      ? 'assets/images/default-avatar.png'
-                      : 'assets/images/default-group-avatar.png')
-                  }
-                  alt=""
-                  className="w-14 h-14 rounded-full object-cover flex-none border border-slate-200 dark:border-spill-700"
-                />
-                <div className="overflow-hidden grid gap-0.5">
-                  <div className="grid grid-cols-[1fr_auto] gap-3">
-                    <p className="text-[17px] font-medium truncate text-slate-800 dark:text-spill-100">
-                      {elem.roomType === 'private'
-                        ? elem.owners.find((x) => x.userId !== master._id)
-                            ?.fullname || '[inactive]'
-                        : elem.group.name}
-                    </p>
-                    <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-spill-400">
-                      {callStatus && (
-                        <i className={callStatus.toneClass}>
-                          <callStatus.icon size={14} />
+                handleContextMenu(e, elem);
+              }}
+              onTouchStart={(e) => {
+                touchAndHoldStart(() => handleContextMenu(e, elem));
+              }}
+              onTouchMove={() => touchAndHoldEnd()}
+              onTouchEnd={() => touchAndHoldEnd()}
+            >
+              <img
+                src={
+                  resolveUploadUrl(
+                    elem.roomType === 'private'
+                      ? elem.owners.find((x) => x.userId !== master._id)?.avatar
+                      : elem.group.avatar
+                  ) ||
+                  (elem.roomType === 'private'
+                    ? 'assets/images/default-avatar.png'
+                    : 'assets/images/default-group-avatar.png')
+                }
+                alt=""
+                className="w-14 h-14 rounded-full object-cover flex-none border border-slate-200 dark:border-spill-700"
+              />
+              <div className="overflow-hidden grid gap-0.5">
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <p
+                    className={`text-[17px] truncate text-slate-800 dark:text-spill-100 ${
+                      hasUnreadForMe ? 'font-semibold' : 'font-medium'
+                    }`}
+                  >
+                    {elem.roomType === 'group' &&
+                      elem?.group?.accessType === 'private' && (
+                        <i className="mr-1 inline-flex align-middle text-amber-600 dark:text-amber-400">
+                          <bi.BiLockAlt size={14} />
                         </i>
                       )}
-                      <p>{moment(elem.content.time).fromNow()}</p>
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-                    <span className="flex gap-1 items-center overflow-hidden">
-                      {elem.content.from === master._id && (
-                        <i>
-                          {(() => {
-                            if (elem.content.readed) {
-                              return (
-                                <ri.RiCheckDoubleFill
-                                  size={20}
-                                  className="text-sky-600 dark:text-sky-400"
-                                />
-                              );
-                            }
-                            if (elem.content.delivered) {
-                              return (
-                                <ri.RiCheckDoubleFill
-                                  size={20}
-                                  className="text-slate-500 dark:text-spill-400"
-                                />
-                              );
-                            }
+                    {lockedChat && (
+                      <i className="mr-1 inline-flex align-middle text-amber-600 dark:text-amber-400">
+                        <bi.BiLockAlt size={14} />
+                      </i>
+                    )}
+                    {elem.roomType === 'private'
+                      ? elem.owners.find((x) => x.userId !== master._id)
+                          ?.fullname || '[inactive]'
+                      : elem.group.name}
+                  </p>
+                  <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-spill-400">
+                    {callStatus && (
+                      <i className={callStatus.toneClass}>
+                        <callStatus.icon size={14} />
+                      </i>
+                    )}
+                    {isPinnedInbox(elem) && (
+                      <i className="text-sky-600 dark:text-sky-400">
+                        <bi.BiPin size={14} />
+                      </i>
+                    )}
+                    {isMutedInbox(elem) && (
+                      <i className="text-slate-500 dark:text-spill-400">
+                        <bi.BiBellOff size={14} />
+                      </i>
+                    )}
+                    <p className={hasUnreadForMe ? 'font-semibold' : ''}>
+                      {moment(elem.content.time).fromNow()}
+                    </p>
+                    <button
+                      type="button"
+                      className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const inbox = document.querySelector('#inbox');
+                        const inboxBounds = inbox?.getBoundingClientRect();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        openMenuForInbox({
+                          elem,
+                          x: inboxBounds
+                            ? rect.right - inboxBounds.left
+                            : rect.right,
+                          y: inboxBounds
+                            ? rect.bottom - inboxBounds.top + 6
+                            : rect.bottom + 6,
+                        });
+                      }}
+                    >
+                      <bi.BiDotsVerticalRounded size={16} />
+                    </button>
+                  </span>
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                  <span className="flex gap-1 items-center overflow-hidden">
+                    {elem.content.from === master._id && (
+                      <i>
+                        {(() => {
+                          if (elem.content.readed) {
                             return (
-                              <ri.RiCheckFill
-                                size={18}
+                              <ri.RiCheckDoubleFill
+                                size={20}
+                                className="text-sky-600 dark:text-sky-400"
+                              />
+                            );
+                          }
+                          if (elem.content.delivered) {
+                            return (
+                              <ri.RiCheckDoubleFill
+                                size={20}
                                 className="text-slate-500 dark:text-spill-400"
                               />
                             );
-                          })()}
-                        </i>
+                          }
+                          return (
+                            <ri.RiCheckFill
+                              size={18}
+                              className="text-slate-500 dark:text-spill-400"
+                            />
+                          );
+                        })()}
+                      </i>
+                    )}
+                    <span className="truncate flex gap-1 items-center">
+                      {elem.roomType === 'group' && !isLockedPreview && (
+                        <p>{`${elem.content.senderName}: `}</p>
                       )}
-                      <span className="truncate flex gap-1 items-center">
-                        {elem.roomType === 'group' && (
-                          <p>{`${elem.content.senderName}: `}</p>
-                        )}
-
-                        {elem.file && elem.file.type === 'image' && (
-                          <img
-                            src={resolveUploadUrl(elem.file.url)}
-                            alt=""
-                            className="h-5"
-                          />
-                        )}
-                        {elem.file && isAudioFile(elem.file) && (
-                          <i>
-                            <ri.RiMicFill size={20} />
+                      {elem.roomType === 'group' &&
+                        elem?.group?.accessType === 'private' && (
+                          <i className="text-amber-600 dark:text-amber-400">
+                            <bi.BiLockAlt size={14} />
                           </i>
                         )}
-                        {elem.file &&
-                          elem.file.type !== 'image' &&
-                          !isAudioFile(elem.file) && (
-                            <i>
-                              <ri.RiFileTextFill size={20} />
-                            </i>
-                          )}
 
-                        {previewContent}
-                      </span>
-                    </span>
-                    {elem.content.from !== master._id &&
-                      elem.unreadMessage > 0 && (
-                        <span className="min-w-5 h-5 px-1 flex justify-center items-center rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-500">
-                          <p className="text-[11px] text-white font-bold">
-                            {elem.unreadMessage}
-                          </p>
-                        </span>
+                      {elem.file && elem.file.type === 'image' && (
+                        <img
+                          src={resolveUploadUrl(elem.file.url)}
+                          alt=""
+                          className="h-5"
+                        />
                       )}
-                  </div>
+                      {elem.file && isAudioFile(elem.file) && (
+                        <i>
+                          <ri.RiMicFill size={20} />
+                        </i>
+                      )}
+                      {elem.file &&
+                        elem.file.type !== 'image' &&
+                        !isAudioFile(elem.file) && (
+                          <i>
+                            <ri.RiFileTextFill size={20} />
+                          </i>
+                        )}
+
+                      {previewContent}
+                    </span>
+                  </span>
+                  {showUnreadBadge && (
+                    <span className="min-w-5 h-5 px-1 flex justify-center items-center rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-500">
+                      <p className="text-[11px] text-white font-bold">
+                        {unreadBadgeCount}
+                      </p>
+                    </span>
+                  )}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
     </div>
   );
 }

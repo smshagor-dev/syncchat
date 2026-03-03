@@ -1,21 +1,29 @@
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const path = require('path');
 
 module.exports = {
   entry: './client/index.jsx',
+  cache: {
+    type: 'filesystem',
+    cacheDirectory: path.resolve(__dirname, '.webpack-cache'),
+    buildDependencies: {
+      config: [__filename],
+    },
+  },
   resolve: {
     extensions: ['.js', '.jsx', '.css'],
   },
-  plugins: [
-    new HtmlWebpackPlugin({
-      template: './client/index.html',
-    }),
-  ],
   module: {
+    unsafeCache: true,
     rules: [
       {
         test: /\.jsx?$/,
         exclude: /node_modules/,
         loader: 'babel-loader',
+        options: {
+          cacheDirectory: true,
+          cacheCompression: false,
+        },
       },
       {
         test: /\.css$/,
@@ -34,4 +42,9 @@ module.exports = {
       },
     ],
   },
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './client/index.html',
+    }),
+  ],
 };

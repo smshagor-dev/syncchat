@@ -35,6 +35,7 @@ const ModalSlice = createSlice({
     callPanel: false,
     callStart: false,
     roomAppearance: false,
+    lockChat: false,
   },
   reducers: {
     /* eslint-disable no-param-reassign */

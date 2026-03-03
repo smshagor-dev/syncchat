@@ -15,12 +15,20 @@ const authDebug = (...args) => {
   if (config.isDev) console.log('[AuthDebug]', ...args);
 };
 
+const getAppLockSessionKey = (userId) => `app-lock-unlocked:${userId}`;
+
 function App() {
   const dispatch = useDispatch();
-  const { master } = useSelector((state) => state.user);
+  const { master, setting } = useSelector((state) => state.user);
 
   const [inactive, setInactive] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [appLockVerified, setAppLockVerified] = useState(true);
+  const [appLockForm, setAppLockForm] = useState({
+    password: '',
+    loading: false,
+    error: '',
+  });
 
   // get access token from localStorage
   const token = localStorage.getItem('token');
@@ -146,21 +154,128 @@ function App() {
     };
   }, [master]);
 
+  useEffect(() => {
+    if (master?.verified && setting?.appLockEnabled) {
+      const unlockedInSession =
+        sessionStorage.getItem(getAppLockSessionKey(master._id)) === '1';
+      setAppLockVerified(unlockedInSession);
+    } else {
+      setAppLockVerified(true);
+      if (master?._id) {
+        sessionStorage.removeItem(getAppLockSessionKey(master._id));
+      }
+    }
+  }, [master?._id, master?.verified, setting?.appLockEnabled]);
+
+  const submitAppLock = async (e) => {
+    try {
+      e.preventDefault();
+      setAppLockForm((prev) => ({
+        ...prev,
+        loading: true,
+        error: '',
+      }));
+
+      await axios.post('/settings/app-lock/verify', {
+        password: appLockForm.password,
+      });
+
+      if (master?._id) {
+        sessionStorage.setItem(getAppLockSessionKey(master._id), '1');
+      }
+      setAppLockForm({
+        password: '',
+        loading: false,
+        error: '',
+      });
+      setAppLockVerified(true);
+    } catch (error0) {
+      setAppLockForm((prev) => ({
+        ...prev,
+        loading: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const needsAppLock =
+    !inactive &&
+    !!master &&
+    !!master.verified &&
+    !!setting?.appLockEnabled &&
+    !appLockVerified;
+
   return (
     <BrowserRouter>
       {loaded ? (
-        <Routes>
-          {inactive && <Route exact path="*" element={<route.inactive />} />}
-          {!inactive && master ? (
-            <Route
-              exact
-              path="*"
-              element={master.verified ? <route.chat /> : <route.verify />}
-            />
-          ) : (
-            <Route exact path="*" element={<route.auth />} />
-          )}
-        </Routes>
+        needsAppLock ? (
+          <div className="absolute inset-0 grid place-items-center bg-slate-950 px-4 text-slate-100">
+            <form
+              className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+              onSubmit={submitAppLock}
+            >
+              <h1 className="text-xl font-bold">App Lock</h1>
+              <p className="mt-1 text-sm text-slate-300">
+                Enter your app lock password to continue.
+              </p>
+              <label className="mt-4 flex h-11 items-center rounded-lg border border-slate-600 bg-slate-950 px-3">
+                <input
+                  type="password"
+                  value={appLockForm.password}
+                  onChange={(e) =>
+                    setAppLockForm((prev) => ({
+                      ...prev,
+                      password: e.target.value,
+                      error: '',
+                    }))
+                  }
+                  placeholder="App lock password"
+                  className="w-full bg-transparent text-sm"
+                  minLength={4}
+                  required
+                />
+              </label>
+              {appLockForm.error && (
+                <p className="mt-2 text-xs text-rose-400">{appLockForm.error}</p>
+              )}
+              <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                <button
+                  type="submit"
+                  className="h-10 rounded-lg bg-sky-600 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                  disabled={appLockForm.loading}
+                >
+                  {appLockForm.loading ? 'Checking...' : 'Unlock app'}
+                </button>
+                <button
+                  type="button"
+                  className="h-10 rounded-lg border border-slate-600 px-3 text-sm hover:bg-slate-800"
+                  onClick={() => {
+                    if (master?._id) {
+                      sessionStorage.removeItem(getAppLockSessionKey(master._id));
+                    }
+                    localStorage.removeItem('token');
+                    window.location.reload();
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <Routes>
+            {inactive && <Route exact path="*" element={<route.inactive />} />}
+            {!inactive && master ? (
+              <Route
+                exact
+                path="*"
+                element={master.verified ? <route.chat /> : <route.verify />}
+              />
+            ) : (
+              <Route exact path="*" element={<route.auth />} />
+            )}
+          </Routes>
+        )
       ) : (
         <div className="absolute w-full h-full flex justify-center items-center bg-white dark:text-white/90 dark:bg-spill-900">
           <div className="flex gap-2 items-center">

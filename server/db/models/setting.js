@@ -29,6 +29,11 @@ const SettingModel = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    keepArchived: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     sortContactByName: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -38,6 +43,16 @@ const SettingModel = sequelize.define(
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: [],
+    },
+    appLockEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    appLockHash: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {
