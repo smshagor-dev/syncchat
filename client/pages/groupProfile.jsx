@@ -25,6 +25,24 @@ function GroupProfile() {
 
   const [participants, setParticipants] = useState(null);
   const [group, setGroup] = useState(null);
+  const [privacyForm, setPrivacyForm] = useState({
+    accessType: 'public',
+    password: '',
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: '',
+    newPassword: '',
+  });
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [privacyRespond, setPrivacyRespond] = useState('');
+  const [passwordRespond, setPasswordRespond] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const inviteToken = String(group?.link || '').replace('/group/+', '');
+  const inviteUrl = inviteToken
+    ? `${window.location.origin}/chat?g=${encodeURIComponent(inviteToken)}`
+    : '';
 
   const handleGetGroup = (signal) => {
     if (groupProfile && !addParticipant && !groupParticipant) {
@@ -168,6 +186,79 @@ function GroupProfile() {
     };
   }, [!!group]);
 
+  useEffect(() => {
+    if (!group) return;
+    setPrivacyForm({
+      accessType: group.accessType || 'public',
+      password: '',
+    });
+  }, [group?._id, group?.accessType]);
+
+  const submitPrivacy = async () => {
+    try {
+      if (!group) return;
+      if (
+        privacyForm.accessType === 'private' &&
+        String(privacyForm.password || '').length < 4
+      ) {
+        setPrivacyRespond('Private group password must be at least 4 characters');
+        return;
+      }
+
+      setSavingPrivacy(true);
+      setPrivacyRespond('');
+
+      const { data } = await axios.patch(`/groups/${group._id}/privacy`, {
+        accessType: privacyForm.accessType,
+        password: privacyForm.password,
+      });
+
+      setPrivacyRespond(data.message || 'Privacy updated');
+      setPrivacyForm((prev) => ({ ...prev, password: '' }));
+      setGroup((prev) => ({ ...prev, accessType: privacyForm.accessType }));
+    } catch (error0) {
+      setPrivacyRespond(error0?.response?.data?.message || error0.message);
+    } finally {
+      setSavingPrivacy(false);
+    }
+  };
+
+  const submitPasswordChange = async () => {
+    try {
+      if (!group || group.accessType !== 'private') return;
+      if (String(passwordForm.newPassword || '').length < 4) {
+        setPasswordRespond('New password must be at least 4 characters');
+        return;
+      }
+
+      setSavingPassword(true);
+      setPasswordRespond('');
+
+      const { data } = await axios.patch(`/groups/${group._id}/password`, {
+        oldPassword: passwordForm.oldPassword,
+        newPassword: passwordForm.newPassword,
+      });
+
+      setPasswordRespond(data.message || 'Password updated');
+      setPasswordForm({ oldPassword: '', newPassword: '' });
+    } catch (error0) {
+      setPasswordRespond(error0?.response?.data?.message || error0.message);
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    try {
+      if (!inviteUrl) return;
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1200);
+    } catch (error0) {
+      console.error(error0.message);
+    }
+  };
+
   return (
     <div
       className={`
@@ -282,34 +373,182 @@ function GroupProfile() {
               <h1 className="text-2xl font-bold break-all mb-1">
                 {group.name}
               </h1>
-              <p className="text-sm opacity-60">Group</p>
+              <p className="text-sm opacity-60 flex items-center justify-center gap-1">
+                {group.accessType === 'private' ? (
+                  <bi.BiLockAlt className="text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <bi.BiLockOpenAlt className="text-emerald-600 dark:text-emerald-400" />
+                )}
+                {group.accessType === 'private' ? 'Private Group' : 'Public Group'}
+              </p>
             </div>
           </div>
           <div className="grid">
-            {[
-              {
-                label: 'Description',
-                data: group.desc,
-                icon: <bi.BiInfoCircle />,
-              },
-              {
-                label: 'Invite Link',
-                data: group.link,
-                icon: <bi.BiLinkAlt />,
-              },
-            ].map((elem) => (
-              <div
-                key={elem.label}
-                className="py-2 px-4 grid grid-cols-[auto_1fr_auto] gap-4 items-start border-0 border-b border-solid border-spill-100 dark:border-spill-800"
+            <div className="py-2 px-4 grid grid-cols-[auto_1fr_auto] gap-4 items-start border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+              <i>
+                <bi.BiInfoCircle />
+              </i>
+              <span>
+                <p className="text-sm opacity-60 mb-1">Description</p>
+                <p className="break-all">{group.desc}</p>
+              </span>
+            </div>
+            <div className="py-2 px-4 grid grid-cols-[auto_1fr_auto] gap-4 items-start border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+              <i>
+                <bi.BiLinkAlt />
+              </i>
+              <span className="overflow-hidden">
+                <p className="text-sm opacity-60 mb-1">Invite Link</p>
+                <p className="break-all text-sm">{inviteUrl || group.link}</p>
+              </span>
+              <button
+                type="button"
+                className="mt-5 h-8 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 text-xs font-semibold"
+                onClick={copyInviteLink}
               >
-                <i>{elem.icon}</i>
-                <span>
-                  <p className="text-sm opacity-60 mb-1">{elem.label}</p>
-                  <p className="break-all">{elem.data}</p>
-                </span>
-              </div>
-            ))}
+                {inviteCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
           </div>
+          {group.adminId === master._id &&
+            group.participantsId.includes(master._id) && (
+              <div className="px-4 py-3 grid gap-2 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+                <p className="text-sm font-semibold">Privacy Controls (Admin)</p>
+                {privacyRespond && (
+                  <p className="text-xs text-sky-600 dark:text-sky-400">
+                    {privacyRespond}
+                  </p>
+                )}
+                <label
+                  htmlFor="privacy-type"
+                  className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+                >
+                  <select
+                    id="privacy-type"
+                    value={privacyForm.accessType}
+                    onChange={(e) =>
+                      setPrivacyForm((prev) => ({
+                        ...prev,
+                        accessType: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-transparent text-sm"
+                  >
+                    <option value="public">Public Group</option>
+                    <option value="private">Private Group</option>
+                  </select>
+                </label>
+                {privacyForm.accessType === 'private' && (
+                  <label
+                    htmlFor="privacy-password"
+                    className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+                  >
+                    <input
+                      id="privacy-password"
+                      type="password"
+                      value={privacyForm.password}
+                      onChange={(e) =>
+                        setPrivacyForm((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                        }))
+                      }
+                      placeholder="Set private password (min 4)"
+                      className="w-full bg-transparent text-sm"
+                    />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  className="h-10 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                  onClick={submitPrivacy}
+                  disabled={savingPrivacy}
+                >
+                  {savingPrivacy ? 'Saving...' : 'Update Privacy'}
+                </button>
+                <button
+                  type="button"
+                  className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
+                  onClick={() => {
+                    const token = String(group.link || '').replace('/group/+', '');
+                    dispatch(
+                      setModal({
+                        target: 'qr',
+                        data: {
+                          type: 'group',
+                          fullname: group.name,
+                          bio:
+                            group.accessType === 'private'
+                              ? 'Private group invite'
+                              : 'Public group invite',
+                          avatar:
+                            group.avatar || 'assets/images/default-group-avatar.png',
+                          shareUrl: `${window.location.origin}/chat?g=${encodeURIComponent(
+                            token
+                          )}`,
+                        },
+                      })
+                    );
+                  }}
+                >
+                  Show Invite QR
+                </button>
+                {group.accessType === 'private' && (
+                  <div className="pt-2 grid gap-2">
+                    <p className="text-sm font-semibold">Change Password</p>
+                    {passwordRespond && (
+                      <p className="text-xs text-sky-600 dark:text-sky-400">
+                        {passwordRespond}
+                      </p>
+                    )}
+                    <label
+                      htmlFor="old-group-password"
+                      className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+                    >
+                      <input
+                        id="old-group-password"
+                        type="password"
+                        value={passwordForm.oldPassword}
+                        onChange={(e) =>
+                          setPasswordForm((prev) => ({
+                            ...prev,
+                            oldPassword: e.target.value,
+                          }))
+                        }
+                        placeholder="Current password"
+                        className="w-full bg-transparent text-sm"
+                      />
+                    </label>
+                    <label
+                      htmlFor="new-group-password"
+                      className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+                    >
+                      <input
+                        id="new-group-password"
+                        type="password"
+                        value={passwordForm.newPassword}
+                        onChange={(e) =>
+                          setPasswordForm((prev) => ({
+                            ...prev,
+                            newPassword: e.target.value,
+                          }))
+                        }
+                        placeholder="New password"
+                        className="w-full bg-transparent text-sm"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 disabled:opacity-60"
+                      onClick={submitPasswordChange}
+                      disabled={savingPassword}
+                    >
+                      {savingPassword ? 'Updating...' : 'Change Password'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           <div className="pt-6">
             <p className="px-4 opacity-60">{`${group.participantsId.length} participants`}</p>
             <div className="grid">
@@ -399,7 +638,9 @@ function GroupProfile() {
           </div>
         </div>
       )}
-      {group && group.participantsId.includes(master._id) && (
+      {group &&
+        group.participantsId.includes(master._id) &&
+        (group.accessType !== 'private' || group.adminId === master._id) && (
         <button
           type="button"
           className={`

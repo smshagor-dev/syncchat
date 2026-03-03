@@ -127,7 +127,7 @@ function Auth() {
             <p className="mt-1 text-sm text-slate-500">
               {forgotPass
                 ? 'Verify your identity and set a new password.'
-                : 'Access your secure workspace in seconds.'}
+                : 'Access your secure Space in seconds.'}
             </p>
           </div>
 

@@ -192,12 +192,22 @@ function Header({ searchQuery, setSearchQuery }) {
                 />
                 <span className="overflow-hidden">
                   <p className="font-bold truncate">
+                    {isGroup &&
+                      chatRoom?.data?.group?.accessType === 'private' && (
+                        <i className="mr-1 inline-flex align-middle text-amber-600 dark:text-amber-400">
+                          <bi.BiLockAlt size={14} />
+                        </i>
+                      )}
                     {isGroup
                       ? chatRoom.data.group.name
                       : chatRoom.data.profile.fullname}
                   </p>
                   <p className="text-sm opacity-60 truncate">
                     {typing ?? subhead}
+                    {isGroup &&
+                      chatRoom?.data?.group?.accessType === 'private' &&
+                      !typing &&
+                      ' • secure content'}
                   </p>
                 </span>
               </div>

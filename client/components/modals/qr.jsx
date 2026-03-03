@@ -18,16 +18,21 @@ function QR() {
   const avatarUrl = resolveUploadUrl(
     qr?.avatar || 'assets/images/default-avatar.png'
   );
+  const isGroupQr = qr?.type === 'group';
 
   const shareUrl = useMemo(() => {
+    if (qr?.shareUrl) return qr.shareUrl;
     if (!master?.username) return '';
     const origin = window.location.origin;
     return `${origin}/chat?u=${encodeURIComponent(master.username)}`;
-  }, [master?.username]);
+  }, [master?.username, qr?.shareUrl]);
 
   const shareText = useMemo(
-    () => `Chat with me on ${config.brandName}: ${shareUrl}`,
-    [shareUrl]
+    () =>
+      isGroupQr
+        ? `Join my group on ${config.brandName}: ${shareUrl}`
+        : `Chat with me on ${config.brandName}: ${shareUrl}`,
+    [isGroupQr, shareUrl]
   );
 
   const socialLinks = useMemo(
@@ -159,7 +164,11 @@ function QR() {
               )}
             </div>
             <div className="p-4 grid gap-3">
-              <p className="text-sm">{`Scan this QR to open your ${config.brandName} profile chat directly.`}</p>
+              <p className="text-sm">
+                {isGroupQr
+                  ? `Scan this QR to join this ${config.brandName} group.`
+                  : `Scan this QR to open your ${config.brandName} profile chat directly.`}
+              </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {socialLinks.map((item) => (
                   <a

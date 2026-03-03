@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
 import { v4 as uuidv4 } from 'uuid';
 import { setModal } from '../../../redux/features/modal';
@@ -8,9 +8,19 @@ import { setRefreshInbox } from '../../../redux/features/chore';
 
 import config from '../../../config';
 
-function Header({ setSearch }) {
+function Header({ setSearch, chatFilter, setChatFilter, filterCounts }) {
   const dispatch = useDispatch();
+  const page = useSelector((state) => state.page);
   const inputTimeout = useRef(null);
+  const showFilters =
+    !page.calls &&
+    !page.contact &&
+    !page.setting &&
+    !page.status &&
+    !page.communities &&
+    !page.media &&
+    !page.profile &&
+    !page.selectParticipant;
 
   return (
     <div className="grid items-center z-10 bg-slate-100 text-slate-800 border-b border-slate-200 dark:bg-spill-800 dark:text-spill-100 dark:border-spill-700">
@@ -80,6 +90,40 @@ function Header({ setSearch }) {
             }}
           />
         </label>
+        {showFilters && (
+          <div className="mt-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-spill-700">
+            <div className="inline-flex min-w-full gap-2">
+              {[
+                { key: 'all', label: 'All' },
+                {
+                  key: 'unread',
+                  label: `Unread (${filterCounts?.unread || 0})`,
+                },
+                {
+                  key: 'favourite',
+                  label: `Favourite (${filterCounts?.favouriteUnread || 0})`,
+                },
+                {
+                  key: 'group',
+                  label: `Group (${filterCounts?.groupUnread || 0})`,
+                },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition ${
+                    chatFilter === item.key
+                      ? 'bg-sky-600 text-white border-sky-600'
+                      : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-spill-800 dark:text-spill-200 dark:border-spill-700 dark:hover:bg-spill-700'
+                  }`}
+                  onClick={() => setChatFilter(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

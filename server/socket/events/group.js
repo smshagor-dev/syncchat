@@ -5,10 +5,84 @@ const ProfileModel = require('../../db/models/profile');
 const GroupModel = require('../../db/models/group');
 const InboxModel = require('../../db/models/inbox');
 const ChatModel = require('../../db/models/chat');
-const { toPlain, addToSet, pullFromArray } = require('../../db/utils');
+const {
+  toPlain,
+  addToSet,
+  pullFromArray,
+  asArray,
+} = require('../../db/utils');
 
 const Inbox = require('../../helpers/models/inbox');
 const uniqueId = require('../../helpers/uniqueId');
+const encrypt = require('../../helpers/encrypt');
+
+const GROUP_INFO_PREFIX = '__group_info__::';
+
+const buildGroupInfoText = ({
+  groupName,
+  createdBy,
+  totalParticipants,
+  icon = '\ud83d\udc65',
+  accessType = 'public',
+}) =>
+  `${GROUP_INFO_PREFIX}${JSON.stringify({
+    icon,
+    groupName,
+    createdBy,
+    totalParticipants,
+    accessType,
+  })}`;
+
+const ensureAdminControl = ({ group, userId }) => {
+  if (!group) throw new Error('Group not found');
+  if (!asArray(group.participantsId).includes(userId)) {
+    throw new Error('You are not a participant of this group');
+  }
+  if (group.adminId !== userId) {
+    throw new Error('Only group admin can perform this action');
+  }
+};
+
+const sanitizeGroup = (group) => {
+  const plain = toPlain(group);
+  if (!plain) return plain;
+  delete plain.passwordHash;
+  return plain;
+};
+
+const emitGroupSystemChat = async ({
+  roomId,
+  userId,
+  text,
+  profile,
+}) => {
+  const chatDoc = await ChatModel.create({
+    userId,
+    roomId,
+    text,
+    replyTo: null,
+    fileId: null,
+    readed: false,
+    delivered: false,
+    deletedBy: [],
+    reactions: {},
+  });
+  const chat = toPlain(chatDoc);
+
+  global.io.to(roomId).emit('chat/insert', {
+    ...chat,
+    profile: profile
+      ? {
+          userId,
+          fullname: profile.fullname,
+          avatar: profile.avatar || null,
+        }
+      : null,
+    file: null,
+    reply: null,
+    poll: null,
+  });
+};
 
 module.exports = (socket) => {
   socket.on('group/create', async (args, cb) => {
@@ -16,17 +90,27 @@ module.exports = (socket) => {
       const roomId = `group-${uuidv4()}`;
       const profile = await ProfileModel.findOne({
         where: { userId: args.adminId },
-        attributes: ['fullname'],
+        attributes: ['fullname', 'avatar'],
       });
+
+      const participantsId = addToSet(args.participantsId, [args.adminId]);
+      const accessType = args.accessType === 'private' ? 'private' : 'public';
+      const password = String(args.password || '');
+      if (accessType === 'private' && password.length < 4) {
+        throw new Error('Private group password must be at least 4 characters');
+      }
 
       const group = await GroupModel.create({
         ...args,
+        participantsId,
+        accessType,
+        passwordHash: accessType === 'private' ? encrypt(password) : null,
         roomId,
         link: `/group/+${uniqueId(16)}`,
       });
 
       const inbox = await InboxModel.create({
-        ownersId: args.participantsId,
+        ownersId: participantsId,
         roomId,
         roomType: 'group',
         content: {
@@ -37,8 +121,21 @@ module.exports = (socket) => {
         },
       });
 
-      io.to(args.participantsId).emit('group/create', {
-        group: toPlain(group),
+      await emitGroupSystemChat({
+        roomId,
+        userId: args.adminId,
+        text: buildGroupInfoText({
+          groupName: args.name,
+          createdBy: profile?.fullname || 'Unknown',
+          totalParticipants: participantsId.length,
+          icon: '\ud83d\udc65',
+          accessType,
+        }),
+        profile: toPlain(profile),
+      });
+
+      io.to(participantsId).emit('group/create', {
+        group: sanitizeGroup(group),
         ...toPlain(inbox),
       });
 
@@ -52,11 +149,25 @@ module.exports = (socket) => {
     try {
       const inviter = await ProfileModel.findOne({
         where: { userId: args.userId },
-        attributes: ['fullname'],
+        attributes: ['fullname', 'avatar'],
       });
       const group = await GroupModel.findOne({ where: { _id: args.groupId } });
+      ensureAdminControl({ group, userId: args.userId });
+
       const nextParticipants = addToSet(group.participantsId, args.friendsId);
       await group.update({ participantsId: nextParticipants });
+
+      const addedProfiles = await ProfileModel.findAll({
+        where: { userId: args.friendsId },
+        attributes: ['fullname'],
+      });
+      const addedNames = addedProfiles.map((item) => item.fullname);
+      const actionText =
+        addedNames.length > 0
+          ? `Added: ${addedNames.join(', ')}`
+          : `${args.friendsId.length} ${
+              args.friendsId.length > 1 ? 'participants' : 'participant'
+            } added`;
 
       const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
       await inbox.update({
@@ -65,11 +176,16 @@ module.exports = (socket) => {
         content: {
           senderName: inviter.fullname,
           from: args.userId,
-          text: `${args.friendsId.length} ${
-            args.friendsId.length > 1 ? 'participants' : 'participant'
-          } added`,
+          text: actionText,
           time: new Date().toISOString(),
         },
+      });
+
+      await emitGroupSystemChat({
+        roomId: group.roomId,
+        userId: args.userId,
+        text: actionText,
+        profile: toPlain(inviter),
       });
 
       const inboxes = await Inbox.find({ roomId: args.roomId });
@@ -95,6 +211,8 @@ module.exports = (socket) => {
         attributes: ['fullname'],
       });
       const group = await GroupModel.findOne({ where: { _id: groupId } });
+      ensureAdminControl({ group, userId });
+
       await group.update({ name, desc });
 
       const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
@@ -180,7 +298,13 @@ module.exports = (socket) => {
       });
 
       const group = await GroupModel.findOne({ where: { _id: groupId } });
+      ensureAdminControl({ group, userId });
+      if (!asArray(group.participantsId).includes(participantId)) {
+        throw new Error('Participant not found in this group');
+      }
+
       await group.update({ adminId: participantId });
+      const actionText = `Made ${friend.fullname.split(' ')[0]} admin`;
 
       const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
       await inbox.update({
@@ -188,16 +312,23 @@ module.exports = (socket) => {
         content: {
           senderName: master.fullname,
           from: userId,
-          text: `add ${friend.fullname.split(' ')[0]} as admin`,
+          text: actionText,
           time: new Date().toISOString(),
         },
+      });
+
+      await emitGroupSystemChat({
+        roomId: group.roomId,
+        userId,
+        text: actionText,
+        profile: toPlain(master),
       });
 
       const inboxes = await Inbox.find({ roomId: group.roomId });
 
       io.to(group.participantsId).emit('inbox/find', inboxes[0]);
       io.to(group.roomId).emit('group/add-admin', {
-        ...toPlain(group),
+        ...sanitizeGroup(group),
         adminId: participantId,
       });
     } catch (error0) {
@@ -219,9 +350,18 @@ module.exports = (socket) => {
       });
 
       const group = await GroupModel.findOne({ where: { _id: groupId } });
+      ensureAdminControl({ group, userId });
+      if (!asArray(group.participantsId).includes(participantId)) {
+        throw new Error('Participant not found in this group');
+      }
+      if (group.adminId === participantId) {
+        throw new Error('Cannot remove the current admin');
+      }
+
       await group.update({
         participantsId: pullFromArray(group.participantsId, [participantId]),
       });
+      const actionText = `Removed ${friend.fullname.split(' ')[0]}`;
 
       const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
       await inbox.update({
@@ -230,9 +370,16 @@ module.exports = (socket) => {
         content: {
           senderName: master.fullname,
           from: userId,
-          text: `removed ${friend.fullname.split(' ')[0]}`,
+          text: actionText,
           time: new Date().toISOString(),
         },
+      });
+
+      await emitGroupSystemChat({
+        roomId: group.roomId,
+        userId,
+        text: actionText,
+        profile: toPlain(master),
       });
 
       const inboxes = await Inbox.find({ roomId: group.roomId });

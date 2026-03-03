@@ -29,6 +29,41 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    mutedBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    pinnedBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    favouriteBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    listedBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    markUnreadBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    chatLockBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    chatLockHashes: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {},
+    },
     unreadMessage: {
       type: DataTypes.INTEGER,
       allowNull: false,

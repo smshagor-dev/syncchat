@@ -25,6 +25,7 @@ import {
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
+const GROUP_INFO_PREFIX = '__group_info__::';
 const PINNED_MESSAGE_STORE_KEY = 'syncchat-room-pinned-message-v1';
 
 const getPinnedStore = () => {
@@ -189,6 +190,39 @@ function Monitor({
   };
 
   const getEventFromChat = (chat) => parseEventFromText(chat?.text);
+
+  const parseGroupInfoFromText = (text) => {
+    if (
+      typeof text !== 'string' ||
+      !text.startsWith(GROUP_INFO_PREFIX)
+    ) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(text.slice(GROUP_INFO_PREFIX.length));
+      const groupName = String(parsed?.groupName || '').trim();
+      const createdBy = String(parsed?.createdBy || '').trim();
+      const totalParticipants = Number(parsed?.totalParticipants || 0);
+      const icon = String(parsed?.icon || '👥').trim() || '👥';
+      const accessType =
+        String(parsed?.accessType || 'public').toLowerCase() === 'private'
+          ? 'private'
+          : 'public';
+      if (!groupName || !createdBy || !totalParticipants) return null;
+
+      return {
+        icon,
+        groupName,
+        createdBy,
+        totalParticipants,
+        accessType,
+      };
+    } catch (error0) {
+      return null;
+    }
+  };
+
+  const getGroupInfoFromChat = (chat) => parseGroupInfoFromText(chat?.text);
 
   const voteOnPoll = (chatId, optionId) => {
     socket.emit('chat/poll-vote', {
@@ -450,6 +484,30 @@ function Monitor({
         : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800',
     };
   };
+  const getGroupActionMeta = (text) => {
+    if (!isGroup || typeof text !== 'string') return null;
+    const value = text.trim();
+    if (!value) return null;
+
+    const patterns = [
+      /^Added:/i,
+      /^Removed\s/i,
+      /^Made\s.+\sadmin$/i,
+      /^left the group$/i,
+      /^group edited$/i,
+      /^Group changed to (private|public)$/i,
+      /^Private group password updated$/i,
+      /^.+ joined via invite link$/i,
+    ];
+    if (!patterns.some((regex) => regex.test(value))) return null;
+
+    return {
+      label: value,
+      icon: bi.BiGroup,
+      toneClass:
+        'text-slate-700 dark:text-spill-200 bg-white/90 dark:bg-spill-900/70 border-slate-200 dark:border-spill-700',
+    };
+  };
   const formatSeconds = (sec) => {
     const total = Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : 0;
     const min = String(Math.floor(total / 60)).padStart(2, '0');
@@ -498,7 +556,15 @@ function Monitor({
     ? visibleChats.filter((chat) => {
         const poll = getPollFromChat(chat);
         const eventData = getEventFromChat(chat);
+        const groupInfo = getGroupInfoFromChat(chat);
         const haystack = [
+          ...(groupInfo
+            ? [
+                groupInfo.groupName,
+                groupInfo.createdBy,
+                String(groupInfo.totalParticipants),
+              ]
+            : []),
           poll ? `Poll ${poll.question}` : chat?.text || '',
           ...(poll ? poll.options.map((option) => option.text) : []),
           ...(eventData
@@ -653,7 +719,7 @@ function Monitor({
           </span>
         </div>
       )}
-      <div id="monitor-content" className="relative py-4 pb-20 flex flex-col">
+      <div id="monitor-content" className="relative py-4 pb-0 flex flex-col">
         {pinnedChatId && (
           <div className="sticky top-2 z-[8] mx-3 mb-2">
             <div className="w-full rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-left shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-800/95">
@@ -673,6 +739,8 @@ function Monitor({
                       if (poll) return `Poll: ${poll.question}`;
                       const eventData = getEventFromChat(pinned);
                       if (eventData) return `Event: ${eventData.title}`;
+                      const groupInfo = getGroupInfoFromChat(pinned);
+                      if (groupInfo) return `Group: ${groupInfo.groupName}`;
                       return (
                         pinned.text ||
                         pinned.file?.originalname ||
@@ -735,10 +803,15 @@ function Monitor({
           const isPoll = !!pollData;
           const eventData = getEventFromChat(lead);
           const isEvent = !!eventData;
+          const groupInfoData = getGroupInfoFromChat(lead);
+          const isGroupInfo = !!groupInfoData;
           const callLogMeta =
-            isPoll || isEvent ? null : getCallLogMeta(lead?.text);
-          const isCallLog = !!callLogMeta;
-          const CallLogIcon = callLogMeta?.icon || bi.BiPhone;
+            isPoll || isEvent || isGroupInfo ? null : getCallLogMeta(lead?.text);
+          const groupActionMeta =
+            isPoll || isEvent || isGroupInfo ? null : getGroupActionMeta(lead?.text);
+          const systemMeta = callLogMeta || groupActionMeta;
+          const isSystemLine = !!systemMeta;
+          const SystemIcon = systemMeta?.icon || bi.BiInfoCircle;
 
           return (
             <React.Fragment key={elem._id}>
@@ -755,20 +828,19 @@ function Monitor({
                   </div>
                 )
               }
-              {isCallLog && (
+              {isSystemLine && (
                 <div className="my-1 flex justify-center">
                   <span
                     id={`chat-msg-${lead._id}`}
                     data-owner-id={lead.userId}
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs shadow-sm ${callLogMeta?.toneClass}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs shadow-sm ${systemMeta?.toneClass}`}
                   >
-                    <CallLogIcon />
-                    <span>{callLogMeta?.label || lead.text}</span>
+                    <SystemIcon />
+                    <span>{systemMeta?.label || lead.text}</span>
                   </span>
                 </div>
               )}
-              {isCallLog && null}
-              {!isCallLog && (
+              {!isSystemLine && (
                 <div
                   className={`
                     ${albumLast.userId !== nextAfterAlbum?.userId && 'mb-2'}
@@ -1097,7 +1169,7 @@ function Monitor({
                             </p>
                           </span>
                         )}
-                        {!isPoll && !isEvent && (
+                        {!isPoll && !isEvent && !isGroupInfo && (
                           <p
                             className="break-all"
                             aria-hidden
@@ -1114,6 +1186,53 @@ function Monitor({
                               {moment(albumLast.createdAt).format('LT')}
                             </span>
                           </p>
+                        )}
+                        {isGroupInfo && (
+                          <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/55">
+                            <span className="mb-2 inline-flex w-fit items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                              <span>{groupInfoData.icon}</span>
+                              Group Created
+                            </span>
+                            <div className="grid gap-2 text-sm">
+                              <div>
+                                <p className="text-[11px] uppercase tracking-wide opacity-70">
+                                  Group Name
+                                </p>
+                                <p className="font-semibold break-all">
+                                  {groupInfoData.groupName}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] uppercase tracking-wide opacity-70">
+                                  Created By
+                                </p>
+                                <p className="font-medium break-all">
+                                  {groupInfoData.createdBy}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] uppercase tracking-wide opacity-70">
+                                  Total Participants
+                                </p>
+                                <p className="font-medium">
+                                  {groupInfoData.totalParticipants}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] uppercase tracking-wide opacity-70">
+                                  Privacy
+                                </p>
+                                <p className="font-medium capitalize flex items-center gap-1">
+                                  {groupInfoData.accessType === 'private' ? (
+                                    <bi.BiLockAlt className="text-amber-600 dark:text-amber-400" />
+                                  ) : (
+                                    <bi.BiLockOpenAlt className="text-emerald-600 dark:text-emerald-400" />
+                                  )}
+                                  {groupInfoData.accessType}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
                         )}
                         {isEvent && (
                           <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/55">
@@ -1383,8 +1502,12 @@ function Monitor({
                       _id: messageMenu.chatId,
                       text: (() => {
                         const menuEvent = getEventFromChat(menuTarget);
+                        const menuGroupInfo = getGroupInfoFromChat(menuTarget);
                         if (menuPoll) return `Poll: ${menuPoll.question}`;
                         if (menuEvent) return `Event: ${menuEvent.title}`;
+                        if (menuGroupInfo) {
+                          return `Group: ${menuGroupInfo.groupName}`;
+                        }
                         return (
                           menuTarget.text ||
                           menuTarget.file?.originalname ||

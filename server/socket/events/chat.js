@@ -5,7 +5,14 @@ const ChatModel = require('../../db/models/chat');
 const FileModel = require('../../db/models/file');
 const ProfileModel = require('../../db/models/profile');
 const SettingModel = require('../../db/models/setting');
-const { asArray, toPlain, toPlainMany, addToSet } = require('../../db/utils');
+const GroupModel = require('../../db/models/group');
+const {
+  asArray,
+  toPlain,
+  toPlainMany,
+  addToSet,
+  pullFromArray,
+} = require('../../db/utils');
 
 const Inbox = require('../../helpers/models/inbox');
 const uniqueId = require('../../helpers/uniqueId');
@@ -134,6 +141,36 @@ const getPrivateChatBlockState = async ({ senderId, ownersId, roomId }) => {
   };
 };
 
+const resolveArchivedByAfterIncoming = async ({
+  archivedBy,
+  ownersId,
+  senderId,
+}) => {
+  const currentArchivedBy = asArray(archivedBy);
+  if (currentArchivedBy.length === 0) return currentArchivedBy;
+
+  const receivers = asArray(ownersId).filter((ownerId) => ownerId !== senderId);
+  const archivedReceivers = currentArchivedBy.filter((userId) =>
+    receivers.includes(userId)
+  );
+  if (archivedReceivers.length === 0) return currentArchivedBy;
+
+  const settingsRaw = await SettingModel.findAll({
+    where: { userId: { [Op.in]: archivedReceivers } },
+    attributes: ['userId', 'keepArchived'],
+  });
+  const settings = toPlainMany(settingsRaw);
+  const keepArchivedByUser = new Map(
+    settings.map((item) => [item.userId, !!item.keepArchived])
+  );
+
+  const toUnarchive = archivedReceivers.filter(
+    (userId) => !keepArchivedByUser.get(userId)
+  );
+
+  return pullFromArray(currentArchivedBy, toUnarchive);
+};
+
 const buildReplyPayload = async (replyTo) => {
   if (!replyTo) return null;
   const replyDoc = await ChatModel.findOne({
@@ -164,6 +201,16 @@ const buildReplyPayload = async (replyTo) => {
   };
 };
 
+const canAccessGroupRoom = async ({ roomId, userId }) => {
+  if (!roomId || !userId) return false;
+  const groupDoc = await GroupModel.findOne({
+    where: { roomId },
+    attributes: ['participantsId'],
+  });
+  if (!groupDoc) return false;
+  return asArray(toPlain(groupDoc)?.participantsId).includes(userId);
+};
+
 module.exports = (socket) => {
   socket.on('chat/insert', async (args) => {
     try {
@@ -190,6 +237,14 @@ module.exports = (socket) => {
       let hiddenOwners = [];
       let visibleOwners = asArray(args.ownersId);
       let receiverOnline = false;
+
+      if (args.roomType === 'group') {
+        const hasGroupAccess = await canAccessGroupRoom({
+          roomId: args.roomId,
+          userId: args.userId,
+        });
+        if (!hasGroupAccess) return;
+      }
 
       if (args.roomType === 'private') {
         const blockState = await getPrivateChatBlockState({
@@ -316,12 +371,19 @@ module.exports = (socket) => {
           : [];
 
       if (currentInbox) {
+        const nextArchivedBy = await resolveArchivedByAfterIncoming({
+          archivedBy: currentInbox.archivedBy,
+          ownersId: args.ownersId,
+          senderId: args.userId,
+        });
+
         await currentInbox.update({
           unreadMessage: Number(currentInbox.unreadMessage || 0) + 1,
           roomId: args.roomId,
           ownersId: args.ownersId,
           fileId,
           deletedBy: nextDeletedBy,
+          archivedBy: nextArchivedBy,
           content: {
             from: args.userId,
             senderName: profile?.fullname || '',
@@ -389,6 +451,7 @@ module.exports = (socket) => {
         const isReaderReceiver = content.from && content.from !== args.userId;
         await inbox.update({
           unreadMessage: 0,
+          markUnreadBy: pullFromArray(inbox.markUnreadBy, [args.userId]),
           content: {
             ...content,
             delivered: isReaderReceiver ? true : !!content.delivered,
@@ -429,6 +492,11 @@ module.exports = (socket) => {
       ) {
         return;
       }
+    }
+
+    if (roomType === 'group') {
+      const hasGroupAccess = await canAccessGroupRoom({ roomId, userId });
+      if (!hasGroupAccess) return;
     }
 
     const isGroup = roomType === 'group';
@@ -631,6 +699,11 @@ module.exports = (socket) => {
       await currentInbox.update({
         unreadMessage: Number(currentInbox.unreadMessage || 0) + 1,
         deletedBy: nextDeletedBy,
+        archivedBy: await resolveArchivedByAfterIncoming({
+          archivedBy: currentInbox.archivedBy,
+          ownersId,
+          senderId: userId,
+        }),
         content: {
           from: userId,
           senderName: profile?.fullname || '',
@@ -753,6 +826,14 @@ module.exports = (socket) => {
           }
         }
 
+        if (toRoomType === 'group') {
+          const hasGroupAccess = await canAccessGroupRoom({
+            roomId: toRoomId,
+            userId,
+          });
+          if (!hasGroupAccess) return;
+        }
+
         const fromChats = toPlainMany(
           await ChatModel.findAll({
             where: { roomId: fromRoomId, _id: { [Op.in]: ids } },
@@ -808,11 +889,18 @@ module.exports = (socket) => {
           where: { roomId: toRoomId },
         });
         if (currentInbox) {
+          const nextArchivedBy = await resolveArchivedByAfterIncoming({
+            archivedBy: currentInbox.archivedBy,
+            ownersId: visibleOwners,
+            senderId: userId,
+          });
+
           await currentInbox.update({
             unreadMessage:
               Number(currentInbox.unreadMessage || 0) + createdPlain.length,
             content: lastContent,
             deletedBy: [],
+            archivedBy: nextArchivedBy,
           });
         } else {
           await InboxModel.create({

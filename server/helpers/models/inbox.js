@@ -32,6 +32,8 @@ const isMatch = (inbox, queries = {}) => {
 };
 
 exports.find = async (queries, search = '') => {
+  const viewerId =
+    typeof queries?.ownersId === 'string' ? String(queries.ownersId) : null;
   const inboxesRaw = await InboxModel.findAll();
   const inboxes = toPlainMany(inboxesRaw).filter((inbox) =>
     isMatch(inbox, queries)
@@ -52,7 +54,10 @@ exports.find = async (queries, search = '') => {
       ? ProfileModel.findAll({ where: { userId: { [Op.in]: ownersIds } } })
       : [],
     roomIds.length
-      ? GroupModel.findAll({ where: { roomId: { [Op.in]: roomIds } } })
+      ? GroupModel.findAll({
+          where: { roomId: { [Op.in]: roomIds } },
+          attributes: { exclude: ['passwordHash'] },
+        })
       : [],
     fileIds.length
       ? FileModel.findAll({ where: { fileId: { [Op.in]: fileIds } } })
@@ -72,14 +77,18 @@ exports.find = async (queries, search = '') => {
   const regex = new RegExp(search || '', 'i');
 
   return inboxes
-    .map((inbox) => ({
-      ...inbox,
+    .map((inbox) => {
+      const sanitized = { ...inbox };
+      delete sanitized.chatLockHashes;
+
+      return {
+      ...sanitized,
       owners: asArray(inbox.ownersId)
         .map((ownerId) => ownersById.get(ownerId))
         .filter(Boolean),
       group: groupsByRoom.get(inbox.roomId) || null,
       file: inbox.fileId ? filesById.get(inbox.fileId) || null : null,
-    }))
+    }})
     .filter((inbox) => {
       if (!search) return true;
       if (inbox.roomType === 'private') {
@@ -87,9 +96,16 @@ exports.find = async (queries, search = '') => {
       }
       return regex.test(inbox.group?.name || '');
     })
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      if (viewerId) {
+        const aPinned = asArray(a.pinnedBy).includes(viewerId);
+        const bPinned = asArray(b.pinnedBy).includes(viewerId);
+        if (aPinned !== bPinned) return bPinned - aPinned;
+      }
+
+      return (
         new Date(b.content?.time || 0).getTime() -
         new Date(a.content?.time || 0).getTime()
-    );
+      );
+    });
 };

@@ -6,7 +6,8 @@ const ChatModel = require('../db/models/chat');
 const FileModel = require('../db/models/file');
 const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
-const { asArray, toPlain, toPlainMany } = require('../db/utils');
+const SettingModel = require('../db/models/setting');
+const { asArray, toPlain, toPlainMany, pullFromArray } = require('../db/utils');
 
 const response = require('../helpers/response');
 const Chat = require('../helpers/models/chats');
@@ -36,6 +37,36 @@ const isCallLogText = (text) => {
     value.includes('reject') ||
     value.includes('decline')
   );
+};
+
+const resolveArchivedByAfterIncoming = async ({
+  archivedBy,
+  ownersId,
+  senderId,
+}) => {
+  const currentArchivedBy = asArray(archivedBy);
+  if (currentArchivedBy.length === 0) return currentArchivedBy;
+
+  const receivers = asArray(ownersId).filter((ownerId) => ownerId !== senderId);
+  const archivedReceivers = currentArchivedBy.filter((userId) =>
+    receivers.includes(userId)
+  );
+  if (archivedReceivers.length === 0) return currentArchivedBy;
+
+  const settingsRaw = await SettingModel.findAll({
+    where: { userId: { [Op.in]: archivedReceivers } },
+    attributes: ['userId', 'keepArchived'],
+  });
+  const settings = toPlainMany(settingsRaw);
+  const keepArchivedByUser = new Map(
+    settings.map((item) => [item.userId, !!item.keepArchived])
+  );
+
+  const toUnarchive = archivedReceivers.filter(
+    (userId) => !keepArchivedByUser.get(userId)
+  );
+
+  return pullFromArray(currentArchivedBy, toUnarchive);
 };
 
 exports.upload = async (req, res) => {
@@ -238,11 +269,18 @@ exports.sendFile = async (req, res) => {
 
     const existingInbox = await InboxModel.findOne({ where: { roomId } });
     if (existingInbox) {
+      const nextArchivedBy = await resolveArchivedByAfterIncoming({
+        archivedBy: existingInbox.archivedBy,
+        ownersId: safeOwners,
+        senderId,
+      });
+
       await existingInbox.update({
         ownersId: safeOwners,
         roomId,
         roomType,
         unreadMessage: Number(existingInbox.unreadMessage || 0) + 1,
+        archivedBy: nextArchivedBy,
         fileId,
         content: {
           from: senderId,

@@ -24,6 +24,11 @@ const GroupModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    communityId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
     name: {
       type: DataTypes.STRING(32),
       allowNull: false,
@@ -32,6 +37,16 @@ const GroupModel = sequelize.define(
       type: DataTypes.STRING(300),
       allowNull: false,
       defaultValue: '',
+    },
+    accessType: {
+      type: DataTypes.ENUM('public', 'private'),
+      allowNull: false,
+      defaultValue: 'public',
+    },
+    passwordHash: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
     },
     avatar: {
       type: DataTypes.TEXT,

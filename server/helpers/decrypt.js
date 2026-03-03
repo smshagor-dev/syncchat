@@ -1,4 +1,4 @@
-const { compareSync } = require('bcrypt');
+const { compareSync } = require('bcryptjs');
 
 /**
  * Decrypt Secret Data

@@ -1,7 +1,7 @@
 import React from 'react';
+import axios from 'axios';
 import { useDispatch, useSelector } from 'react-redux';
 import { setModal } from '../../redux/features/modal';
-import socket from '../../helpers/socket';
 import { setSelectedParticipants } from '../../redux/features/chore';
 import { setPage } from '../../redux/features/page';
 
@@ -12,31 +12,43 @@ function ConfirmAddParticipant() {
     modal,
     user: { master },
   } = useSelector((state) => state);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState('');
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { groupId, roomId } = modal.confirmAddParticipant;
 
-    socket.emit('group/add-participants', {
-      userId: master._id,
-      friendsId: selectedParticipants.map((elem) => elem.friendId),
-      roomId,
-      groupId,
-    });
+    try {
+      setSubmitting(true);
+      setErrorMsg('');
 
-    dispatch(setSelectedParticipants([]));
+      await axios.post(`/groups/${groupId}/participants`, {
+        userId: master._id,
+        roomId,
+        friendsId: selectedParticipants.map(
+          (elem) => elem.friendId || elem.userId
+        ),
+      });
 
-    setTimeout(() => {
-      dispatch(setPage({ target: 'addParticipant', data: false }));
+      dispatch(setSelectedParticipants([]));
 
       setTimeout(() => {
-        dispatch(
-          setModal({
-            target: 'confirmAddParticipants',
-            data: false,
-          })
-        );
+        dispatch(setPage({ target: 'addParticipant', data: false }));
+
+        setTimeout(() => {
+          dispatch(
+            setModal({
+              target: 'confirmAddParticipant',
+              data: false,
+            })
+          );
+        }, 500);
       }, 500);
-    }, 500);
+    } catch (error0) {
+      setErrorMsg(error0?.response?.data?.message || error0.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -63,6 +75,11 @@ function ConfirmAddParticipant() {
       >
         <h1 className="text-2xl font-bold mb-1">Add Participants</h1>
         <p>Are you sure to add these contacts as a group participants?</p>
+        {errorMsg && (
+          <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">
+            {errorMsg}
+          </p>
+        )}
         <div className="flex gap-2 mt-4 justify-end">
           <button
             type="button"
@@ -77,8 +94,11 @@ function ConfirmAddParticipant() {
             type="button"
             className="py-2 px-4 rounded-md bg-sky-600 hover:bg-sky-700"
             onClick={handleSubmit}
+            disabled={submitting}
           >
-            <p className="font-bold text-white">Done</p>
+            <p className="font-bold text-white">
+              {submitting ? 'Adding...' : 'Done'}
+            </p>
           </button>
         </div>
       </div>

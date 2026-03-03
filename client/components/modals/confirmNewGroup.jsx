@@ -14,7 +14,12 @@ function ConfirmNewGroup() {
   } = useSelector((state) => state);
 
   const [respond, setRespond] = useState({ success: true, message: null });
-  const [form, setForm] = useState({ name: '', desc: '' });
+  const [form, setForm] = useState({
+    name: '',
+    desc: '',
+    accessType: 'public',
+    password: '',
+  });
 
   const handleChange = (e) => {
     setForm((prev) => ({
@@ -41,7 +46,12 @@ function ConfirmNewGroup() {
 
         if (success) {
           // set local state
-          setForm({ name: '', desc: '' });
+          setForm({
+            name: '',
+            desc: '',
+            accessType: 'public',
+            password: '',
+          });
           setRespond({ success, message });
 
           setTimeout(() => {
@@ -74,7 +84,12 @@ function ConfirmNewGroup() {
       aria-hidden
       onClick={() => {
         setRespond({ success: true, message: null });
-        setForm({ name: '', desc: '' });
+        setForm({
+          name: '',
+          desc: '',
+          accessType: 'public',
+          password: '',
+        });
       }}
     >
       <div
@@ -105,6 +120,7 @@ function ConfirmNewGroup() {
               {[
                 {
                   target: 'name',
+                  type: 'text',
                   placeholder: 'Group name',
                   required: true,
                   minLength: 3,
@@ -112,21 +128,33 @@ function ConfirmNewGroup() {
                 },
                 {
                   target: 'desc',
+                  type: 'text',
                   placeholder: 'Description for Group',
                   required: false,
                   minLength: 0,
                   maxLength: 300,
+                },
+                {
+                  target: 'password',
+                  type: 'password',
+                  placeholder: 'Private group password (min 4)',
+                  required: form.accessType === 'private',
+                  minLength: form.accessType === 'private' ? 4 : 0,
+                  maxLength: 64,
+                  hide: form.accessType !== 'private',
                 },
               ].map((elem) => (
                 <label
                   key={elem.target}
                   htmlFor={elem.target}
                   className={`${
+                    elem.hide ? 'hidden' : ''
+                  } ${
                     elem.target === 'newPass' && 'mt-4'
                   } relative flex items-center`}
                 >
                   <input
-                    type={elem.target}
+                    type={elem.type}
                     name={elem.target}
                     id={elem.target}
                     autoComplete="off"
@@ -146,6 +174,18 @@ function ConfirmNewGroup() {
                   <bi.BiX className="absolute right-0 text-xl text-red-600 dark:text-red-400 hidden peer-invalid:block -translate-x-4" />
                 </label>
               ))}
+              <label htmlFor="group-access-type" className="relative flex items-center">
+                <select
+                  id="group-access-type"
+                  name="accessType"
+                  value={form.accessType}
+                  className="w-full py-2 pl-4 pr-10 border border-solid border-spill-300 dark:border-spill-500 rounded-md focus:border-black dark:focus:border-sky-400 bg-white dark:bg-spill-900"
+                  onChange={handleChange}
+                >
+                  <option value="public">Public Group</option>
+                  <option value="private">Private Group (Password)</option>
+                </select>
+              </label>
             </span>
             <div className="mt-4 py-2 rounded-md overflow-hidden bg-spill-100 dark:bg-spill-900">
               <p className="px-4 opacity-60">{`Participants: ${selectedParticipants.length}`}</p>
@@ -226,7 +266,12 @@ function ConfirmNewGroup() {
                   dispatch(setModal({ target: 'newGroup' }));
 
                   setRespond({ success: true, message: null });
-                  setForm({ name: '', desc: '' });
+                  setForm({
+                    name: '',
+                    desc: '',
+                    accessType: 'public',
+                    password: '',
+                  });
                 }}
               >
                 <p>Cancel</p>

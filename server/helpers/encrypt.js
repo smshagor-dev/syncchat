@@ -1,4 +1,4 @@
-const { hashSync, genSaltSync } = require('bcrypt');
+const { hashSync, genSaltSync } = require('bcryptjs');
 
 /**
  * Encrypt Secret Data
