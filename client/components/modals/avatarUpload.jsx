@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
@@ -8,16 +8,25 @@ import config from '../../config';
 function AvatarUpload() {
   const dispatch = useDispatch();
   const modal = useSelector((state) => state.modal);
+  const uploadData =
+    modal.avatarUpload && typeof modal.avatarUpload === 'object'
+      ? modal.avatarUpload
+      : { targetId: null, isGroup: false };
 
   const [respond, setRespond] = useState({ success: true, message: null });
+  const galleryInputRef = useRef(null);
 
   const handleGallery = async (e) => {
     try {
       const file = e.target.files[0];
+      if (!file) {
+        return;
+      }
 
       if (file.size >= config.avatarUploadLimit) {
+        const maxMb = Math.round(config.avatarUploadLimit / (1024 * 1024));
         const errData = {
-          message: 'File too large. (max. 2 MB)',
+          message: `File too large. (max. ${maxMb} MB)`,
         };
         throw errData;
       }
@@ -29,14 +38,18 @@ function AvatarUpload() {
         setModal({
           target: 'imageCropper',
           data: {
-            targetId: modal.avatarUpload.targetId,
-            isGroup: modal.avatarUpload.isGroup,
+            targetId: uploadData.targetId,
+            isGroup: uploadData.isGroup,
             src: base64,
             back: 'avatarUpload',
+            backData: uploadData,
           },
         })
       );
-    } catch ({ message }) {
+      // allow selecting the same file again
+      e.target.value = '';
+    } catch (error0) {
+      const message = error0?.message || 'Failed to process image';
       setRespond({
         success: false,
         message,
@@ -47,8 +60,12 @@ function AvatarUpload() {
   return (
     <div
       className={`
-        ${modal.avatarUpload ? 'delay-75 z-50' : '-z-50 opacity-0 delay-300'}
-        absolute w-full h-full flex justify-center items-center
+        ${
+          modal.avatarUpload
+            ? 'delay-75 z-[80] opacity-100 pointer-events-auto'
+            : '-z-50 opacity-0 delay-300 pointer-events-none'
+        }
+        fixed inset-0 w-full h-full flex justify-center items-center
         bg-spill-600/40 dark:bg-black/60
       `}
     >
@@ -62,38 +79,54 @@ function AvatarUpload() {
         }}
       >
         {/* header */}
-        <div>
-          <h1 className="text-2xl font-bold">
-            {modal.avatarUpload.isGroup ? 'Group Photo' : 'Profile Photo'}
-          </h1>
-          {respond.message && (
-            <p
-              className={`mt-1 text-sm ${
-                !respond.success && 'text-rose-600 dark:text-rose-400'
-              }`}
-            >
-              {respond.message}
-            </p>
-          )}
+        <div className="flex items-start justify-between gap-3">
+          <span>
+            <h1 className="text-2xl font-bold">
+              {uploadData.isGroup ? 'Group Photo' : 'Profile Photo'}
+            </h1>
+            {respond.message && (
+              <p
+                className={`mt-1 text-sm ${
+                  !respond.success && 'text-rose-600 dark:text-rose-400'
+                }`}
+              >
+                {respond.message}
+              </p>
+            )}
+          </span>
+          <button
+            type="button"
+            className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-700"
+            aria-label="Close avatar upload"
+            onClick={() => {
+              dispatch(setModal({ target: 'avatarUpload', data: false }));
+            }}
+          >
+            <bi.BiX />
+          </button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <label
-            htmlFor="gallery"
+          <button
+            type="button"
             className="w-full p-4 rounded-md cursor-pointer flex flex-col justify-center items-center bg-spill-100/60 dark:bg-spill-900/40 hover:bg-spill-200/80 dark:hover:bg-spill-900/80 border border-solid border-spill-400 dark:border-spill-600"
+            onClick={() => {
+              galleryInputRef.current?.click();
+            }}
           >
             <i>
               <bi.BiImage size={40} />
             </i>
             <p className="mt-1 opacity-60">Galerry</p>
-            <input
-              type="file"
-              accept="image/png, image/jpg, image/jpeg"
-              name="avatar"
-              id="gallery"
-              className="hidden"
-              onChange={handleGallery}
-            />
-          </label>
+          </button>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/png, image/jpg, image/jpeg, image/webp"
+            name="avatar"
+            id="gallery"
+            className="hidden"
+            onChange={handleGallery}
+          />
           <button
             type="button"
             className="w-full p-4 rounded-md flex flex-col justify-center items-center bg-spill-100/60 dark:bg-spill-900/40 hover:bg-spill-200/80 dark:hover:bg-spill-900/80 border border-solid border-spill-400 dark:border-spill-600"
@@ -101,7 +134,12 @@ function AvatarUpload() {
               dispatch(
                 setModal({
                   target: 'webcam',
-                  data: { back: 'avatarUpload' },
+                  data: {
+                    back: 'avatarUpload',
+                    backData: uploadData,
+                    targetId: uploadData.targetId,
+                    isGroup: uploadData.isGroup,
+                  },
                 })
               );
             }}

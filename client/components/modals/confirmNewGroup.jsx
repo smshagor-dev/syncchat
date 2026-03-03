@@ -129,6 +129,7 @@ function ConfirmNewGroup() {
                     type={elem.target}
                     name={elem.target}
                     id={elem.target}
+                    autoComplete="off"
                     minLength={elem.minLength}
                     maxLength={elem.maxLength}
                     required={elem.required}

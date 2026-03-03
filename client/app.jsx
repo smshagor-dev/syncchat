@@ -11,6 +11,10 @@ import config from './config';
 import { getSetting } from './api/services/setting.api';
 import { showLocalNotification } from './pwa/notifications';
 
+const authDebug = (...args) => {
+  if (config.isDev) console.log('[AuthDebug]', ...args);
+};
+
 function App() {
   const dispatch = useDispatch();
   const { master } = useSelector((state) => state.user);
@@ -23,39 +27,69 @@ function App() {
 
   const handleGetMaster = async (signal) => {
     try {
+      authDebug('handleGetMaster:start', { hasToken: !!token });
+
       if (token) {
         // set default authorization
         axios.defaults.headers.Authorization = `Bearer ${token}`;
+        authDebug('Authorization header set');
         // get account setting
         const setting = await getSetting({ signal });
+        authDebug('settings:response', setting);
 
         if (setting) {
           dispatch(setSetting(setting));
+          authDebug('settings:dispatched');
 
           const { data } = await axios.get('/users', { signal });
+          authDebug('users:response', {
+            success: data?.success,
+            hasPayload: !!data?.payload,
+          });
           // set master
           dispatch(setMaster(data.payload));
-          socket.emit('user/connect', data.payload._id);
-        }
+          authDebug('master:dispatched', data?.payload?._id);
 
-        setLoaded(true);
+          if (data?.payload?._id) {
+            socket.emit('user/connect', data.payload._id);
+            authDebug('socket:user/connect emitted', data.payload._id);
+          }
+        } else {
+          authDebug('settings missing, skipping /users fetch');
+        }
       } else {
-        setTimeout(() => setLoaded(true), 1000);
+        authDebug('no token found, routing to auth');
       }
     } catch (error0) {
-      console.error(error0.message);
+      console.error(
+        '[AuthDebug] handleGetMaster:error',
+        error0?.response?.status,
+        error0?.response?.data?.message || error0.message
+      );
+      localStorage.removeItem('token');
+      dispatch(setMaster(null));
+      authDebug('token cleared, master reset');
+    } finally {
+      setLoaded(true);
+      authDebug('handleGetMaster:done -> loaded=true');
     }
   };
 
   useEffect(() => {
     const abortCtrl = new AbortController();
     // set default base url
-    axios.defaults.baseURL = config.isDev
-      ? 'http://localhost:8080/api'
-      : '/api';
+    axios.defaults.baseURL = config.apiBaseUrl;
+    if (token) {
+      socket.connect();
+      authDebug('socket:connect requested');
+    } else {
+      socket.disconnect();
+      authDebug('socket:disconnect (no token)');
+    }
     handleGetMaster(abortCtrl.signal);
 
     socket.on('user/inactivate', () => {
+      authDebug('socket:user/inactivate received');
       setInactive(true);
       dispatch(setMaster(null));
     });
@@ -76,7 +110,7 @@ function App() {
   }, [!!master]);
 
   useEffect(() => {
-    if (!master) return;
+    if (!master) return undefined;
 
     // Personal message
     socket.on('message', (msg) => {
@@ -98,7 +132,10 @@ function App() {
     // Optional: system notifications
     socket.on('system', (event) => {
       if (document.hidden) {
-        showLocalNotification('Notification', event.text || 'You have a new update');
+        showLocalNotification(
+          'Notification',
+          event.text || 'You have a new update'
+        );
       }
     });
 

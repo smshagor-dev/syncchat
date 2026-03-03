@@ -103,6 +103,11 @@ function ChangePass() {
                   type={elem.target}
                   name={elem.target}
                   id={elem.target}
+                  autoComplete={
+                    elem.target === 'oldPass'
+                      ? 'current-password'
+                      : 'new-password'
+                  }
                   placeholder={elem.placeholder}
                   minLength="6"
                   className={`${

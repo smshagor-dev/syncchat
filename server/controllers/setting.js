@@ -1,12 +1,13 @@
 const SettingModel = require('../db/models/setting');
+const { toPlain } = require('../db/utils');
 const response = require('../helpers/response');
 
 exports.find = async (req, res) => {
   try {
-    const setting = await SettingModel.findOne({ userId: req.user._id });
+    const setting = await SettingModel.findOne({ where: { userId: req.user._id } });
     response({
       res,
-      payload: setting,
+      payload: toPlain(setting),
     });
   } catch (error0) {
     response({
@@ -20,15 +21,14 @@ exports.find = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const setting = await SettingModel.updateOne(
-      { userId: req.user._id },
-      { ...req.body }
-    );
+    const [affectedRows] = await SettingModel.update(req.body, {
+      where: { userId: req.user._id },
+    });
 
     response({
       res,
       message: 'Successfully updated account settings',
-      payload: setting,
+      payload: { affectedRows },
     });
   } catch (error0) {
     response({

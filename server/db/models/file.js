@@ -1,39 +1,47 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const FileSchema = new Schema(
+const FileModel = sequelize.define(
+  'files',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     fileId: {
-      type: Schema.Types.String,
-      required: true,
-      unique: true,
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      unique: 'files_file_id_unique',
     },
     originalname: {
-      type: Schema.Types.String,
-      default: '',
-      required: true,
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      defaultValue: '',
     },
     url: {
-      type: Schema.Types.String,
-      required: true,
-      unique: true,
+      type: DataTypes.STRING(700),
+      allowNull: false,
+      unique: 'files_url_unique',
     },
     type: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(24),
+      allowNull: false,
     },
     format: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(24),
+      allowNull: false,
     },
     size: {
-      type: Schema.Types.String,
-      default: 0,
-      required: true,
+      type: DataTypes.STRING(24),
+      allowNull: false,
+      defaultValue: '0',
     },
   },
   {
-    versionKey: false,
+    timestamps: false,
+    version: false,
   }
 );
 
-module.exports = model('files', FileSchema);
+module.exports = FileModel;

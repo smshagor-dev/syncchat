@@ -1,24 +1,38 @@
 const ProfileModel = require('../db/models/profile');
 const ContactModel = require('../db/models/contact');
+const SettingModel = require('../db/models/setting');
+const { toPlain } = require('../db/utils');
 const response = require('../helpers/response');
+const { toAbsoluteUploadUrl } = require('../helpers/storage');
 
 exports.findById = async (req, res) => {
   try {
     const targetId = req.params.userId;
     const friendProfile = targetId !== req.user._id;
 
-    const profile = await ProfileModel.findOne({ userId: targetId });
-
+    const profile = await ProfileModel.findOne({ where: { userId: targetId } });
     const contact = friendProfile
       ? await ContactModel.findOne({
-          userId: req.user._id,
-          friendId: targetId,
+          where: {
+            userId: req.user._id,
+            friendId: targetId,
+          },
         })
       : false;
+    const setting = await SettingModel.findOne({
+      where: { userId: req.user._id },
+      attributes: ['blockedUserIds'],
+    });
 
+    const payload = toPlain(profile);
     response({
       res,
-      payload: { ...profile._doc, saved: !!contact },
+      payload: {
+        ...payload,
+        avatar: toAbsoluteUploadUrl(payload?.avatar),
+        saved: !!contact,
+        blocked: !!toPlain(setting)?.blockedUserIds?.includes(targetId),
+      },
     });
   } catch (error0) {
     response({
@@ -30,21 +44,19 @@ exports.findById = async (req, res) => {
   }
 };
 
-// edit profile
 exports.edit = async (req, res) => {
   try {
-    const profile = await ProfileModel.updateOne(
-      { userId: req.user._id },
-      { $set: req.body } // -> object
-    );
+    const [affectedRows] = await ProfileModel.update(req.body, {
+      where: { userId: req.user._id },
+    });
 
     response({
       res,
       message: 'Profile updated successfully',
-      payload: profile,
+      payload: { affectedRows },
     });
   } catch (error0) {
-    if (error0.name === 'MongoServerError' && error0.code === 11000) {
+    if (error0.name === 'SequelizeUniqueConstraintError') {
       switch (Object.keys(req.body)[0]) {
         case 'username':
           error0.message = 'This username is already taken';

@@ -70,11 +70,12 @@ function DeleteAccount() {
           gone, including your profile, contacts, and chats.
         </p>
         <p>Enter your password to confirm.</p>
-        <label htmlFor="username" className="mt-2 relative flex items-center">
+        <label htmlFor="password" className="mt-2 relative flex items-center">
           <input
             type="password"
             name="password"
             id="password"
+            autoComplete="current-password"
             placeholder="Password"
             minLength="6"
             className={`${

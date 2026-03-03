@@ -1,60 +1,66 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const InboxSchema = new Schema(
+const InboxModel = sequelize.define(
+  'inboxes',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     ownersId: {
-      type: Schema.Types.Array,
-      required: true,
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     roomId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      unique: 'inboxes_room_id_unique',
     },
     roomType: {
-      type: Schema.Types.String,
-      enum: ['private', 'group'],
-      required: true,
-      default: 'private',
+      type: DataTypes.ENUM('private', 'group'),
+      allowNull: false,
+      defaultValue: 'private',
     },
     archivedBy: {
-      type: Schema.Types.Array,
-      default: [],
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     unreadMessage: {
-      type: Schema.Types.Number,
-      default: 0,
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
     },
     fileId: {
-      type: Schema.Types.String,
-      default: null,
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
     },
     deletedBy: {
-      type: Schema.Types.Array,
-      default: [],
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     content: {
-      from: {
-        type: Schema.Types.String, // -> the sender's userId
-        required: true,
-      },
-      senderName: {
-        type: Schema.Types.String,
-        required: true,
-      },
-      text: {
-        type: Schema.Types.String,
-        required: true,
-      },
-      time: {
-        type: Schema.Types.Date,
-        required: true,
-        default: new Date().toISOString(),
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {
+        from: null,
+        senderName: '',
+        text: '',
+        time: new Date().toISOString(),
+        delivered: false,
+        readed: false,
       },
     },
   },
   {
-    versionKey: false,
+    timestamps: false,
+    version: false,
   }
 );
 
-module.exports = model('inboxes', InboxSchema);
+module.exports = InboxModel;

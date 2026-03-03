@@ -13,10 +13,10 @@ function Header({ setSearch }) {
   const inputTimeout = useRef(null);
 
   return (
-    <div className="grid items-center z-10 bg-white dark:bg-spill-900 dark:text-white/90">
+    <div className="grid items-center z-10 bg-slate-100 text-slate-800 border-b border-slate-200 dark:bg-spill-800 dark:text-spill-100 dark:border-spill-700">
       <div className="h-16 pl-4 pr-2 flex gap-5 justify-between items-center">
         {/* brand name */}
-        <h1 className="text-2xl font-bold font-display">{config.brandName}</h1>
+        <h1 className="text-xl font-bold">{config.brandName}</h1>
         <div className="flex">
           {[
             {
@@ -45,7 +45,7 @@ function Header({ setSearch }) {
             <button
               type="button"
               key={elem.target}
-              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              className="p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
               onClick={elem.action}
             >
               {elem.icon}
@@ -54,14 +54,18 @@ function Header({ setSearch }) {
         </div>
       </div>
       {/* search bar */}
-      <div className="px-4 pb-4">
-        <label htmlFor="search" className="flex gap-3 items-center">
-          <bi.BiSearchAlt />
+      <div className="px-3 py-2 bg-white border-t border-slate-200 dark:bg-spill-900 dark:border-spill-700">
+        <label
+          htmlFor="search"
+          className="flex gap-3 items-center rounded-lg px-3 h-10 bg-slate-100 text-slate-500 border border-slate-200 dark:bg-spill-800 dark:text-spill-300 dark:border-spill-700"
+        >
+          <bi.BiSearchAlt size={18} />
           <input
             type="text"
             name="search"
             id="search"
-            className="w-full placeholder:opacity-80"
+            autoComplete="off"
+            className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
             placeholder="Search chats..."
             onChange={(e) => {
               clearTimeout(inputTimeout.current);

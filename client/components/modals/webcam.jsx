@@ -9,6 +9,19 @@ function WebCam() {
 
   const [videoStreamTrack, setVideoStreamTrack] = useState(null);
 
+  const openBackModal = () => {
+    if (!modal.webcam?.back) {
+      return;
+    }
+
+    dispatch(
+      setModal({
+        target: modal.webcam.back,
+        data: modal.webcam.backData || true,
+      })
+    );
+  };
+
   const handleStart = async () => {
     try {
       const wrap = document.querySelector('#webcam #video-wrap');
@@ -41,7 +54,11 @@ function WebCam() {
   };
 
   const handleSubmit = () => {
-    const video = document.querySelector('#webcam').querySelector('video');
+    const video = document.querySelector('#webcam')?.querySelector('video');
+    if (!video) {
+      return;
+    }
+
     const canvas = document.createElement('canvas');
 
     canvas.width = video.videoWidth;
@@ -57,7 +74,13 @@ function WebCam() {
     dispatch(
       setModal({
         target: 'imageCropper',
-        data: { src, back: 'avatarUpload' },
+        data: {
+          src,
+          back: modal.webcam.back || 'avatarUpload',
+          backData: modal.webcam.backData || null,
+          targetId: modal.webcam.targetId || null,
+          isGroup: modal.webcam.isGroup || false,
+        },
       })
     );
   };
@@ -77,7 +100,7 @@ function WebCam() {
       `}
       onClick={(e) => {
         e.stopPropagation();
-        dispatch(setModal({ target: modal.webcam.back }));
+        openBackModal();
       }}
     >
       <div

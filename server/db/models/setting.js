@@ -1,26 +1,49 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const SettingSchema = new Schema({
-  userId: {
-    type: Schema.Types.String,
-    required: true,
+const SettingModel = sequelize.define(
+  'settings',
+  {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      unique: 'settings_user_id_unique',
+    },
+    dark: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    enterToSend: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    mute: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    sortContactByName: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    blockedUserIds: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
   },
-  dark: {
-    type: Schema.Types.Boolean,
-    default: false,
-  },
-  enterToSend: {
-    type: Schema.Types.Boolean,
-    default: true,
-  },
-  mute: {
-    type: Schema.Types.Boolean,
-    default: false,
-  },
-  sortContactByName: {
-    type: Schema.Types.Boolean,
-    default: false,
-  },
-});
+  {
+    timestamps: false,
+    version: false,
+  }
+);
 
-module.exports = model('settings', SettingSchema);
+module.exports = SettingModel;

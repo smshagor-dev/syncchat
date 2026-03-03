@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
@@ -9,6 +9,7 @@ import {
   setRefreshAvatar,
   setRefreshGroupAvatar,
 } from '../../redux/features/chore';
+import resolveUploadUrl from '../../helpers/resolveUploadUrl';
 
 function ImageCropper() {
   const dispatch = useDispatch();
@@ -18,10 +19,25 @@ function ImageCropper() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [croppedArea, setCroppedArea] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const openBackModal = () => {
+    if (!modal.imageCropper?.back) {
+      return;
+    }
+
+    dispatch(
+      setModal({
+        target: modal.imageCropper.back,
+        data: modal.imageCropper.backData || true,
+      })
+    );
+  };
 
   const handleUpload = async () => {
     try {
       setUploading(true);
+      setErrorMessage('');
 
       const { src: avatar, isGroup, targetId } = modal.imageCropper;
 
@@ -37,13 +53,17 @@ function ImageCropper() {
       dispatch(setModal({ target: 'imageCropper' }));
       // uploaded
       setUploading(false);
+      const resolvedAvatarUrl = resolveUploadUrl(data?.payload);
 
       if (isGroup) {
-        dispatch(setRefreshGroupAvatar(data.payload));
+        dispatch(setRefreshGroupAvatar(resolvedAvatarUrl));
       } else {
-        dispatch(setRefreshAvatar(data.payload));
+        dispatch(setRefreshAvatar(resolvedAvatarUrl));
       }
     } catch (error0) {
+      setErrorMessage(
+        error0?.response?.data?.message || error0.message || 'Upload failed'
+      );
       setUploading(false);
     }
   };
@@ -51,10 +71,10 @@ function ImageCropper() {
   return (
     <div
       aria-hidden
-      className="absolute w-full h-full z-50 flex justify-center items-center bg-spill-600/40 dark:bg-black/60"
+      className="fixed inset-0 w-full h-full z-[90] flex justify-center items-center bg-spill-600/40 dark:bg-black/60"
       onClick={(e) => {
         e.stopPropagation();
-        dispatch(setModal({ target: modal.imageCropper.back }));
+        openBackModal();
       }}
     >
       <div
@@ -72,7 +92,7 @@ function ImageCropper() {
             type="button"
             className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-700"
             onClick={() => {
-              dispatch(setModal({ target: modal.imageCropper.back }));
+              openBackModal();
             }}
           >
             <i>
@@ -92,6 +112,11 @@ function ImageCropper() {
           />
         </div>
         <div className="p-4 grid gap-4">
+          {errorMessage && (
+            <p className="text-sm text-rose-600 dark:text-rose-400">
+              {errorMessage}
+            </p>
+          )}
           <span className="grid grid-cols-[auto_1fr_auto] gap-4 items-center">
             <i>
               <bi.BiMinus size={20} />
@@ -116,7 +141,10 @@ function ImageCropper() {
           <button
             type="button"
             className="w-full py-2 px-4 rounded-md font-bold text-white bg-sky-600 hover:bg-sky-700"
-            onClick={handleUpload}
+            onClick={() => {
+              handleUpload();
+            }}
+            disabled={uploading}
           >
             {uploading ? 'Uploading...' : 'Set new profile photo'}
           </button>

@@ -11,6 +11,18 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("fetch", event => {
+  const requestUrl = new URL(event.request.url);
+
+  // Never intercept API/socket or non-GET requests.
+  if (
+    event.request.method !== "GET" ||
+    requestUrl.pathname.startsWith("/api") ||
+    requestUrl.pathname.startsWith("/socket.io") ||
+    requestUrl.origin !== self.location.origin
+  ) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request).then(res => res || caches.match("/offline.html")))
   );
@@ -33,9 +45,6 @@ self.addEventListener('activate', event => {
   console.log('Service Worker activated');
 });
 
-self.addEventListener('fetch', event => {
-});
-
 self.addEventListener('message', event => {
   const { title, body } = event.data;
   self.registration.showNotification(title, {
@@ -45,4 +54,3 @@ self.addEventListener('message', event => {
     vibrate: [200, 100, 200],
   });
 });
-

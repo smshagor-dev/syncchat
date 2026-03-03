@@ -135,6 +135,7 @@ function EditGroup() {
                     type={elem.target}
                     name={elem.target}
                     id={elem.target}
+                    autoComplete="off"
                     className={`${
                       form[elem.target].length > 0
                         ? 'peer valid:bg-spill-50 dark:valid:bg-spill-900'

@@ -1,60 +1,74 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const ProfileSchema = new Schema(
+const ProfileModel = sequelize.define(
+  'profiles',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     userId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.UUID,
+      allowNull: false,
+      unique: 'profiles_user_id_unique',
     },
     username: {
-      type: Schema.Types.String,
-      unique: true,
-      trim: true,
-      required: true,
-      minLength: 3,
-      maxLength: 24,
+      type: DataTypes.STRING(24),
+      unique: 'profiles_username_unique',
+      allowNull: false,
+      validate: {
+        len: [3, 24],
+      },
     },
     email: {
-      type: Schema.Types.String,
-      unique: true,
-      required: true,
+      type: DataTypes.STRING(255),
+      unique: 'profiles_email_unique',
+      allowNull: false,
     },
     fullname: {
-      type: Schema.Types.String,
-      trim: true,
-      required: true,
-      minLength: 3,
-      maxLength: 32,
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      validate: {
+        len: [3, 32],
+      },
     },
     avatar: {
-      type: Schema.Types.String,
-      default: null,
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
     },
     bio: {
-      type: Schema.Types.String,
-      trim: true,
-      default: '',
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: '',
     },
     phone: {
-      type: Schema.Types.String,
-      trim: true,
-      default: '',
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: '',
     },
     dialCode: {
-      type: Schema.Types.String,
-      trim: true,
-      default: '',
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '',
+    },
+    socialAccounts: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     online: {
-      type: Schema.Types.Boolean,
-      required: true,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {
     timestamps: true,
-    versionKey: false,
+    version: false,
   }
 );
 
-module.exports = model('profiles', ProfileSchema);
+module.exports = ProfileModel;

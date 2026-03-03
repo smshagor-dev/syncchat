@@ -1,45 +1,54 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 
-const GroupSchema = new Schema(
+const GroupModel = sequelize.define(
+  'groups',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     roomId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      unique: 'groups_room_id_unique',
     },
     adminId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.UUID,
+      allowNull: false,
     },
     participantsId: {
-      type: Schema.Types.Array,
-      required: true,
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     name: {
-      type: Schema.Types.String,
-      maxLength: 32,
-      required: true,
+      type: DataTypes.STRING(32),
+      allowNull: false,
     },
     desc: {
-      type: Schema.Types.String,
-      maxLength: 300,
-      default: '',
+      type: DataTypes.STRING(300),
+      allowNull: false,
+      defaultValue: '',
     },
     avatar: {
-      type: Schema.Types.String,
-      default: null,
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
     },
     link: {
-      type: Schema.Types.String,
-      unique: true,
-      required: true,
-      default: `/group/+${uniqueId(16)}`,
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      unique: 'groups_link_unique',
+      defaultValue: () => `/group/+${uniqueId(16)}`,
     },
   },
   {
     timestamps: true,
-    versionKey: false,
+    version: false,
   }
 );
 
-module.exports = model('groups', GroupSchema);
+module.exports = GroupModel;

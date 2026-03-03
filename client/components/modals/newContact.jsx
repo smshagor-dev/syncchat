@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
+import { setChatRoom } from '../../redux/features/room';
 import {
   setRefreshContact,
   setRefreshFriendProfile,
@@ -12,11 +13,12 @@ import {
 function NewContact() {
   const dispatch = useDispatch();
   const modal = useSelector((state) => state.modal);
+  const master = useSelector((state) => state.user.master);
 
   const [respond, setRespond] = useState({ success: true, message: null });
-  const [form, setForm] = useState({ username: '', fullname: '' });
+  const [form, setForm] = useState({ identity: '' });
 
-  const handleChange = async (e) => {
+  const handleChange = (e) => {
     setForm((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
@@ -26,14 +28,48 @@ function NewContact() {
   const handleSubmit = async (e) => {
     try {
       e.preventDefault();
-      const { data } = await axios.post('/contacts', form);
+      const identity = form.identity.trim();
+      if (!identity) return;
+
+      const { data } = await axios.post('/contacts', { identity });
+      const friendId = data.payload?.friendId;
+      const roomId = data.payload?.roomId;
+
+      let profile = null;
+      if (friendId) {
+        const searchRespond = await axios.get('/contacts/search', {
+          params: { q: identity },
+        });
+
+        profile =
+          (searchRespond.data.payload || []).find(
+            (item) => item.userId === friendId
+          ) || null;
+      }
 
       setRespond({ success: true, message: data.message });
-      setForm({ username: '', fullname: '' });
+      setForm({ identity: '' });
 
       // refresh contact and friend's profile page
       dispatch(setRefreshContact(uuidv4()));
       dispatch(setRefreshFriendProfile(uuidv4()));
+      if (roomId && profile) {
+        dispatch(
+          setChatRoom({
+            isOpen: true,
+            refreshId: roomId,
+            data: {
+              ownersId: [master._id, profile.userId],
+              roomId,
+              roomType: 'private',
+              profile: {
+                ...profile,
+                active: true,
+              },
+            },
+          })
+        );
+      }
 
       setTimeout(() => {
         // reset response dialog
@@ -47,7 +83,7 @@ function NewContact() {
         );
       }, 1000);
     } catch (error0) {
-      const { message } = error0.response.data;
+      const message = error0?.response?.data?.message || error0.message;
       setRespond({
         success: false,
         message,
@@ -59,7 +95,7 @@ function NewContact() {
     if (modal.newcontact) {
       setForm((prev) => ({
         ...prev,
-        username: modal.newcontact?.username ?? '',
+        identity: modal.newcontact?.username ?? '',
       }));
     }
   }, [!!modal.newcontact]);
@@ -74,7 +110,7 @@ function NewContact() {
       aria-hidden
       onClick={() => {
         setRespond((prev) => ({ ...prev, message: null }));
-        setForm({ username: '', fullname: '' });
+        setForm({ identity: '' });
       }}
     >
       <div
@@ -102,51 +138,31 @@ function NewContact() {
         {/* content */}
         <div>
           <form method="post" onSubmit={handleSubmit} className="grid">
-            <span className="grid gap-2">
-              {[
-                {
-                  target: 'username',
-                  placeholder: 'Username',
-                  required: true,
-                  minLength: 3,
-                  maxLength: 24,
-                },
-                {
-                  target: 'fullname',
-                  placeholder: 'Contact name (optional)',
-                  required: false,
-                  minLength: 6,
-                  maxLength: 32,
-                },
-              ].map((elem) => (
-                <label
-                  key={elem.target}
-                  htmlFor={elem.target}
-                  className={`${
-                    elem.target === 'newPass' && 'mt-4'
-                  } relative flex items-center`}
-                >
-                  <input
-                    type={elem.target}
-                    name={elem.target}
-                    id={elem.target}
-                    minLength={elem.minLength}
-                    maxLength={elem.maxLength}
-                    required={elem.required}
-                    placeholder={elem.placeholder}
-                    value={form[elem.target]}
-                    className={`${
-                      form[elem.target].length > 0
-                        ? 'peer valid:bg-spill-50 dark:valid:bg-spill-900'
-                        : ''
-                    } w-full py-2 pl-4 pr-12 border border-solid border-spill-300 dark:border-spill-500 rounded-md focus:border-black dark:focus:border-sky-400`}
-                    onChange={handleChange}
-                  />
-                  <bi.BiCheck className="absolute right-0 text-xl text-sky-600 dark:text-sky-400 hidden peer-valid:block -translate-x-4" />
-                  <bi.BiX className="absolute right-0 text-xl text-red-600 dark:text-red-400 hidden peer-invalid:block -translate-x-4" />
-                </label>
-              ))}
-            </span>
+            <label htmlFor="identity" className="relative flex items-center">
+              <input
+                type="text"
+                name="identity"
+                id="identity"
+                autoComplete="off"
+                minLength={2}
+                maxLength={255}
+                required
+                placeholder="Username, email, or phone number"
+                value={form.identity}
+                className={`${
+                  form.identity.length > 0
+                    ? 'peer valid:bg-spill-50 dark:valid:bg-spill-900'
+                    : ''
+                } w-full py-2 pl-4 pr-12 border border-solid border-spill-300 dark:border-spill-500 rounded-md focus:border-black dark:focus:border-sky-400`}
+                onChange={handleChange}
+              />
+              <bi.BiCheck className="absolute right-0 text-xl text-sky-600 dark:text-sky-400 hidden peer-valid:block -translate-x-4" />
+              <bi.BiX className="absolute right-0 text-xl text-red-600 dark:text-red-400 hidden peer-invalid:block -translate-x-4" />
+            </label>
+            <p className="mt-2 text-xs opacity-70">
+              Enter username, email or phone. Contact will be added and chat
+              opens instantly.
+            </p>
             <span className="flex gap-2 mt-6 justify-end">
               <button
                 type="button"
@@ -155,7 +171,7 @@ function NewContact() {
                   dispatch(setModal({ target: 'newcontact' }));
                   // reset state
                   setRespond((prev) => ({ ...prev, message: null }));
-                  setForm({ username: '', fullname: '' });
+                  setForm({ identity: '' });
                 }}
               >
                 <p>Cancel</p>
@@ -164,7 +180,7 @@ function NewContact() {
                 type="submit"
                 className="py-2 px-4 rounded-md bg-blue-600 hover:bg-blue-700"
               >
-                <p className="font-bold text-white/90">Done</p>
+                <p className="font-bold text-white/90">Add & Chat</p>
               </button>
             </span>
           </form>

@@ -8,6 +8,7 @@ const profile = require('./profile');
 const inbox = require('./inbox');
 const group = require('./group');
 const avatar = require('./avatar');
+const status = require('./status');
 
 router.use(user);
 router.use(chat);
@@ -17,5 +18,6 @@ router.use(profile);
 router.use(inbox);
 router.use(group);
 router.use(avatar);
+router.use(status);
 
 module.exports = router;

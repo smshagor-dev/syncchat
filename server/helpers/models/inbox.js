@@ -1,63 +1,95 @@
+const { Op } = require('sequelize');
 const InboxModel = require('../../db/models/inbox');
+const ProfileModel = require('../../db/models/profile');
+const GroupModel = require('../../db/models/group');
+const FileModel = require('../../db/models/file');
+const { asArray, toPlainMany } = require('../../db/utils');
+
+const hasAll = (source, values) =>
+  asArray(values).every((value) => asArray(source).includes(value));
+
+const isMatch = (inbox, queries = {}) => {
+  if (!queries || Object.keys(queries).length === 0) return true;
+
+  return Object.entries(queries).every(([key, value]) => {
+    if (key === 'ownersId') {
+      if (value && typeof value === 'object' && value.$all) {
+        return hasAll(inbox.ownersId, value.$all);
+      }
+
+      return asArray(inbox.ownersId).includes(value);
+    }
+
+    if (value && typeof value === 'object' && value.$ne !== undefined) {
+      if (Array.isArray(inbox[key])) {
+        return !inbox[key].includes(value.$ne);
+      }
+      return inbox[key] !== value.$ne;
+    }
+
+    return inbox[key] === value;
+  });
+};
 
 exports.find = async (queries, search = '') => {
-  const inboxes = await InboxModel.aggregate([
-    { $match: queries },
-    {
-      $lookup: {
-        from: 'profiles',
-        localField: 'ownersId',
-        foreignField: 'userId',
-        as: 'owners',
-      },
-    },
-    {
-      $lookup: {
-        from: 'groups',
-        localField: 'roomId',
-        foreignField: 'roomId',
-        as: 'group',
-      },
-    },
-    {
-      $unwind: {
-        path: '$group',
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $lookup: {
-        from: 'files',
-        localField: 'fileId',
-        foreignField: 'fileId',
-        as: 'file',
-      },
-    },
-    {
-      $unwind: {
-        path: '$file',
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $match: {
-        $or: [
-          {
-            roomType: 'private',
-            owners: {
-              $elemMatch: {
-                fullname: { $regex: new RegExp(search), $options: 'i' },
-              },
-            },
-          },
-          {
-            roomType: 'group',
-            'group.name': { $regex: new RegExp(search), $options: 'i' },
-          },
-        ],
-      },
-    },
-  ]).sort({ 'content.time': -1 });
+  const inboxesRaw = await InboxModel.findAll();
+  const inboxes = toPlainMany(inboxesRaw).filter((inbox) =>
+    isMatch(inbox, queries)
+  );
 
-  return inboxes;
+  if (inboxes.length === 0) return [];
+
+  const ownersIds = [
+    ...new Set(inboxes.flatMap((inbox) => asArray(inbox.ownersId))),
+  ];
+  const roomIds = [...new Set(inboxes.map((inbox) => inbox.roomId))];
+  const fileIds = [
+    ...new Set(inboxes.map((inbox) => inbox.fileId).filter(Boolean)),
+  ];
+
+  const [ownersRaw, groupsRaw, filesRaw] = await Promise.all([
+    ownersIds.length
+      ? ProfileModel.findAll({ where: { userId: { [Op.in]: ownersIds } } })
+      : [],
+    roomIds.length
+      ? GroupModel.findAll({ where: { roomId: { [Op.in]: roomIds } } })
+      : [],
+    fileIds.length
+      ? FileModel.findAll({ where: { fileId: { [Op.in]: fileIds } } })
+      : [],
+  ]);
+
+  const ownersById = new Map(
+    toPlainMany(ownersRaw).map((profile) => [profile.userId, profile])
+  );
+  const groupsByRoom = new Map(
+    toPlainMany(groupsRaw).map((group) => [group.roomId, group])
+  );
+  const filesById = new Map(
+    toPlainMany(filesRaw).map((file) => [file.fileId, file])
+  );
+
+  const regex = new RegExp(search || '', 'i');
+
+  return inboxes
+    .map((inbox) => ({
+      ...inbox,
+      owners: asArray(inbox.ownersId)
+        .map((ownerId) => ownersById.get(ownerId))
+        .filter(Boolean),
+      group: groupsByRoom.get(inbox.roomId) || null,
+      file: inbox.fileId ? filesById.get(inbox.fileId) || null : null,
+    }))
+    .filter((inbox) => {
+      if (!search) return true;
+      if (inbox.roomType === 'private') {
+        return inbox.owners.some((owner) => regex.test(owner.fullname || ''));
+      }
+      return regex.test(inbox.group?.name || '');
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.content?.time || 0).getTime() -
+        new Date(a.content?.time || 0).getTime()
+    );
 };

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as md from 'react-icons/md';
 
-import { setSelectedChats } from '../../redux/features/chore';
+import { setReplyingChat, setSelectedChats } from '../../redux/features/chore';
 import socket from '../../helpers/socket';
 import config from '../../config';
 
@@ -28,6 +28,7 @@ function Room() {
   const [chats, setChats] = useState(null);
   const [newMessage, setNewMessage] = useState(0);
   const [control, setControl] = useState({ skip: 0, limit: 20 });
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleGetChats = async (signal) => {
     try {
@@ -66,7 +67,9 @@ function Room() {
     setLoaded(false);
     setControl({ skip: 0, limit: 20 });
     setChats(null);
+    setSearchQuery('');
     dispatch(setSelectedChats(null));
+    dispatch(setReplyingChat(null));
     dispatch(setPage({ target: 'friendProfile', data: false }));
     dispatch(setPage({ target: 'groupProfile', data: false }));
     dispatch(setPage({ target: 'groupParticipant', data: false }));
@@ -108,7 +111,7 @@ function Room() {
       className={`
         ${!chatRoom.data && 'translate-x-full md:translate-x-0'}
         transition absolute md:relative flex z-10 w-full h-full overflow-hidden
-        bg-spill-100 dark:bg-spill-950
+        bg-slate-100 dark:bg-spill-950
       `}
     >
       {chatRoom.data && (
@@ -117,9 +120,12 @@ function Room() {
             className={`${
               (page.groupProfile || page.friendProfile) &&
               '-translate-x-full sm:translate-x-0 xl:mr-[380px]'
-            } transition-all w-full h-full grid grid-rows-[auto_1fr_auto] overflow-hidden`}
+            } transition-all w-full h-full grid grid-rows-[auto_1fr_auto] overflow-hidden bg-slate-100 dark:bg-spill-900`}
           >
-            <comp.header />
+            <comp.header
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+            />
             <comp.monitor
               newMessage={newMessage}
               setNewMessage={setNewMessage}
@@ -128,6 +134,7 @@ function Room() {
               control={control}
               setControl={setControl}
               loaded={loaded}
+              searchQuery={searchQuery}
             />
             <comp.send
               setChats={setChats}
@@ -142,12 +149,12 @@ function Room() {
         </>
       )}
       {!chatRoom.data && (
-        <div className="w-full h-full flex justify-center items-center">
-          <div className="w-[400px] flex flex-col items-center">
-            <i className="opacity-40">
+        <div className="w-full h-full flex justify-center items-center bg-slate-200 text-slate-600 dark:bg-spill-800 dark:text-spill-300">
+          <div className="w-[420px] flex flex-col items-center">
+            <i className="opacity-70">
               <md.MdDevices size={140} />
             </i>
-            <p className="mt-4 opacity-60 text-center">
+            <p className="mt-4 text-center text-sm leading-6">
               {'You can use '}
               {config.brandName}
               {' on other devices such as desktop, tablet, and mobile phone.'}

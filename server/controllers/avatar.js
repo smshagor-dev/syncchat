@@ -1,49 +1,90 @@
-const { v2: cloud } = require('cloudinary');
+const sharp = require('sharp');
 const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
 const response = require('../helpers/response');
+const {
+  parseDataUri,
+  saveBufferFile,
+  deleteLocalFileByUrl,
+} = require('../helpers/storage');
 
 exports.upload = async (req, res) => {
   try {
-    const { avatar, crop, zoom, targetId = null, isGroup = false } = req.body;
+    const { avatar, crop, targetId = null, isGroup = false } = req.body;
+    const { buffer } = parseDataUri(avatar);
+    const image = sharp(buffer);
+    const metadata = await image.metadata();
 
-    const upload = await cloud.uploader.upload(avatar, {
+    let pipeline = image;
+    if (
+      crop &&
+      typeof crop.x === 'number' &&
+      typeof crop.y === 'number' &&
+      typeof crop.width === 'number' &&
+      typeof crop.height === 'number' &&
+      metadata.width &&
+      metadata.height
+    ) {
+      const left = Math.max(
+        0,
+        Math.min(Math.round(crop.x), Math.max(metadata.width - 1, 0))
+      );
+      const top = Math.max(
+        0,
+        Math.min(Math.round(crop.y), Math.max(metadata.height - 1, 0))
+      );
+      const width = Math.max(
+        1,
+        Math.min(Math.round(crop.width), metadata.width - left)
+      );
+      const height = Math.max(
+        1,
+        Math.min(Math.round(crop.height), metadata.height - top)
+      );
+
+      pipeline = image.extract({ left, top, width, height });
+    }
+
+    const processedBuffer = await pipeline
+      .resize(460, 460, { fit: 'cover' })
+      .webp({ quality: 90 })
+      .toBuffer();
+
+    const uploaded = await saveBufferFile({
+      buffer: processedBuffer,
       folder: 'avatars',
-      public_id: targetId || req.user._id,
-      overwrite: true,
-      transformation: [
-        {
-          crop: 'crop',
-          x: Math.round(crop.x),
-          y: Math.round(crop.y),
-          width: Math.round(crop.width),
-          height: Math.round(crop.height),
-          zoom,
-        },
-        {
-          crop: 'scale',
-          aspect_ratio: '1.0',
-          width: 460,
-        },
-      ],
+      filename: `${targetId || req.user._id}-${Date.now()}.webp`,
     });
 
     if (isGroup) {
-      await GroupModel.updateOne(
-        { _id: targetId },
-        { $set: { avatar: upload.url } }
+      const group = await GroupModel.findOne({
+        where: { _id: targetId },
+        attributes: ['avatar'],
+      });
+      if (group?.avatar) await deleteLocalFileByUrl(group.avatar);
+
+      await GroupModel.update(
+        { avatar: uploaded.url },
+        { where: { _id: targetId } }
       );
     } else {
-      await ProfileModel.updateOne(
-        { userId: targetId || req.user._id },
-        { $set: { avatar: upload.url } }
+      const userId = targetId || req.user._id;
+      const profile = await ProfileModel.findOne({
+        where: { userId },
+        attributes: ['avatar'],
+      });
+      if (profile?.avatar) await deleteLocalFileByUrl(profile.avatar);
+
+      await ProfileModel.update(
+        { avatar: uploaded.url },
+        { where: { userId } }
       );
     }
 
     response({
       res,
       message: 'Avatar uploaded successfully',
-      payload: upload.url,
+      payload: uploaded.url,
     });
   } catch (error0) {
     response({

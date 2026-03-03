@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const { Op } = require('sequelize');
 
 const UserModel = require('../db/models/user');
 const ProfileModel = require('../db/models/profile');
@@ -8,43 +9,47 @@ const SettingModel = require('../db/models/setting');
 const GroupModel = require('../db/models/group');
 const ContactModel = require('../db/models/contact');
 
+const { toPlain, asArray, pullFromArray } = require('../db/utils');
 const response = require('../helpers/response');
 const mailer = require('../helpers/mailer');
+const { toAbsoluteUploadUrl } = require('../helpers/storage');
 
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 
+const createError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 exports.register = async (req, res) => {
   try {
-    // generate otp code
     const otp = Math.floor(1000 + Math.random() * 9000);
 
-    const { _id: userId } = await new UserModel({
+    const user = await UserModel.create({
       ...req.body,
       password: encrypt(req.body.password),
-      otp, // -> one-time password
-    }).save();
+      otp,
+    });
+    const userId = user._id;
 
-    // account setting
-    await new SettingModel({ userId }).save();
-    // save user data (without password) on profile model
-    await new ProfileModel({
+    await SettingModel.create({ userId });
+    await ProfileModel.create({
       ...req.body,
       userId,
-      fullname: req.body.username,
-    }).save();
+      fullname: req.body.fullname,
+    });
 
-    // generate access token
     const token = jwt.sign({ _id: userId }, 'shhhhh');
     const template = fs.readFileSync(
       path.resolve(__dirname, '../helpers/templates/otp.html'),
       'utf8'
     );
 
-    // send the OTP/verification code to user's email
     await mailer({
       to: req.body.email,
-      fullname: req.body.username,
+      fullname: req.body.fullname,
       subject: 'Please activate your account',
       html: template,
       otp,
@@ -69,28 +74,55 @@ exports.register = async (req, res) => {
 exports.verify = async (req, res) => {
   try {
     const { userId, otp } = req.body;
+    const user = await UserModel.findOne({ where: { _id: userId, otp } });
 
-    // find the user by _id and OTP.
-    // if the user is found, update the verified and OTP fields
-    const user = await UserModel.findOneAndUpdate(
-      { _id: userId, otp },
-      { $set: { verified: true, otp: null } }
-    );
-
-    // if the user not found
     if (!user) {
-      // send a response as an OTP validation error
-      const errData = {
-        message: 'Invalid OTP code',
-        statusCode: 401,
-      };
-      throw errData;
+      throw createError(401, 'Invalid OTP code');
     }
+
+    user.verified = true;
+    user.otp = null;
+    await user.save();
 
     response({
       res,
       message: 'Successfully verified an account',
-      payload: user,
+      payload: toPlain(user),
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.resendVerifyOtp = async (req, res) => {
+  try {
+    const user = await UserModel.findOne({ where: { _id: req.user._id } });
+    if (!user) throw createError(404, 'User not found');
+    if (user.verified) throw createError(400, 'Account already verified');
+
+    const otp = Math.floor(1000 + Math.random() * 9000);
+    const template = fs.readFileSync(
+      path.resolve(__dirname, '../helpers/templates/otp.html'),
+      'utf8'
+    );
+
+    await user.update({ otp });
+    await mailer({
+      to: user.email,
+      fullname: user.fullname || user.username,
+      subject: 'Please activate your account',
+      html: template,
+      otp,
+    });
+
+    response({
+      res,
+      message: 'OTP code sent successfully',
     });
   } catch (error0) {
     response({
@@ -104,34 +136,34 @@ exports.verify = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const errData = {};
     const { username, password } = req.body;
-
     const user = await UserModel.findOne({
-      $or: [
-        { email: username }, // -> username field can be filled with email
-        { username },
-      ],
+      where: {
+        [Op.or]: [{ email: username }, { username }],
+      },
     });
 
-    // if user not found or invalid password
     if (!user) {
-      errData.statusCode = 401;
-      errData.message = 'Username or email not registered';
-
-      throw errData;
+      throw createError(401, 'Username or email not registered');
     }
 
-    // decrypt password
-    decrypt(password, user.password);
-    // generate access token
+    if (!user.password || typeof user.password !== 'string') {
+      throw createError(401, 'Invalid password');
+    }
+
+    try {
+      decrypt(password, user.password);
+    } catch (error0) {
+      throw createError(401, 'Invalid password');
+    }
+
     const token = jwt.sign({ _id: user._id }, 'shhhhh');
 
     response({
       res,
       statusCode: 200,
       message: 'Successfully logged in',
-      payload: token, // -> send token to store in localStorage
+      payload: token,
     });
   } catch (error0) {
     response({
@@ -145,14 +177,73 @@ exports.login = async (req, res) => {
 
 exports.find = async (req, res) => {
   try {
-    // find user & exclude password
-    const user = await UserModel.findOne(
-      { _id: req.user._id },
-      { password: 0 }
-    );
+    const user = await UserModel.findOne({
+      where: { _id: req.user._id },
+      attributes: { exclude: ['password'] },
+    });
+    const profile = await ProfileModel.findOne({
+      where: { userId: req.user._id },
+      attributes: ['avatar'],
+    });
+
     response({
       res,
-      payload: user,
+      payload: {
+        ...toPlain(user),
+        avatar: toAbsoluteUploadUrl(profile?.avatar || null),
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.feedback = async (req, res) => {
+  try {
+    const message = (req.body.message || '').trim();
+
+    if (message.length < 10) {
+      throw createError(400, 'Feedback must be at least 10 characters long');
+    }
+
+    const user = await UserModel.findOne({ where: { _id: req.user._id } });
+    if (!user) throw createError(404, 'User not found');
+
+    const to = process.env.FEEDBACK_EMAIL || process.env.EMAIL_USER;
+    if (!to) {
+      throw createError(
+        500,
+        'Feedback email is not configured on server environment'
+      );
+    }
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>New user feedback</h2>
+        <p><strong>User:</strong> ${user.username} (${user.email})</p>
+        <p><strong>User ID:</strong> ${user._id}</p>
+        <p><strong>Submitted at:</strong> ${new Date().toISOString()}</p>
+        <hr />
+        <p style="white-space: pre-wrap;">${message}</p>
+      </div>
+    `;
+
+    await mailer({
+      to,
+      fullname: user.fullname || user.username,
+      subject: `Feedback from @${user.username}`,
+      html,
+      otp: '',
+    });
+
+    response({
+      res,
+      message: 'Feedback sent successfully',
     });
   } catch (error0) {
     response({
@@ -167,33 +258,32 @@ exports.find = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const userId = req.user._id;
+    const user = await UserModel.findOne({ where: { _id: userId } });
+    if (!user) throw createError(404, 'User not found');
 
-    const user = await UserModel.findOne({ _id: userId });
     const compare = decrypt(req.body.password, user.password);
+    if (!compare) throw createError(401, 'Invalid password');
 
-    if (!compare) {
-      const errData = {
-        message: 'Invalid password',
-        statusCode: 401,
-      };
-      throw errData;
-    }
+    await UserModel.destroy({ where: { _id: userId } });
+    await ProfileModel.destroy({ where: { userId } });
+    await SettingModel.destroy({ where: { userId } });
+    await ContactModel.destroy({ where: { userId } });
 
-    // delete permanently user, profile, setting, and contact
-    await UserModel.deleteOne({ _id: userId });
-    await ProfileModel.deleteOne({ userId });
-    await SettingModel.deleteOne({ userId });
-    await ContactModel.deleteMany({ userId });
-
-    await GroupModel.updateMany(
-      { participantsId: userId },
-      { $pull: { participantsId: userId } }
+    const groups = await GroupModel.findAll();
+    await Promise.all(
+      groups.map(async (group) => {
+        const participants = asArray(group.participantsId);
+        if (!participants.includes(userId)) return;
+        await group.update({
+          participantsId: pullFromArray(participants, [userId]),
+        });
+      })
     );
 
     response({
       res,
       message: 'Account deleted successfully',
-      payload: user,
+      payload: toPlain(user),
     });
   } catch (error0) {
     response({
@@ -207,39 +297,152 @@ exports.delete = async (req, res) => {
 
 exports.changePass = async (req, res) => {
   try {
-    const errData = {};
     const userId = req.user._id;
     const { oldPass, newPass, confirmNewPass } = req.body;
 
-    const user = await UserModel.findOne({ _id: userId });
+    const user = await UserModel.findOne({ where: { _id: userId } });
+    if (!user) throw createError(404, 'User not found');
 
-    // compare password
     if (!decrypt(oldPass, user.password)) {
-      errData.statusCode = 401;
-      errData.message = 'Invalid password';
-
-      throw errData;
+      throw createError(401, 'Invalid password');
     }
 
     if (newPass !== confirmNewPass) {
-      errData.statusCode = 400;
-      errData.message = "New password doesn't match";
-
-      throw errData;
+      throw createError(400, "New password doesn't match");
     }
 
-    // change password
-    await UserModel.updateOne(
-      { _id: userId },
-      { $set: { password: encrypt(newPass) } }
-    );
+    await user.update({ password: encrypt(newPass) });
 
-    // exclude password field when sending user data to client
-    delete user.password;
+    const payload = toPlain(user);
+    delete payload.password;
     response({
       res,
       message: 'Password changed successfully',
-      payload: user,
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.requestForgotPass = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await UserModel.findOne({ where: { email } });
+
+    if (!user) {
+      response({
+        res,
+        message:
+          'If your email is registered, a verification code has been sent',
+      });
+      return;
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const template = fs.readFileSync(
+      path.resolve(__dirname, '../helpers/templates/otp.html'),
+      'utf8'
+    );
+
+    await user.update({
+      resetOtp: otp,
+      resetOtpExpires: expiresAt,
+      resetOtpVerified: false,
+    });
+
+    await mailer({
+      to: user.email,
+      fullname: user.fullname || user.username,
+      subject: 'Password reset code',
+      html: template,
+      otp,
+    });
+
+    response({
+      res,
+      message: 'If your email is registered, a verification code has been sent',
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.verifyForgotPass = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await UserModel.findOne({
+      where: {
+        email,
+        resetOtp: otp,
+        resetOtpExpires: { [Op.gt]: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw createError(401, 'Invalid or expired verification code');
+    }
+
+    await user.update({ resetOtpVerified: true });
+
+    response({
+      res,
+      message: 'Verification code accepted',
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.resetForgotPass = async (req, res) => {
+  try {
+    const { email, newPass, confirmNewPass } = req.body;
+
+    if (newPass !== confirmNewPass) {
+      throw createError(400, "New password doesn't match");
+    }
+
+    const user = await UserModel.findOne({
+      where: {
+        email,
+        resetOtpVerified: true,
+        resetOtpExpires: { [Op.gt]: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw createError(
+        401,
+        'Reset session expired. Please request a new code'
+      );
+    }
+
+    await user.update({
+      password: encrypt(newPass),
+      resetOtp: null,
+      resetOtpExpires: null,
+      resetOtpVerified: false,
+    });
+
+    response({
+      res,
+      message: 'Password reset successfully',
     });
   } catch (error0) {
     response({

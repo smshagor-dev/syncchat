@@ -9,6 +9,8 @@ module.exports = {
     extend: {
       fontFamily: {
         display: 'Lobster Two',
+        auth: 'Manrope',
+        authDisplay: 'Sora',
       },
       colors: {
         ...defaultColors,

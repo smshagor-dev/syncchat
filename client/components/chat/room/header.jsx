@@ -10,7 +10,7 @@ import { setModal } from '../../../redux/features/modal';
 import socket from '../../../helpers/socket';
 import RoomHeaderMenu from '../../modals/roomHeaderMenu';
 
-function Header() {
+function Header({ searchQuery, setSearchQuery }) {
   const dispatch = useDispatch();
   const {
     room: { chat: chatRoom },
@@ -24,6 +24,7 @@ function Header() {
   const [subhead, setSubhead] = useState('');
   const [statusTimeout, setStatusTimeout] = useState(null);
   const [typing, setTyping] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const handleGetParticipantsName = async (signal) => {
     try {
@@ -119,12 +120,18 @@ function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!searchOpen && searchQuery) {
+      setSearchQuery('');
+    }
+  }, [searchOpen, searchQuery, setSearchQuery]);
+
   return (
     <nav className="h-16 grid grid-cols-[1fr_auto] gap-4 justify-between items-center bg-white dark:bg-spill-900">
       <RoomHeaderMenu />
       {!selectedChats && (
         <>
-          <div className="pl-2 md:pl-4 flex gap-2 items-center">
+          <div className="pl-2 md:pl-4 flex gap-2 items-center min-w-0">
             <button
               type="button"
               className="block md:hidden p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
@@ -142,59 +149,146 @@ function Header() {
                 <bi.BiArrowBack />
               </i>
             </button>
-            <div
-              className="grid grid-cols-[auto_1fr] gap-4 items-center cursor-pointer"
-              aria-hidden
-              onClick={() => {
-                if (
-                  !isGroup &&
-                  chatRoom.data.profile.active &&
-                  !page.friendProfile
-                ) {
-                  dispatch(
-                    setPage({
-                      target: 'friendProfile',
-                      data: chatRoom.data.profile.userId,
-                    })
-                  );
-                  return;
-                }
+            {!searchOpen && (
+              <div
+                className="grid grid-cols-[auto_1fr] gap-4 items-center cursor-pointer min-w-0"
+                aria-hidden
+                onClick={() => {
+                  if (
+                    !isGroup &&
+                    chatRoom.data.profile.active &&
+                    !page.friendProfile
+                  ) {
+                    dispatch(
+                      setPage({
+                        target: 'friendProfile',
+                        data: chatRoom.data.profile.userId,
+                      })
+                    );
+                    return;
+                  }
 
-                if (isGroup && !page.groupProfile) {
-                  dispatch(
-                    setPage({
-                      target: 'groupProfile',
-                      data: chatRoom.data.group._id,
-                    })
-                  );
-                }
-              }}
-            >
-              <img
-                src={
-                  isGroup
-                    ? refreshGroupAvatar ||
-                      chatRoom.data.group.avatar ||
-                      'assets/images/default-group-avatar.png'
-                    : chatRoom.data.profile.avatar ||
-                      'assets/images/default-avatar.png'
-                }
-                alt=""
-                className="w-10 h-10 rounded-full"
-              />
-              <span className="overflow-hidden">
-                <p className="font-bold truncate">
-                  {isGroup
-                    ? chatRoom.data.group.name
-                    : chatRoom.data.profile.fullname}
-                </p>
-                <p className="text-sm opacity-60 truncate">
-                  {typing ?? subhead}
-                </p>
-              </span>
-            </div>
+                  if (isGroup && !page.groupProfile) {
+                    dispatch(
+                      setPage({
+                        target: 'groupProfile',
+                        data: chatRoom.data.group._id,
+                      })
+                    );
+                  }
+                }}
+              >
+                <img
+                  src={
+                    isGroup
+                      ? refreshGroupAvatar ||
+                        chatRoom.data.group.avatar ||
+                        'assets/images/default-group-avatar.png'
+                      : chatRoom.data.profile.avatar ||
+                        'assets/images/default-avatar.png'
+                  }
+                  alt=""
+                  className="w-10 h-10 rounded-full"
+                />
+                <span className="overflow-hidden">
+                  <p className="font-bold truncate">
+                    {isGroup
+                      ? chatRoom.data.group.name
+                      : chatRoom.data.profile.fullname}
+                  </p>
+                  <p className="text-sm opacity-60 truncate">
+                    {typing ?? subhead}
+                  </p>
+                </span>
+              </div>
+            )}
+            {searchOpen && (
+              <label
+                htmlFor="chat-search"
+                className="h-10 w-full max-w-md rounded-full border border-slate-200 px-3 bg-slate-100 dark:bg-spill-800 dark:border-spill-700 grid grid-cols-[auto_1fr_auto] items-center gap-2"
+              >
+                <bi.BiSearch className="opacity-70" />
+                <input
+                  id="chat-search"
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search in chat..."
+                  className="bg-transparent text-sm outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
+                    onClick={() => setSearchQuery('')}
+                  >
+                    <bi.BiX />
+                  </button>
+                )}
+              </label>
+            )}
           </div>
           <div className="pr-2 flex items-center">
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchOpen((prev) => !prev);
+              }}
+            >
+              <i>{searchOpen ? <bi.BiX /> : <bi.BiSearch />}</i>
+            </button>
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              onClick={(e) => {
+                e.stopPropagation();
+                dispatch(
+                  setModal({
+                    target: 'callPanel',
+                    data: {
+                      mode: 'outgoing',
+                      roomId: chatRoom.data.roomId,
+                      roomType: chatRoom.data.roomType,
+                      mediaType: 'audio',
+                      fromUserId: master._id,
+                      fromName: master.fullname,
+                      fromUsername: master.username,
+                    },
+                  })
+                );
+              }}
+            >
+              <i>
+                <bi.BiPhone />
+              </i>
+            </button>
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              onClick={(e) => {
+                e.stopPropagation();
+                dispatch(
+                  setModal({
+                    target: 'callPanel',
+                    data: {
+                      mode: 'outgoing',
+                      roomId: chatRoom.data.roomId,
+                      roomType: chatRoom.data.roomType,
+                      mediaType: 'video',
+                      fromUserId: master._id,
+                      fromName: master.fullname,
+                      fromUsername: master.username,
+                    },
+                  })
+                );
+              }}
+            >
+              <i>
+                <bi.BiVideo />
+              </i>
+            </button>
             <button
               type="button"
               className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"

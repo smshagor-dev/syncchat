@@ -1,42 +1,73 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 
-const UserSchema = new Schema(
+const UserModel = sequelize.define(
+  'users',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     username: {
-      type: Schema.Types.String,
-      unique: true,
-      trim: true,
-      required: true,
-      minLength: 3,
-      maxLength: 24,
+      type: DataTypes.STRING(24),
+      unique: 'users_username_unique',
+      allowNull: false,
+      validate: {
+        len: [3, 24],
+      },
+    },
+    fullname: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      validate: {
+        len: [3, 32],
+      },
     },
     email: {
-      type: Schema.Types.String,
-      unique: true,
-      required: true,
+      type: DataTypes.STRING(255),
+      unique: 'users_email_unique',
+      allowNull: false,
     },
     password: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.TEXT,
+      allowNull: false,
     },
     qrCode: {
-      type: Schema.Types.String,
-      required: true,
-      default: uniqueId(16, { lowercase: false }),
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      defaultValue: () => uniqueId(16, { lowercase: false }),
     },
     verified: {
-      type: Schema.Types.Boolean,
-      required: true,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     otp: {
-      type: Schema.Types.Number,
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    resetOtp: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+    },
+    resetOtpExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    resetOtpVerified: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {
-    versionKey: false,
+    timestamps: true,
+    version: false,
   }
 );
 
-module.exports = model('users', UserSchema);
+module.exports = UserModel;

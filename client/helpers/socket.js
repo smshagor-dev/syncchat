@@ -1,6 +1,9 @@
 import { io } from 'socket.io-client';
+import config from '../config';
 
-const isDev = process.env.NODE_ENV === 'development';
-
-const socket = io(isDev ? 'ws://localhost:8080' : '/');
+const socket = io(config.socketUrl, {
+  autoConnect: false,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1500,
+});
 export default socket;

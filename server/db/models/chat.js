@@ -1,41 +1,62 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const ChatSchema = new Schema(
+const ChatModel = sequelize.define(
+  'chats',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     userId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.UUID,
+      allowNull: false,
     },
     roomId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(64),
+      allowNull: false,
     },
     text: {
-      type: Schema.Types.String,
-      default: '',
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: '',
     },
     readed: {
-      type: Schema.Types.Boolean,
-      required: true,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    delivered: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     replyTo: {
-      type: Schema.Types.String, // -> target chat._id
-      default: null,
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
+    reactions: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {},
     },
     deletedBy: {
-      type: Schema.Types.Array, // -> userId
-      default: [],
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
     },
     fileId: {
-      type: Schema.Types.String,
-      default: null,
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {
     timestamps: true,
-    versionKey: false,
+    version: false,
   }
 );
 
-module.exports = model('chats', ChatSchema);
+module.exports = ChatModel;

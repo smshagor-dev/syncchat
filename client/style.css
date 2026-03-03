@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Lobster+Two:wght@700&family=Roboto:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lobster+Two:wght@700&family=Manrope:wght@400;500;600;700;800&family=Roboto:wght@400;700&family=Sora:wght@600;700&display=swap');
 
 * {
   border: none;
@@ -33,4 +33,19 @@ a {
 }
 .dark a {
   color: #bae6fd;
+}
+
+.whatsapp-wallpaper {
+  background-color: #e2e8f0;
+  background-image:
+    radial-gradient(circle at 25px 25px, rgba(30, 41, 59, 0.06) 2px, transparent 0),
+    radial-gradient(circle at 75px 75px, rgba(14, 116, 144, 0.05) 2px, transparent 0);
+  background-size: 100px 100px;
+}
+
+.dark .whatsapp-wallpaper {
+  background-color: #141d26;
+  background-image:
+    radial-gradient(circle at 25px 25px, rgba(148, 163, 184, 0.08) 2px, transparent 0),
+    radial-gradient(circle at 75px 75px, rgba(56, 189, 248, 0.06) 2px, transparent 0);
 }

@@ -81,6 +81,13 @@ function Setting() {
       section: 'Help',
       child: [
         {
+          target: 'media',
+          title: 'Media',
+          desc: 'View all your shared photos, videos, links, and files',
+          toggle: false,
+          icon: <bi.BiImageAlt />,
+        },
+        {
           target: 'feedback',
           title: 'Feedback',
           desc: null,
@@ -139,7 +146,11 @@ function Setting() {
                   className="p-4 grid grid-cols-[auto_1fr_auto] items-start gap-6 cursor-pointer border-0 border-b border-solid border-spill-200 dark:border-spill-800 hover:bg-spill-100/60 dark:hover:bg-spill-800/60"
                   onClick={(e) => {
                     e.stopPropagation();
-                    dispatch(setModal({ target: child.target }));
+                    if (child.target === 'media') {
+                      dispatch(setPage({ target: 'media', data: true }));
+                    } else {
+                      dispatch(setModal({ target: child.target, data: true }));
+                    }
                   }}
                 >
                   <i>{child.icon}</i>

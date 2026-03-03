@@ -1,23 +1,37 @@
-const { Schema, model } = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../sequelize');
 
-const ContactSchema = new Schema(
+const ContactModel = sequelize.define(
+  'contact',
   {
+    _id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
     userId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.UUID,
+      allowNull: false,
     },
     roomId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.STRING(64),
+      allowNull: false,
     },
     friendId: {
-      type: Schema.Types.String,
-      required: true,
+      type: DataTypes.UUID,
+      allowNull: false,
     },
   },
   {
-    versionKey: false,
+    timestamps: false,
+    version: false,
+    indexes: [
+      {
+        unique: true,
+        fields: ['userId', 'friendId'],
+      },
+    ],
   }
 );
 
-module.exports = model('contact', ContactSchema);
+module.exports = ContactModel;
