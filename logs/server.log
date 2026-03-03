@@ -7908,3 +7908,5 @@
 2026-03-03T07:11:20.454Z [INFO] HTTP_IN {"method":"GET","url":"/api/contacts","ip":"::ffff:127.0.0.1","userId":null}
 2026-03-03T07:11:20.460Z [INFO] HTTP_OUT {"method":"GET","url":"/api/statuses","statusCode":304,"tookMs":8}
 2026-03-03T07:11:20.461Z [INFO] HTTP_OUT {"method":"GET","url":"/api/contacts","statusCode":200,"tookMs":7}
+2026-03-03T07:15:16.818Z [INFO] SOCKET_IN {"socketId":"GDnrpUPc52-kAOsgAAAr","event":"user/disconnect","args":["7f57b9a8-41e1-44b5-9787-83ad11982bc5"]}
+2026-03-03T07:15:16.827Z [INFO] SOCKET_OUT {"socketId":"ruFpc6xV0rzmQsRZAAAt","event":"user/disconnect","args":["7f57b9a8-41e1-44b5-9787-83ad11982bc5"]}
