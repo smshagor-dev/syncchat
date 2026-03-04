@@ -5,6 +5,7 @@ const ChoreSlice = createSlice({
   initialState: {
     selectedParticipants: [],
     selectedChats: null,
+    selectedInboxes: null,
     replyingChat: null,
     refreshFriendProfile: null,
     refreshAvatar: null,
@@ -28,6 +29,18 @@ const ChoreSlice = createSlice({
           : chats.filter((el) => el !== action.payload);
       } else {
         state.selectedChats = action.payload;
+      }
+    },
+    setSelectedInboxes(state, action) {
+      const isRoomId = typeof action.payload === 'string';
+
+      if (isRoomId) {
+        const inboxes = state.selectedInboxes ?? [];
+        state.selectedInboxes = !inboxes.includes(action.payload)
+          ? [...inboxes, action.payload]
+          : inboxes.filter((id) => id !== action.payload);
+      } else {
+        state.selectedInboxes = action.payload;
       }
     },
     setReplyingChat(state, action) {
@@ -55,6 +68,7 @@ const ChoreSlice = createSlice({
 export const {
   setSelectedParticipants,
   setSelectedChats,
+  setSelectedInboxes,
   setReplyingChat,
   setRefreshFriendProfile,
   setRefreshAvatar,

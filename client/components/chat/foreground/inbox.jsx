@@ -11,6 +11,7 @@ import { setChatRoom } from '../../../redux/features/room';
 import InboxMenu from '../../modals/inboxMenu';
 import { setModal } from '../../../redux/features/modal';
 import { setRefreshInbox } from '../../../redux/features/chore';
+import { setSelectedInboxes } from '../../../redux/features/chore';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
 
 import {
@@ -27,11 +28,14 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
   const {
     user: { master, setting },
     room: { chat: chatRoom },
+    chore: { selectedInboxes },
     modal,
     page,
   } = useSelector((state) => state);
   const [callLogs, setCallLogs] = React.useState([]);
   const [callLogsLoading, setCallLogsLoading] = React.useState(false);
+  const [starredMessages, setStarredMessages] = React.useState([]);
+  const [starredLoading, setStarredLoading] = React.useState(false);
   const [unlockDialog, setUnlockDialog] = React.useState({
     open: false,
     mode: 'group',
@@ -548,6 +552,34 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
   }, [page.calls, inboxes?.length]);
 
   useEffect(() => {
+    if (!page.starred) return undefined;
+
+    const abortCtrl = new AbortController();
+    const fetchStarredMessages = async () => {
+      try {
+        setStarredLoading(true);
+        const { data } = await axios.get('/chats/starred', {
+          signal: abortCtrl.signal,
+        });
+        setStarredMessages(Array.isArray(data?.payload) ? data.payload : []);
+      } catch (error0) {
+        if (error0.name !== 'CanceledError') {
+          // eslint-disable-next-line no-console
+          console.error(error0?.response?.data?.message || error0.message);
+        }
+      } finally {
+        setStarredLoading(false);
+      }
+    };
+
+    fetchStarredMessages();
+
+    return () => {
+      abortCtrl.abort();
+    };
+  }, [page.starred, inboxes?.length]);
+
+  useEffect(() => {
     socket.on('inbox/find', async (payload) => {
       // concat old inboxes data with new data
       setInboxes((prev) => {
@@ -818,6 +850,23 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
           </div>
         </div>
       )}
+      {page.starred && (
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/95">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              <p className="text-sm font-semibold text-slate-700 dark:text-spill-100">
+                Starred Messages
+              </p>
+              <p className="text-xs opacity-70">
+                Messages you marked as important
+              </p>
+            </span>
+            <i className="text-amber-500">
+              <bi.BiStar size={18} />
+            </i>
+          </div>
+        </div>
+      )}
       {page.calls &&
         callLogs.map((elem) => {
           const meta = getCallListMeta(elem.text, elem.userId);
@@ -914,9 +963,111 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
             </div>
           );
         })}
+      {page.starred &&
+        starredMessages.map((item) => {
+          const sourceInbox = (inboxes || []).find(
+            (inbox) => inbox.roomId === item.roomId
+          );
+          const roomTitle =
+            item?.room?.title ||
+            (item.roomType === 'group' ? 'Group' : '[inactive]');
+          const roomAvatar =
+            resolveUploadUrl(item?.room?.avatar) ||
+            (item.roomType === 'group'
+              ? 'assets/images/default-group-avatar.png'
+              : 'assets/images/default-avatar.png');
+          const senderName =
+            item?.profile?.fullname || item?.userId || 'Unknown sender';
+          const starredFileType = item?.file?.type || '';
+          const starredFileUrl = resolveUploadUrl(item?.file?.url || '');
+          const isStarredImage =
+            starredFileType === 'image' && !!starredFileUrl;
+          const previewText =
+            item?.text?.trim() ||
+            (isStarredImage
+              ? 'Photo'
+              : starredFileType === 'video'
+                ? 'Video'
+                : starredFileType === 'audio'
+                  ? 'Voice'
+                  : item?.file?.originalname || '[attachment]');
+
+          return (
+            <div
+              key={`starred-row-${item._id}`}
+              className="px-3 py-3 grid grid-cols-[auto_1fr] gap-3 border-0 border-b border-solid border-slate-200 hover:bg-slate-100 dark:border-spill-700 dark:hover:bg-spill-800/70 cursor-pointer"
+              aria-hidden
+              onClick={() => {
+                if (isStarredImage) {
+                  dispatch(
+                    setModal({
+                      target: 'photoFull',
+                      data: starredFileUrl,
+                    })
+                  );
+                  return;
+                }
+                if (sourceInbox) {
+                  openInboxRoom(sourceInbox);
+                  return;
+                }
+                dispatch(
+                  setChatRoom({
+                    isOpen: true,
+                    refreshId: item.roomId,
+                    data: {
+                      roomId: item.roomId,
+                      roomType: item.roomType,
+                      ownersId: item?.room?.ownersId || [],
+                      group: item?.room?.group || null,
+                      profile: item?.room?.friend || null,
+                    },
+                  })
+                );
+              }}
+            >
+              <img
+                src={roomAvatar}
+                alt=""
+                className="w-12 h-12 rounded-full object-cover border border-slate-200 dark:border-spill-700"
+              />
+              <div className="min-w-0 grid gap-1">
+                <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                  <p className="truncate font-medium text-slate-800 dark:text-spill-100">
+                    {roomTitle}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-spill-400">
+                    {moment(item.createdAt).fromNow()}
+                  </p>
+                </div>
+                <p className="text-xs opacity-70 truncate">by {senderName}</p>
+                <div className="flex items-center gap-1">
+                  <i className="text-amber-500">
+                    <bi.BiStar size={14} />
+                  </i>
+                  {isStarredImage && (
+                    <img
+                      src={starredFileUrl}
+                      alt=""
+                      className="w-6 h-6 rounded object-cover border border-slate-200 dark:border-spill-700"
+                    />
+                  )}
+                  <p className="text-sm truncate text-slate-700 dark:text-spill-200">
+                    {previewText}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       {page.calls && callLogsLoading && (
         <div className="p-6 text-sm text-center text-slate-500 dark:text-spill-400">
           Loading call history...
+        </div>
+      )}
+      {page.starred && starredLoading && (
+        <div className="p-6 text-sm text-center text-slate-500 dark:text-spill-400">
+          Loading starred messages...
         </div>
       )}
       {page.calls && !callLogsLoading && callLogs.length === 0 && (
@@ -924,9 +1075,18 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
           No call history yet.
         </div>
       )}
+      {page.starred && !starredLoading && starredMessages.length === 0 && (
+        <div className="p-6 text-sm text-center text-slate-500 dark:text-spill-400">
+          No starred messages yet.
+        </div>
+      )}
       {!page.calls &&
+        !page.starred &&
         filteredInboxes &&
         filteredInboxes.map((elem) => {
+          const selectModeActive = Array.isArray(selectedInboxes);
+          const inboxSelected =
+            selectModeActive && selectedInboxes.includes(elem.roomId);
           const lockedPrivate = isPrivateLockedGroup(elem);
           const lockedChat = isPrivateChatLocked(elem);
           const isLockedPreview = lockedPrivate || lockedChat;
@@ -1009,21 +1169,30 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
               className={`
               ${
                 (chatRoom.data?.roomId === elem.roomId ||
-                  modal.inboxMenu?.inboxId === elem._id) &&
+                  modal.inboxMenu?.inboxId === elem._id ||
+                  inboxSelected) &&
                 'bg-slate-200 dark:bg-spill-700'
               }
               px-3 py-3 grid grid-cols-[auto_1fr] gap-3 items-center cursor-pointer
               border-0 border-b border-solid border-slate-200
               hover:bg-slate-100 dark:border-spill-700 dark:hover:bg-spill-800
             `}
-              onClick={() => openInboxRoom(elem)}
+              onClick={() => {
+                if (selectModeActive) {
+                  dispatch(setSelectedInboxes(elem.roomId));
+                  return;
+                }
+                openInboxRoom(elem);
+              }}
               onContextMenu={(e) => {
+                if (selectModeActive) return;
                 e.stopPropagation();
                 e.preventDefault();
 
                 handleContextMenu(e, elem);
               }}
               onTouchStart={(e) => {
+                if (selectModeActive) return;
                 touchAndHoldStart(() => handleContextMenu(e, elem));
               }}
               onTouchMove={() => touchAndHoldEnd()}
@@ -1089,6 +1258,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                       type="button"
                       className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
                       onClick={(e) => {
+                        if (selectModeActive) return;
                         e.stopPropagation();
                         const inbox = document.querySelector('#inbox');
                         const inboxBounds = inbox?.getBoundingClientRect();
@@ -1106,6 +1276,17 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                     >
                       <bi.BiDotsVerticalRounded size={16} />
                     </button>
+                    {selectModeActive && (
+                      <span
+                        className={`ml-1 w-5 h-5 rounded-full border grid place-items-center ${
+                          inboxSelected
+                            ? 'bg-sky-600 border-sky-600 text-white'
+                            : 'border-slate-400 dark:border-spill-400'
+                        }`}
+                      >
+                        {inboxSelected && <bi.BiCheck size={12} />}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="grid grid-cols-[1fr_auto] gap-2 items-center">

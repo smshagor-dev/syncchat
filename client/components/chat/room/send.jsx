@@ -7,6 +7,7 @@ import EmojiBoard from './emojiBoard';
 import { setModal } from '../../../redux/features/modal';
 import { setSetting } from '../../../redux/features/user';
 import { setReplyingChat } from '../../../redux/features/chore';
+import { isGroupAdmin } from '../../../helpers/groupAdmins';
 
 import AttachMenu from '../../modals/attachMenu';
 
@@ -19,6 +20,21 @@ function Send({ setChats, setNewMessage, control }) {
   } = useSelector((state) => state);
 
   const isGroup = chatRoom.data.roomType === 'group';
+  const isGroupMember = !!chatRoom.data?.group?.participantsId?.includes(
+    master._id
+  );
+  const isCurrentUserGroupAdmin = !!(
+    isGroup && isGroupAdmin(chatRoom.data?.group, master._id)
+  );
+  const memberCanSendMessage =
+    chatRoom.data?.group?.permissions?.memberCanSendMessage === undefined
+      ? true
+      : !!chatRoom.data?.group?.permissions?.memberCanSendMessage;
+  const showAdminOnlyNotice =
+    isGroup &&
+    isGroupMember &&
+    !isCurrentUserGroupAdmin &&
+    !memberCanSendMessage;
   const isBlocked =
     !isGroup &&
     setting?.blockedUserIds?.includes(chatRoom.data?.profile?.userId);
@@ -42,7 +58,10 @@ function Send({ setChats, setNewMessage, control }) {
     const { group = null, profile = null } = chatRoom.data;
 
     return (
-      (isGroup && group?.participantsId?.includes(master._id)) ||
+      (isGroup &&
+        group?.participantsId?.includes(master._id) &&
+        (isGroupAdmin(group, master._id) ||
+          group?.permissions?.memberCanSendMessage !== false)) ||
       (!isGroup && profile?.active)
     );
   };
@@ -326,6 +345,11 @@ function Send({ setChats, setNewMessage, control }) {
     '0'
   )}:${String(recordSeconds % 60).padStart(2, '0')}`;
   const hasText = form.text.trim().length > 0;
+  const composerMode = (() => {
+    if (isBlocked) return 'blocked';
+    if (showAdminOnlyNotice) return 'adminOnly';
+    return 'normal';
+  })();
 
   return (
     <div className="bg-white border-t border-slate-200 text-slate-500 dark:bg-spill-800 dark:border-spill-700 dark:text-spill-300">
@@ -353,136 +377,152 @@ function Send({ setChats, setNewMessage, control }) {
         </div>
       )}
       <div className="px-2 h-16 grid grid-cols-[auto_1fr_auto] gap-2 items-center">
-        {isBlocked ? (
-          <div className="col-span-3 h-11 px-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between dark:bg-amber-900/20 dark:border-amber-800">
-            <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300">
-              You blocked this contact
-            </p>
-            <button
-              type="button"
-              className="ml-3 px-3 py-1 rounded-md text-xs sm:text-sm bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60"
-              onClick={handleUnblock}
-              disabled={isUnblocking}
-            >
-              {isUnblocking ? 'Unblocking...' : 'Unblock now'}
-            </button>
-          </div>
-        ) : (
-          <>
-            <span className="flex">
-              <button
-                type="button"
-                className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
-                disabled={isRecording || isSendingVoice}
-                onClick={() => {
-                  if (isRecording || isSendingVoice) return;
-                  const { group, profile } = chatRoom.data;
-                  const participant = group?.participantsId.includes(
-                    master._id
-                  );
+        {(() => {
+          if (composerMode === 'blocked') {
+            return (
+              <div className="col-span-3 h-11 px-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between dark:bg-amber-900/20 dark:border-amber-800">
+                <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300">
+                  You blocked this contact
+                </p>
+                <button
+                  type="button"
+                  className="ml-3 px-3 py-1 rounded-md text-xs sm:text-sm bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60"
+                  onClick={handleUnblock}
+                  disabled={isUnblocking}
+                >
+                  {isUnblocking ? 'Unblocking...' : 'Unblock now'}
+                </button>
+              </div>
+            );
+          }
 
-                  if (
-                    (!isGroup && profile.active) ||
-                    (isGroup && participant)
-                  ) {
-                    if (isBlocked) return;
-                    setEmojiBoard((prev) => !prev);
-                  }
-                }}
+          if (composerMode === 'adminOnly') {
+            return (
+              <div className="col-span-3 h-11 px-3 rounded-lg border border-sky-200 bg-sky-50 flex items-center justify-center dark:border-sky-800 dark:bg-sky-900/20">
+                <p className="text-xs sm:text-sm font-medium text-sky-800 dark:text-sky-300">
+                  Only Admins can send messages
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <>
+              <span className="flex">
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
+                  disabled={isRecording || isSendingVoice}
+                  onClick={() => {
+                    if (isRecording || isSendingVoice) return;
+                    const { group, profile } = chatRoom.data;
+                    const participant = group?.participantsId.includes(
+                      master._id
+                    );
+
+                    if (
+                      (!isGroup && profile.active) ||
+                      (isGroup && participant)
+                    ) {
+                      if (isBlocked) return;
+                      setEmojiBoard((prev) => !prev);
+                    }
+                  }}
+                >
+                  <i>{emojiBoard ? <bi.BiX /> : <bi.BiSmile />}</i>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-full -rotate-90 hover:bg-slate-200 dark:hover:bg-spill-700"
+                  disabled={isRecording || isSendingVoice}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isRecording || isSendingVoice) return;
+
+                    const { group, profile } = chatRoom.data;
+                    const participant = group?.participantsId.includes(
+                      master._id
+                    );
+
+                    if (
+                      (!isGroup && profile.active) ||
+                      (isGroup && participant)
+                    ) {
+                      if (isBlocked) return;
+                      dispatch(setModal({ target: 'attachMenu' }));
+                    }
+                  }}
+                >
+                  <i>
+                    <bi.BiPaperclip />
+                  </i>
+                </button>
+              </span>
+              <label
+                htmlFor="new-message"
+                className="h-11 px-4 rounded-full bg-slate-100 border border-slate-200 flex items-center dark:bg-spill-900 dark:border-spill-700"
               >
-                <i>{emojiBoard ? <bi.BiX /> : <bi.BiSmile />}</i>
-              </button>
+                {isRecording ? (
+                  <span className="w-full grid grid-cols-[1fr_auto] gap-2 items-center">
+                    <span className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                      Recording {formatRecordTime}
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1 rounded-full text-rose-600 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        stopVoiceRecording(false);
+                      }}
+                    >
+                      <bi.BiTrash />
+                    </button>
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    name="text"
+                    id="new-message"
+                    autoComplete="off"
+                    placeholder="Type a message"
+                    className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
+                    onChange={handleChange}
+                    value={form.text}
+                    onKeyPress={(e) => {
+                      if (setting.enterToSend && e.key === 'Enter') {
+                        handleSubmit();
+                      }
+                    }}
+                  />
+                )}
+              </label>
               <button
-                type="button"
-                className="p-2 rounded-full -rotate-90 hover:bg-slate-200 dark:hover:bg-spill-700"
-                disabled={isRecording || isSendingVoice}
+                type="submit"
+                className="p-2 rounded-full hover:bg-slate-200 disabled:opacity-60 dark:hover:bg-spill-700"
+                disabled={isSendingVoice}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  if (isRecording || isSendingVoice) return;
-
-                  const { group, profile } = chatRoom.data;
-                  const participant = group?.participantsId.includes(
-                    master._id
-                  );
-
-                  if (
-                    (!isGroup && profile.active) ||
-                    (isGroup && participant)
-                  ) {
-                    if (isBlocked) return;
-                    dispatch(setModal({ target: 'attachMenu' }));
+                  if (hasText) {
+                    handleSubmit(e);
+                    return;
                   }
+
+                  if (isRecording) {
+                    stopVoiceRecording(true);
+                    return;
+                  }
+
+                  startVoiceRecording();
                 }}
               >
                 <i>
-                  <bi.BiPaperclip />
+                  {hasText || isRecording ? <bi.BiSend /> : <bi.BiMicrophone />}
                 </i>
               </button>
-            </span>
-            <label
-              htmlFor="new-message"
-              className="h-11 px-4 rounded-full bg-slate-100 border border-slate-200 flex items-center dark:bg-spill-900 dark:border-spill-700"
-            >
-              {isRecording ? (
-                <span className="w-full grid grid-cols-[1fr_auto] gap-2 items-center">
-                  <span className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                    Recording {formatRecordTime}
-                  </span>
-                  <button
-                    type="button"
-                    className="p-1 rounded-full text-rose-600 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      stopVoiceRecording(false);
-                    }}
-                  >
-                    <bi.BiTrash />
-                  </button>
-                </span>
-              ) : (
-                <input
-                  type="text"
-                  name="text"
-                  id="new-message"
-                  autoComplete="off"
-                  placeholder="Type a message"
-                  className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
-                  onChange={handleChange}
-                  value={form.text}
-                  onKeyPress={(e) => {
-                    if (setting.enterToSend && e.key === 'Enter') {
-                      handleSubmit();
-                    }
-                  }}
-                />
-              )}
-            </label>
-            <button
-              type="submit"
-              className="p-2 rounded-full hover:bg-slate-200 disabled:opacity-60 dark:hover:bg-spill-700"
-              disabled={isSendingVoice}
-              onClick={(e) => {
-                if (hasText) {
-                  handleSubmit(e);
-                  return;
-                }
-
-                if (isRecording) {
-                  stopVoiceRecording(true);
-                  return;
-                }
-
-                startVoiceRecording();
-              }}
-            >
-              <i>
-                {hasText || isRecording ? <bi.BiSend /> : <bi.BiMicrophone />}
-              </i>
-            </button>
-          </>
-        )}
+            </>
+          );
+        })()}
       </div>
       {emojiBoard && <EmojiBoard setForm={setForm} />}
     </div>

@@ -5,16 +5,22 @@ const ProfileModel = require('../../db/models/profile');
 const GroupModel = require('../../db/models/group');
 const InboxModel = require('../../db/models/inbox');
 const ChatModel = require('../../db/models/chat');
+const { toPlain, addToSet, pullFromArray, asArray } = require('../../db/utils');
 const {
-  toPlain,
-  addToSet,
-  pullFromArray,
-  asArray,
-} = require('../../db/utils');
+  getGroupAdmins,
+  isGroupAdminUser,
+  addGroupAdmin,
+  removeGroupAdmin,
+} = require('../../helpers/groupAdmins');
 
 const Inbox = require('../../helpers/models/inbox');
 const uniqueId = require('../../helpers/uniqueId');
 const encrypt = require('../../helpers/encrypt');
+const {
+  normalizeGroupPermissions,
+  canGroupMemberEditInfo,
+  canGroupMemberAddOtherMember,
+} = require('../../helpers/groupPermissions');
 
 const GROUP_INFO_PREFIX = '__group_info__::';
 
@@ -38,7 +44,7 @@ const ensureAdminControl = ({ group, userId }) => {
   if (!asArray(group.participantsId).includes(userId)) {
     throw new Error('You are not a participant of this group');
   }
-  if (group.adminId !== userId) {
+  if (!isGroupAdminUser({ group, userId })) {
     throw new Error('Only group admin can perform this action');
   }
 };
@@ -50,12 +56,7 @@ const sanitizeGroup = (group) => {
   return plain;
 };
 
-const emitGroupSystemChat = async ({
-  roomId,
-  userId,
-  text,
-  profile,
-}) => {
+const emitGroupSystemChat = async ({ roomId, userId, text, profile }) => {
   const chatDoc = await ChatModel.create({
     userId,
     roomId,
@@ -103,6 +104,9 @@ module.exports = (socket) => {
       const group = await GroupModel.create({
         ...args,
         participantsId,
+        adminsId: addToSet([], [args.adminId]),
+        pendingMembersId: [],
+        permissions: normalizeGroupPermissions(args.permissions),
         accessType,
         passwordHash: accessType === 'private' ? encrypt(password) : null,
         roomId,
@@ -139,7 +143,14 @@ module.exports = (socket) => {
         ...toPlain(inbox),
       });
 
-      cb({ success: true, message: 'Group created successfully' });
+      cb({
+        success: true,
+        message: 'Group created successfully',
+        payload: {
+          groupId: group._id,
+          roomId,
+        },
+      });
     } catch (error0) {
       cb({ success: false, message: error0.message });
     }
@@ -152,10 +163,19 @@ module.exports = (socket) => {
         attributes: ['fullname', 'avatar'],
       });
       const group = await GroupModel.findOne({ where: { _id: args.groupId } });
-      ensureAdminControl({ group, userId: args.userId });
+      if (!group) throw new Error('Group not found');
+      if (!asArray(group.participantsId).includes(args.userId)) {
+        throw new Error('You are not a participant of this group');
+      }
+      if (!canGroupMemberAddOtherMember({ group, userId: args.userId })) {
+        throw new Error('You do not have permission to add members');
+      }
 
       const nextParticipants = addToSet(group.participantsId, args.friendsId);
-      await group.update({ participantsId: nextParticipants });
+      await group.update({
+        participantsId: nextParticipants,
+        pendingMembersId: pullFromArray(group.pendingMembersId, args.friendsId),
+      });
 
       const addedProfiles = await ProfileModel.findAll({
         where: { userId: args.friendsId },
@@ -169,7 +189,9 @@ module.exports = (socket) => {
               args.friendsId.length > 1 ? 'participants' : 'participant'
             } added`;
 
-      const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
+      const inbox = await InboxModel.findOne({
+        where: { roomId: group.roomId },
+      });
       await inbox.update({
         ownersId: addToSet(inbox.ownersId, args.friendsId),
         fileId: null,
@@ -211,11 +233,19 @@ module.exports = (socket) => {
         attributes: ['fullname'],
       });
       const group = await GroupModel.findOne({ where: { _id: groupId } });
-      ensureAdminControl({ group, userId });
+      if (!group) throw new Error('Group not found');
+      if (!asArray(group.participantsId).includes(userId)) {
+        throw new Error('You are not a participant of this group');
+      }
+      if (!canGroupMemberEditInfo({ group, userId })) {
+        throw new Error('You do not have permission to edit group info');
+      }
 
       await group.update({ name, desc });
 
-      const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
+      const inbox = await InboxModel.findOne({
+        where: { roomId: group.roomId },
+      });
       await inbox.update({
         fileId: null,
         content: {
@@ -247,17 +277,31 @@ module.exports = (socket) => {
         await GroupModel.destroy({ where: { _id: groupId } });
         await ChatModel.destroy({ where: { roomId: group.roomId } });
       } else {
-        const updates = { participantsId };
-        if (group.adminId === userId) {
-          updates.adminId = participantsId[0];
-        }
+        const currentAdmins = getGroupAdmins(group);
+        const adminsAfterExit = pullFromArray(currentAdmins, [userId]).filter(
+          (adminId) => participantsId.includes(adminId)
+        );
+        const nextAdmins =
+          adminsAfterExit.length > 0
+            ? adminsAfterExit
+            : participantsId.length > 0
+            ? [participantsId[0]]
+            : [];
+
+        const updates = {
+          participantsId,
+          adminsId: nextAdmins,
+          adminId: nextAdmins[0] || participantsId[0],
+        };
         await group.update(updates);
 
         const profile = await ProfileModel.findOne({
           where: { userId },
           attributes: ['fullname'],
         });
-        const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
+        const inbox = await InboxModel.findOne({
+          where: { roomId: group.roomId },
+        });
         await inbox.update({
           ownersId: pullFromArray(inbox.ownersId, [userId]),
           fileId: null,
@@ -270,10 +314,11 @@ module.exports = (socket) => {
         });
 
         const inboxs = await Inbox.find({ roomId: group.roomId });
+        const [firstInbox] = inboxs;
         socket.broadcast.to(participantsId).emit('group/exit', {
           groupId,
           userId,
-          inbox: inboxs[0],
+          inbox: firstInbox,
         });
       }
 
@@ -303,10 +348,16 @@ module.exports = (socket) => {
         throw new Error('Participant not found in this group');
       }
 
-      await group.update({ adminId: participantId });
+      const nextAdminsId = addGroupAdmin({ group, userId: participantId });
+      await group.update({
+        adminsId: nextAdminsId,
+        adminId: nextAdminsId[0] || group.adminId,
+      });
       const actionText = `Made ${friend.fullname.split(' ')[0]} admin`;
 
-      const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
+      const inbox = await InboxModel.findOne({
+        where: { roomId: group.roomId },
+      });
       await inbox.update({
         fileId: null,
         content: {
@@ -329,7 +380,76 @@ module.exports = (socket) => {
       io.to(group.participantsId).emit('inbox/find', inboxes[0]);
       io.to(group.roomId).emit('group/add-admin', {
         ...sanitizeGroup(group),
-        adminId: participantId,
+        adminId: nextAdminsId[0] || group.adminId,
+        adminsId: nextAdminsId,
+      });
+    } catch (error0) {
+      console.error(error0.message);
+    }
+  });
+
+  socket.on('group/remove-admin', async (args) => {
+    try {
+      const { groupId, userId, participantId } = args;
+
+      const master = await ProfileModel.findOne({
+        where: { userId },
+        attributes: ['fullname'],
+      });
+      const friend = await ProfileModel.findOne({
+        where: { userId: participantId },
+        attributes: ['fullname'],
+      });
+
+      const group = await GroupModel.findOne({ where: { _id: groupId } });
+      ensureAdminControl({ group, userId });
+      if (!asArray(group.participantsId).includes(participantId)) {
+        throw new Error('Participant not found in this group');
+      }
+      const currentAdminsId = getGroupAdmins(group);
+      if (!currentAdminsId.includes(participantId)) {
+        throw new Error('This participant is not an admin');
+      }
+      if (currentAdminsId.length <= 1) {
+        throw new Error('At least one admin is required');
+      }
+
+      const nextAdminsId = removeGroupAdmin({ group, userId: participantId });
+      await group.update({
+        adminsId: nextAdminsId,
+        adminId: nextAdminsId[0],
+      });
+      const actionText = `Removed admin role from ${
+        friend.fullname.split(' ')[0]
+      }`;
+
+      const inbox = await InboxModel.findOne({
+        where: { roomId: group.roomId },
+      });
+      await inbox.update({
+        fileId: null,
+        content: {
+          senderName: master.fullname,
+          from: userId,
+          text: actionText,
+          time: new Date().toISOString(),
+        },
+      });
+
+      await emitGroupSystemChat({
+        roomId: group.roomId,
+        userId,
+        text: actionText,
+        profile: toPlain(master),
+      });
+
+      const inboxes = await Inbox.find({ roomId: group.roomId });
+
+      io.to(group.participantsId).emit('inbox/find', inboxes[0]);
+      io.to(group.roomId).emit('group/remove-admin', {
+        ...sanitizeGroup(group),
+        adminId: nextAdminsId[0],
+        adminsId: nextAdminsId,
       });
     } catch (error0) {
       console.error(error0.message);
@@ -354,16 +474,35 @@ module.exports = (socket) => {
       if (!asArray(group.participantsId).includes(participantId)) {
         throw new Error('Participant not found in this group');
       }
-      if (group.adminId === participantId) {
-        throw new Error('Cannot remove the current admin');
+      const currentAdminsId = getGroupAdmins(group);
+      if (
+        currentAdminsId.includes(participantId) &&
+        currentAdminsId.length <= 1
+      ) {
+        throw new Error('Cannot remove the only admin');
       }
 
+      const nextParticipantsId = pullFromArray(group.participantsId, [
+        participantId,
+      ]);
+      const nextAdminsId = pullFromArray(currentAdminsId, [participantId]);
+      const normalizedAdminsId =
+        nextAdminsId.length > 0
+          ? nextAdminsId
+          : nextParticipantsId.length > 0
+          ? [nextParticipantsId[0]]
+          : [];
+
       await group.update({
-        participantsId: pullFromArray(group.participantsId, [participantId]),
+        participantsId: nextParticipantsId,
+        adminsId: normalizedAdminsId,
+        adminId: normalizedAdminsId[0] || group.adminId,
       });
       const actionText = `Removed ${friend.fullname.split(' ')[0]}`;
 
-      const inbox = await InboxModel.findOne({ where: { roomId: group.roomId } });
+      const inbox = await InboxModel.findOne({
+        where: { roomId: group.roomId },
+      });
       await inbox.update({
         ownersId: pullFromArray(inbox.ownersId, [participantId]),
         fileId: null,
@@ -384,9 +523,15 @@ module.exports = (socket) => {
 
       const inboxes = await Inbox.find({ roomId: group.roomId });
 
-      socket.broadcast.to(participantId).emit('inbox/delete', [inboxes[0].roomId]);
+      socket.broadcast
+        .to(participantId)
+        .emit('inbox/delete', [inboxes[0].roomId]);
       io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
-      io.to(group.roomId).emit('group/remove-participant', args);
+      io.to(group.roomId).emit('group/remove-participant', {
+        ...args,
+        adminsId: normalizedAdminsId,
+        adminId: normalizedAdminsId[0] || group.adminId,
+      });
     } catch (error0) {
       console.error(error0.message);
     }

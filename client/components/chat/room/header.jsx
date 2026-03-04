@@ -191,7 +191,12 @@ function Header({ searchQuery, setSearchQuery }) {
                   className="w-10 h-10 rounded-full"
                 />
                 <span className="overflow-hidden">
-                  <p className="font-bold truncate">
+                  <p className="font-bold truncate flex items-center">
+                    {isGroup && (
+                      <i className="mr-1 inline-flex align-middle text-sky-600 dark:text-sky-400">
+                        <bi.BiGroup size={14} />
+                      </i>
+                    )}
                     {isGroup &&
                       chatRoom?.data?.group?.accessType === 'private' && (
                         <i className="mr-1 inline-flex align-middle text-amber-600 dark:text-amber-400">

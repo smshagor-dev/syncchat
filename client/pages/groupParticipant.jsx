@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import GroupContextMenu from '../components/modals/groupContextMenu';
+import { getGroupAdmins, isGroupAdmin } from '../helpers/groupAdmins';
 
 import { touchAndHoldStart, touchAndHoldEnd } from '../helpers/touchAndHold';
 import { setPage } from '../redux/features/page';
@@ -18,6 +19,7 @@ function GroupParticipant() {
 
   const [control, setControl] = useState({ skip: 0, limit: 20 });
   const [participants, setParticipants] = useState(null);
+  const adminIds = getGroupAdmins(groupParticipant);
 
   const handleGetParticipants = async (signal) => {
     try {
@@ -43,7 +45,10 @@ function GroupParticipant() {
   };
 
   const handleContextMenu = (e, elem) => {
-    if (elem.userId !== master._id && groupParticipant.adminId === master._id) {
+    if (
+      elem.userId !== master._id &&
+      isGroupAdmin(groupParticipant, master._id)
+    ) {
       const parent = document.querySelector('#group-participant');
 
       const y =
@@ -154,7 +159,7 @@ function GroupParticipant() {
                 <p className="truncate mt-0.5 opacity-60">{elem.bio}</p>
               </span>
               {/* admin tag */}
-              {elem.userId === groupParticipant.adminId && (
+              {adminIds.includes(elem.userId) && (
                 <span className="h-full">
                   <p className="font-bold text-xs py-0.5 px-2 rounded-full text-white bg-sky-600">
                     Admin

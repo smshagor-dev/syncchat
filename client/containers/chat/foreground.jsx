@@ -7,13 +7,17 @@ import * as fg from '../../components/chat/foreground';
 import * as page from '../../pages';
 import Sidebar from '../../components/chat/foreground/sidebar';
 import { setChatRoom } from '../../redux/features/room';
-import { setRefreshInbox } from '../../redux/features/chore';
+import {
+  setRefreshInbox,
+  setSelectedInboxes,
+} from '../../redux/features/chore';
 
 function ForeGround() {
   const dispatch = useDispatch();
   const chatRoom = useSelector((state) => state.room.chat);
   const master = useSelector((state) => state.user.master);
   const refreshInbox = useSelector((state) => state.chore.refreshInbox);
+  const selectedInboxes = useSelector((state) => state.chore.selectedInboxes);
 
   const [inboxes, setInboxes] = useState(null);
   const [search, setSearch] = useState('');
@@ -86,6 +90,48 @@ function ForeGround() {
   useEffect(() => {
     setChatFilter('all');
   }, [search]);
+
+  const selectedInboxRows =
+    Array.isArray(selectedInboxes) && selectedInboxes.length > 0
+      ? (inboxes || []).filter((item) => selectedInboxes.includes(item.roomId))
+      : [];
+  const isInboxSelectMode = Array.isArray(selectedInboxes);
+
+  const runBulkInboxAction = async (runner) => {
+    if (selectedInboxRows.length === 0) return;
+    try {
+      await Promise.allSettled(selectedInboxRows.map((row) => runner(row)));
+      dispatch(setRefreshInbox(uuidv4()));
+    } finally {
+      dispatch(setSelectedInboxes(null));
+    }
+  };
+
+  const handleBulkMarkUnread = async () => {
+    await runBulkInboxAction((row) =>
+      axios.patch(`/inboxes/${row.roomId}/preferences`, {
+        action: 'markUnread',
+        value: true,
+      })
+    );
+  };
+
+  const handleBulkMute = async () => {
+    await runBulkInboxAction((row) =>
+      axios.patch(`/inboxes/${row.roomId}/preferences`, {
+        action: 'mute',
+        value: true,
+      })
+    );
+  };
+
+  const handleBulkClear = async () => {
+    await runBulkInboxAction((row) => axios.post(`/inboxes/${row.roomId}/clear`));
+  };
+
+  const handleBulkDelete = async () => {
+    await runBulkInboxAction((row) => axios.delete(`/chats/${row.roomId}`));
+  };
 
   const isFavouriteInbox = (inbox) =>
     !!(
@@ -328,6 +374,13 @@ function ForeGround() {
             favouriteUnread: favouriteUnreadCount,
             groupUnread: groupUnreadCount,
           }}
+          selectedInboxCount={selectedInboxRows.length}
+          isInboxSelectMode={isInboxSelectMode}
+          onExitSelectMode={() => dispatch(setSelectedInboxes(null))}
+          onBulkMarkUnread={handleBulkMarkUnread}
+          onBulkMute={handleBulkMute}
+          onBulkClear={handleBulkClear}
+          onBulkDelete={handleBulkDelete}
         />
         <fg.inbox
           inboxes={inboxes}

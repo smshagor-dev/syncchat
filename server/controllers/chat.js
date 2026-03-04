@@ -8,6 +8,7 @@ const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
 const SettingModel = require('../db/models/setting');
 const { asArray, toPlain, toPlainMany, pullFromArray } = require('../db/utils');
+const { canGroupMemberSendMessage } = require('../helpers/groupPermissions');
 
 const response = require('../helpers/response');
 const Chat = require('../helpers/models/chats');
@@ -38,6 +39,9 @@ const isCallLogText = (text) => {
     value.includes('decline')
   );
 };
+
+const isStarredByUser = (chat, userId) =>
+  asArray(chat?.starredBy).includes(userId);
 
 const resolveArchivedByAfterIncoming = async ({
   archivedBy,
@@ -226,6 +230,31 @@ exports.sendFile = async (req, res) => {
         message: 'ownersId is required',
       });
       return;
+    }
+
+    if (roomType === 'group') {
+      const group = await GroupModel.findOne({
+        where: { roomId },
+        attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
+      });
+      if (!group || !asArray(group.participantsId).includes(senderId)) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'You are not a participant of this group',
+        });
+        return;
+      }
+      if (!canGroupMemberSendMessage({ group, userId: senderId })) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'You do not have permission to send messages',
+        });
+        return;
+      }
     }
 
     const originalname = filePayload.originalname || 'attachment';
@@ -557,6 +586,208 @@ exports.findCalls = async (req, res) => {
     response({
       res,
       message: `${payload.length} call logs found`,
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.toggleStar = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user._id;
+    const chat = await ChatModel.findOne({ where: { _id: chatId } });
+
+    if (!chat) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Chat not found',
+      });
+      return;
+    }
+
+    const plain = toPlain(chat);
+    if (asArray(plain.deletedBy).includes(userId)) {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Cannot star a deleted message',
+      });
+      return;
+    }
+
+    const currentStarredBy = asArray(plain.starredBy);
+    const requestValue = req.body?.starred;
+    const shouldStar =
+      typeof requestValue === 'boolean'
+        ? requestValue
+        : !currentStarredBy.includes(userId);
+
+    const nextStarredBy = shouldStar
+      ? [...new Set([...currentStarredBy, userId])]
+      : currentStarredBy.filter((id) => id !== userId);
+
+    await chat.update({ starredBy: nextStarredBy });
+
+    response({
+      res,
+      message: shouldStar ? 'Message starred' : 'Message unstarred',
+      payload: {
+        chatId,
+        starred: shouldStar,
+        starredBy: nextStarredBy,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.findStarred = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const inboxesRaw = await InboxModel.findAll();
+    const inboxes = toPlainMany(inboxesRaw).filter(
+      (inbox) =>
+        asArray(inbox.ownersId).includes(userId) &&
+        !asArray(inbox.deletedBy).includes(userId)
+    );
+
+    if (inboxes.length === 0) {
+      response({
+        res,
+        message: '0 starred messages found',
+        payload: [],
+      });
+      return;
+    }
+
+    const roomsId = [...new Set(inboxes.map((inbox) => inbox.roomId))];
+    const chatsRaw = await ChatModel.findAll({
+      where: { roomId: { [Op.in]: roomsId } },
+      order: [['createdAt', 'DESC']],
+      limit: 5000,
+    });
+
+    const chats = toPlainMany(chatsRaw).filter(
+      (chat) =>
+        !asArray(chat.deletedBy).includes(userId) &&
+        isStarredByUser(chat, userId)
+    );
+
+    if (chats.length === 0) {
+      response({
+        res,
+        message: '0 starred messages found',
+        payload: [],
+      });
+      return;
+    }
+
+    const fileIds = [
+      ...new Set(chats.map((chat) => chat.fileId).filter(Boolean)),
+    ];
+    const senderIds = [
+      ...new Set(chats.map((chat) => chat.userId).filter(Boolean)),
+    ];
+    const allOwnerIds = [
+      ...new Set(inboxes.flatMap((inbox) => asArray(inbox.ownersId))),
+    ];
+
+    const [filesRaw, senderProfilesRaw, ownerProfilesRaw, groupsRaw] =
+      await Promise.all([
+        fileIds.length
+          ? FileModel.findAll({
+              where: { fileId: { [Op.in]: fileIds } },
+            })
+          : [],
+        senderIds.length
+          ? ProfileModel.findAll({
+              where: { userId: { [Op.in]: senderIds } },
+            })
+          : [],
+        allOwnerIds.length
+          ? ProfileModel.findAll({
+              where: { userId: { [Op.in]: allOwnerIds } },
+            })
+          : [],
+        GroupModel.findAll({
+          where: { roomId: { [Op.in]: roomsId } },
+          attributes: { exclude: ['passwordHash'] },
+        }),
+      ]);
+
+    const inboxByRoom = new Map(inboxes.map((inbox) => [inbox.roomId, inbox]));
+    const fileById = new Map(
+      toPlainMany(filesRaw).map((file) => [file.fileId, file])
+    );
+    const senderById = new Map(
+      toPlainMany(senderProfilesRaw).map((profile) => [profile.userId, profile])
+    );
+    const ownerProfileById = new Map(
+      toPlainMany(ownerProfilesRaw).map((profile) => [profile.userId, profile])
+    );
+    const groupByRoom = new Map(
+      toPlainMany(groupsRaw).map((group) => [group.roomId, group])
+    );
+
+    const payload = chats.map((chat) => {
+      const inbox = inboxByRoom.get(chat.roomId) || null;
+      const roomType = inbox?.roomType || 'private';
+      const owners = asArray(inbox?.ownersId)
+        .map((ownerId) => ownerProfileById.get(ownerId))
+        .filter(Boolean);
+      const friendProfile =
+        roomType === 'private'
+          ? owners.find((owner) => owner.userId !== userId) || null
+          : null;
+
+      return {
+        _id: chat._id,
+        roomId: chat.roomId,
+        roomType,
+        text: chat.text || '',
+        createdAt: chat.createdAt,
+        userId: chat.userId,
+        starredBy: asArray(chat.starredBy),
+        file: chat.fileId ? fileById.get(chat.fileId) || null : null,
+        profile: senderById.get(chat.userId) || null,
+        room: {
+          roomId: chat.roomId,
+          roomType,
+          title:
+            roomType === 'group'
+              ? groupByRoom.get(chat.roomId)?.name || 'Group'
+              : friendProfile?.fullname || '[inactive]',
+          avatar:
+            roomType === 'group'
+              ? groupByRoom.get(chat.roomId)?.avatar || null
+              : friendProfile?.avatar || null,
+          ownersId: asArray(inbox?.ownersId),
+          group:
+            roomType === 'group' ? groupByRoom.get(chat.roomId) || null : null,
+          friend: friendProfile,
+        },
+      };
+    });
+
+    response({
+      res,
+      message: `${payload.length} starred messages found`,
       payload,
     });
   } catch (error0) {

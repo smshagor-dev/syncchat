@@ -1,6 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
+const { DEFAULT_GROUP_PERMISSIONS } = require('../../helpers/groupPermissions');
 
 const GroupModel = sequelize.define(
   'groups',
@@ -19,7 +20,17 @@ const GroupModel = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
     },
+    adminsId: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     participantsId: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    pendingMembersId: {
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: [],
@@ -58,6 +69,11 @@ const GroupModel = sequelize.define(
       allowNull: false,
       unique: 'groups_link_unique',
       defaultValue: () => `/group/+${uniqueId(16)}`,
+    },
+    permissions: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: DEFAULT_GROUP_PERMISSIONS,
     },
   },
   {

@@ -231,15 +231,17 @@ function RoomHeaderMenu() {
               : 'hidden',
           },
         ].map((elem) => (
-          <button
-            key={elem._key}
-            type="button"
-            className={`${elem.style} py-2 px-4 flex gap-4 items-center cursor-pointer hover:bg-spill-200 dark:hover:bg-spill-600`}
-            onClick={() => {
-              dispatch(setModal({ target: 'roomHeaderMenu' }));
-              setTimeout(() => elem.action(), 150);
-            }}
-          >
+            <button
+              key={elem._key}
+              type="button"
+              className={`${elem.style} py-2 px-4 flex gap-4 items-center cursor-pointer hover:bg-spill-200 dark:hover:bg-spill-600`}
+              onClick={() => {
+                dispatch(
+                  setModal({ target: 'roomHeaderMenu', data: false })
+                );
+                elem.action();
+              }}
+            >
             <i className="opacity-80">{elem.icon}</i>
             <p>{elem.html}</p>
           </button>

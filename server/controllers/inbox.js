@@ -255,3 +255,43 @@ exports.clearByRoomId = async (req, res) => {
     });
   }
 };
+
+exports.markAllRead = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const inboxes = await InboxModel.findAll();
+
+    const visible = inboxes.filter((inbox) => {
+      const ownersId = asArray(inbox.ownersId);
+      const deletedBy = asArray(inbox.deletedBy);
+      return ownersId.includes(userId) && !deletedBy.includes(userId);
+    });
+
+    await Promise.all(
+      visible.map(async (inbox) => {
+        const content = inbox.content || {};
+        await inbox.update({
+          unreadMessage: 0,
+          markUnreadBy: pullFromArray(inbox.markUnreadBy, [userId]),
+          content: {
+            ...content,
+            readed: content.from && content.from !== userId ? true : content.readed,
+          },
+        });
+      })
+    );
+
+    response({
+      res,
+      message: 'All chats marked as read',
+      payload: { total: visible.length },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};

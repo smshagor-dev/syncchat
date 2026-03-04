@@ -10,5 +10,6 @@ router.patch(
 );
 router.post('/inboxes/:roomId/verify-lock', authenticate, ctrl.verifyChatLock);
 router.post('/inboxes/:roomId/clear', authenticate, ctrl.clearByRoomId);
+router.post('/inboxes/read-all', authenticate, ctrl.markAllRead);
 
 module.exports = router;

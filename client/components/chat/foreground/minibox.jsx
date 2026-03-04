@@ -2,8 +2,10 @@ import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 import {
   setRefreshInbox,
+  setSelectedInboxes,
   setSelectedChats,
 } from '../../../redux/features/chore';
 import { setPage } from '../../../redux/features/page';
@@ -30,44 +32,50 @@ function Minibox() {
             target: 'new-group',
             html: 'New group',
             icon: <bi.BiGroup />,
-            action: () => dispatch(setModal({ target: 'newGroup' })),
+            action: () => {
+              dispatch(setPage({ target: 'selectParticipant', data: false }));
+              dispatch(setModal({ target: 'newGroup', data: true }));
+            },
           },
           {
             target: 'starred',
             html: 'Starred messages',
             icon: <bi.BiStar />,
-            action: () => console.info('Starred messages: coming soon'),
+            action: () => {
+              [
+                'contact',
+                'setting',
+                'status',
+                'calls',
+                'communities',
+                'archive',
+                'list',
+                'media',
+                'profile',
+                'selectParticipant',
+              ].forEach((target) => {
+                dispatch(setPage({ target, data: false }));
+              });
+              dispatch(setPage({ target: 'starred', data: true }));
+            },
           },
           {
             target: 'select-chats',
             html: 'Select chats',
             icon: <bi.BiCheckSquare />,
             action: () => {
-              if (room.chat?.data) {
-                dispatch(setSelectedChats([]));
-              } else {
-                console.info('Open a chat room to select chats');
-              }
+              dispatch(setSelectedChats(null));
+              dispatch(setSelectedInboxes([]));
             },
           },
           {
             target: 'mark-read',
             html: 'Mark all as read',
             icon: <bi.BiDetail />,
-            action: () => dispatch(setRefreshInbox(uuidv4())),
-          },
-          {
-            target: 'media',
-            html: 'Media',
-            icon: <bi.BiImageAlt />,
-            action: () => dispatch(setPage({ target: 'media', data: true })),
-          },
-          {
-            target: 'feedback',
-            html: 'Send feedback',
-            icon: <bi.BiMessageDetail />,
-            action: () =>
-              dispatch(setModal({ target: 'feedback', data: true })),
+            action: async () => {
+              await axios.post('/inboxes/read-all');
+              dispatch(setRefreshInbox(uuidv4()));
+            },
           },
           {
             target: 'app-lock',
@@ -99,9 +107,20 @@ function Minibox() {
             <button
               type="button"
               className="py-2 px-4 flex gap-4 items-center hover:bg-spill-100 dark:hover:bg-spill-700"
-              onClick={() => {
-                dispatch(setModal({ target: 'minibox' }));
-                elem.action();
+              onClick={(e) => {
+                e.stopPropagation();
+                if (elem.target === 'new-group') {
+                  Promise.resolve(elem.action()).catch((error0) =>
+                    // eslint-disable-next-line no-console
+                    console.error(error0?.response?.data?.message || error0.message)
+                  );
+                  return;
+                }
+                dispatch(setModal({ target: 'minibox', data: false }));
+                Promise.resolve(elem.action()).catch((error0) =>
+                  // eslint-disable-next-line no-console
+                  console.error(error0?.response?.data?.message || error0.message)
+                );
               }}
             >
               <i className="opacity-80">{elem.icon}</i>

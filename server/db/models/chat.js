@@ -42,6 +42,11 @@ const ChatModel = sequelize.define(
       allowNull: false,
       defaultValue: {},
     },
+    starredBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     deletedBy: {
       type: DataTypes.JSON,
       allowNull: false,

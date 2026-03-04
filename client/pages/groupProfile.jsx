@@ -9,6 +9,7 @@ import { touchAndHoldStart, touchAndHoldEnd } from '../helpers/touchAndHold';
 import { setChatRoom } from '../redux/features/room';
 import { setPage } from '../redux/features/page';
 import { setModal } from '../redux/features/modal';
+import { getGroupAdmins, isGroupAdmin } from '../helpers/groupAdmins';
 
 import GroupContextMenu from '../components/modals/groupContextMenu';
 import socket from '../helpers/socket';
@@ -35,14 +36,65 @@ function GroupProfile() {
   });
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
+  const [permissionModalOpen, setPermissionModalOpen] = useState(false);
+  const [pendingListModalOpen, setPendingListModalOpen] = useState(false);
   const [privacyRespond, setPrivacyRespond] = useState('');
   const [passwordRespond, setPasswordRespond] = useState('');
+  const [permissionRespond, setPermissionRespond] = useState('');
+  const [permissionForm, setPermissionForm] = useState({
+    memberCanEditInfo: false,
+    memberCanSendMessage: true,
+    memberCanAddMember: false,
+    memberCanInviteViaLink: false,
+    adminApprovalRequired: false,
+  });
+  const [pendingProfiles, setPendingProfiles] = useState([]);
   const [inviteCopied, setInviteCopied] = useState(false);
 
   const inviteToken = String(group?.link || '').replace('/group/+', '');
   const inviteUrl = inviteToken
     ? `${window.location.origin}/chat?g=${encodeURIComponent(inviteToken)}`
     : '';
+  const isAdmin = !!group && isGroupAdmin(group, master._id);
+  const adminIds = getGroupAdmins(group);
+  const isMember = !!group && group.participantsId.includes(master._id);
+  const normalizedPermissions = {
+    memberCanEditInfo: !!group?.permissions?.memberCanEditInfo,
+    memberCanSendMessage:
+      group?.permissions?.memberCanSendMessage === undefined
+        ? true
+        : !!group?.permissions?.memberCanSendMessage,
+    memberCanAddMember: !!group?.permissions?.memberCanAddMember,
+    memberCanInviteViaLink: !!group?.permissions?.memberCanInviteViaLink,
+    adminApprovalRequired: !!group?.permissions?.adminApprovalRequired,
+  };
+  const canEditGroupInfo =
+    isAdmin || (isMember && normalizedPermissions.memberCanEditInfo);
+  const canAddParticipants =
+    isAdmin || (isMember && normalizedPermissions.memberCanAddMember);
+  const inviteLinkEnabled = normalizedPermissions.memberCanInviteViaLink;
+  const pendingRequestCount = Array.isArray(group?.pendingMembersId)
+    ? group.pendingMembersId.length
+    : pendingProfiles.length;
+  const memberPermissionItems = [
+    {
+      key: 'memberCanEditInfo',
+      label: 'Edit Group info',
+    },
+    {
+      key: 'memberCanSendMessage',
+      label: 'Send message',
+    },
+    {
+      key: 'memberCanAddMember',
+      label: 'Add other member',
+    },
+    {
+      key: 'memberCanInviteViaLink',
+      label: 'Invite via link',
+    },
+  ];
 
   const handleGetGroup = (signal) => {
     if (groupProfile && !addParticipant && !groupParticipant) {
@@ -72,7 +124,7 @@ function GroupProfile() {
   const handleContextMenu = (e, elem) => {
     const active = group.participantsId.includes(master._id);
     const ex = elem.userId !== master._id;
-    const admin = group.adminId === master._id;
+    const admin = isGroupAdmin(group, master._id);
 
     if (ex && admin && active) {
       const parent = document.querySelector('#group-profile');
@@ -130,10 +182,24 @@ function GroupProfile() {
   }, [!!groupProfile]);
 
   useEffect(() => {
-    socket.on('group/add-admin', ({ adminId }) => {
+    socket.on('group/add-admin', ({ adminId, adminsId }) => {
+      dispatch(
+        setChatRoom({
+          ...chatRoom,
+          data: {
+            ...chatRoom.data,
+            group: {
+              ...chatRoom.data.group,
+              adminId,
+              adminsId,
+            },
+          },
+        })
+      );
+
       if (groupProfile && group) {
         // update group
-        setGroup((prev) => ({ ...prev, adminId }));
+        setGroup((prev) => ({ ...prev, adminId, adminsId }));
         return;
       }
 
@@ -145,13 +211,48 @@ function GroupProfile() {
             data: {
               ...groupParticipant,
               adminId,
+              adminsId,
             },
           })
         );
       }
     });
 
-    socket.on('group/remove-participant', ({ participantId }) => {
+    socket.on('group/remove-admin', ({ adminId, adminsId }) => {
+      dispatch(
+        setChatRoom({
+          ...chatRoom,
+          data: {
+            ...chatRoom.data,
+            group: {
+              ...chatRoom.data.group,
+              adminId,
+              adminsId,
+            },
+          },
+        })
+      );
+
+      if (groupProfile && group) {
+        setGroup((prev) => ({ ...prev, adminId, adminsId }));
+        return;
+      }
+
+      if (groupParticipant) {
+        dispatch(
+          setPage({
+            target: 'groupParticipant',
+            data: {
+              ...groupParticipant,
+              adminId,
+              adminsId,
+            },
+          })
+        );
+      }
+    });
+
+    socket.on('group/remove-participant', ({ participantId, adminsId }) => {
       const { group: chg } = chatRoom.data;
       const participantsId = chg.participantsId.filter(
         (el) => el !== participantId
@@ -159,7 +260,11 @@ function GroupProfile() {
 
       if (groupProfile && group) {
         // update group
-        setGroup((prev) => ({ ...prev, participantsId }));
+        setGroup((prev) => ({
+          ...prev,
+          participantsId,
+          adminsId: adminsId || prev?.adminsId || [],
+        }));
         // update group participants
         setParticipants((prev) =>
           prev.filter((el) => el.userId !== participantId)
@@ -174,6 +279,8 @@ function GroupProfile() {
             group: {
               ...chatRoom.data.group,
               participantsId,
+              adminsId:
+                adminsId || chatRoom.data.group.adminsId || [],
             },
           },
         })
@@ -182,6 +289,7 @@ function GroupProfile() {
 
     return () => {
       socket.off('group/add-admin');
+      socket.off('group/remove-admin');
       socket.off('group/remove-participant');
     };
   }, [!!group]);
@@ -194,6 +302,63 @@ function GroupProfile() {
     });
   }, [group?._id, group?.accessType]);
 
+  useEffect(() => {
+    if (!group) return;
+    setPermissionForm({
+      memberCanEditInfo: !!group?.permissions?.memberCanEditInfo,
+      memberCanSendMessage:
+        group?.permissions?.memberCanSendMessage === undefined
+          ? true
+          : !!group?.permissions?.memberCanSendMessage,
+      memberCanAddMember: !!group?.permissions?.memberCanAddMember,
+      memberCanInviteViaLink: !!group?.permissions?.memberCanInviteViaLink,
+      adminApprovalRequired: !!group?.permissions?.adminApprovalRequired,
+    });
+  }, [group?._id, JSON.stringify(group?.permissions || {})]);
+
+  useEffect(() => {
+    if (!groupProfile) {
+      setPermissionModalOpen(false);
+      setPendingListModalOpen(false);
+    }
+  }, [groupProfile]);
+
+  useEffect(() => {
+    if (!permissionForm.adminApprovalRequired) {
+      setPendingListModalOpen(false);
+    }
+  }, [permissionForm.adminApprovalRequired]);
+
+  useEffect(() => {
+    const pendingIds = Array.isArray(group?.pendingMembersId)
+      ? group.pendingMembersId
+      : [];
+    if (!group || !isAdmin || pendingIds.length === 0) {
+      setPendingProfiles([]);
+      return;
+    }
+
+    axios
+      .get(`/groups/${group._id}/pending-members`)
+      .then(({ data }) => {
+        const pendingPayload = (data?.payload || []).map((item) => ({
+          userId: item.userId,
+          fullname: item.fullname || item.userId,
+          avatar: item.avatar || 'assets/images/default-avatar.png',
+        }));
+        setPendingProfiles(pendingPayload);
+      })
+      .catch(() => {
+        setPendingProfiles(
+          pendingIds.map((id) => ({
+            userId: id,
+            fullname: id,
+            avatar: 'assets/images/default-avatar.png',
+          }))
+        );
+      });
+  }, [group?._id, JSON.stringify(group?.pendingMembersId || []), isAdmin]);
+
   const submitPrivacy = async () => {
     try {
       if (!group) return;
@@ -201,7 +366,9 @@ function GroupProfile() {
         privacyForm.accessType === 'private' &&
         String(privacyForm.password || '').length < 4
       ) {
-        setPrivacyRespond('Private group password must be at least 4 characters');
+        setPrivacyRespond(
+          'Private group password must be at least 4 characters'
+        );
         return;
       }
 
@@ -248,6 +415,65 @@ function GroupProfile() {
     }
   };
 
+  const submitPermissions = async () => {
+    try {
+      if (!group || !isAdmin) return;
+      setSavingPermissions(true);
+      setPermissionRespond('');
+      const { data } = await axios.patch(`/groups/${group._id}/permissions`, {
+        permissions: permissionForm,
+      });
+      setPermissionRespond(data.message || 'Permissions updated');
+      setGroup((prev) => ({
+        ...prev,
+        permissions: {
+          ...permissionForm,
+        },
+      }));
+    } catch (error0) {
+      setPermissionRespond(error0?.response?.data?.message || error0.message);
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
+  const approvePendingMember = async (memberId) => {
+    try {
+      if (!group || !isAdmin) return;
+      await axios.post(
+        `/groups/${group._id}/pending-members/${memberId}/approve`
+      );
+      setGroup((prev) => ({
+        ...prev,
+        participantsId: [
+          ...new Set([...(prev?.participantsId || []), memberId]),
+        ],
+        pendingMembersId: (prev?.pendingMembersId || []).filter(
+          (item) => item !== memberId
+        ),
+      }));
+    } catch (error0) {
+      setPermissionRespond(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const rejectPendingMember = async (memberId) => {
+    try {
+      if (!group || !isAdmin) return;
+      await axios.post(
+        `/groups/${group._id}/pending-members/${memberId}/reject`
+      );
+      setGroup((prev) => ({
+        ...prev,
+        pendingMembersId: (prev?.pendingMembersId || []).filter(
+          (item) => item !== memberId
+        ),
+      }));
+    } catch (error0) {
+      setPermissionRespond(error0?.response?.data?.message || error0.message);
+    }
+  };
+
   const copyInviteLink = async () => {
     try {
       if (!inviteUrl) return;
@@ -258,6 +484,28 @@ function GroupProfile() {
       console.error(error0.message);
     }
   };
+
+  const renderPermissionToggle = ({ checked, onClick, id }) => (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={`${
+        checked
+          ? 'bg-sky-600 shadow-sky-500/40'
+          : 'bg-slate-300 dark:bg-spill-700 shadow-transparent'
+      } relative h-8 w-14 rounded-full p-1 shadow-inner transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+      onClick={onClick}
+    >
+      <span
+        className={`${
+          checked ? 'translate-x-6' : 'translate-x-0'
+        } pointer-events-none absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-200 ease-out`}
+      />
+      <span className="sr-only">{checked ? 'On' : 'Off'}</span>
+    </button>
+  );
 
   return (
     <div
@@ -298,28 +546,26 @@ function GroupProfile() {
           </button>
           <h1 className="text-2xl font-bold">Group Info</h1>
         </div>
-        {group &&
-          group.adminId === master._id &&
-          group.participantsId.includes(master._id) && (
-            <button
-              type="button"
-              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
-              onClick={(e) => {
-                e.stopPropagation();
+        {group && canEditGroupInfo && (
+          <button
+            type="button"
+            className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+            onClick={(e) => {
+              e.stopPropagation();
 
-                dispatch(
-                  setModal({
-                    target: 'editGroup',
-                    data: group,
-                  })
-                );
-              }}
-            >
-              <i>
-                <bi.BiPencil />
-              </i>
-            </button>
-          )}
+              dispatch(
+                setModal({
+                  target: 'editGroup',
+                  data: group,
+                })
+              );
+            }}
+          >
+            <i>
+              <bi.BiPencil />
+            </i>
+          </button>
+        )}
       </div>
       {group && (
         <div className="pb-16 md:pb-0 overflow-y-auto scrollbar-thin scrollbar-thumb-spill-200 hover:scrollbar-thumb-spill-300 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600">
@@ -330,7 +576,7 @@ function GroupProfile() {
               onClick={(e) => {
                 e.stopPropagation();
 
-                if (group.adminId !== master._id) {
+                if (!isGroupAdmin(group, master._id)) {
                   dispatch(
                     setModal({
                       target: 'photoFull',
@@ -353,7 +599,7 @@ function GroupProfile() {
               }}
             >
               <span className="group-hover:opacity-100 bg-black/40 absolute w-full h-full z-10 opacity-0 flex justify-center items-center">
-                {group.adminId === master._id && (
+                {isGroupAdmin(group, master._id) && (
                   <i className="text-white">
                     <md.MdPhotoCamera size={40} />
                   </i>
@@ -379,7 +625,9 @@ function GroupProfile() {
                 ) : (
                   <bi.BiLockOpenAlt className="text-emerald-600 dark:text-emerald-400" />
                 )}
-                {group.accessType === 'private' ? 'Private Group' : 'Public Group'}
+                {group.accessType === 'private'
+                  ? 'Private Group'
+                  : 'Public Group'}
               </p>
             </div>
           </div>
@@ -393,162 +641,207 @@ function GroupProfile() {
                 <p className="break-all">{group.desc}</p>
               </span>
             </div>
-            <div className="py-2 px-4 grid grid-cols-[auto_1fr_auto] gap-4 items-start border-0 border-b border-solid border-spill-100 dark:border-spill-800">
-              <i>
-                <bi.BiLinkAlt />
-              </i>
-              <span className="overflow-hidden">
-                <p className="text-sm opacity-60 mb-1">Invite Link</p>
-                <p className="break-all text-sm">{inviteUrl || group.link}</p>
-              </span>
-              <button
-                type="button"
-                className="mt-5 h-8 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 text-xs font-semibold"
-                onClick={copyInviteLink}
-              >
-                {inviteCopied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
+            {inviteLinkEnabled && (
+              <div className="py-2 px-4 grid grid-cols-[auto_1fr_auto] gap-4 items-start border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+                <i>
+                  <bi.BiLinkAlt />
+                </i>
+                <span className="overflow-hidden">
+                  <p className="text-sm opacity-60 mb-1">Invite Link</p>
+                  <p className="break-all text-sm">{inviteUrl || group.link}</p>
+                </span>
+                <button
+                  type="button"
+                  className="mt-5 h-8 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 text-xs font-semibold"
+                  onClick={copyInviteLink}
+                >
+                  {inviteCopied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            )}
           </div>
-          {group.adminId === master._id &&
-            group.participantsId.includes(master._id) && (
-              <div className="px-4 py-3 grid gap-2 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
-                <p className="text-sm font-semibold">Privacy Controls (Admin)</p>
-                {privacyRespond && (
-                  <p className="text-xs text-sky-600 dark:text-sky-400">
-                    {privacyRespond}
-                  </p>
-                )}
+          {isAdmin && isMember && (
+            <div className="px-4 py-3 grid gap-2 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+              <p className="text-sm font-semibold">Privacy Controls (Admin)</p>
+              {privacyRespond && (
+                <p className="text-xs text-sky-600 dark:text-sky-400">
+                  {privacyRespond}
+                </p>
+              )}
+              <label
+                htmlFor="privacy-type"
+                className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+              >
+                <select
+                  id="privacy-type"
+                  value={privacyForm.accessType}
+                  onChange={(e) =>
+                    setPrivacyForm((prev) => ({
+                      ...prev,
+                      accessType: e.target.value,
+                    }))
+                  }
+                  className="w-full bg-transparent text-sm"
+                >
+                  <option value="public">Public Group</option>
+                  <option value="private">Private Group</option>
+                </select>
+              </label>
+              {privacyForm.accessType === 'private' && (
                 <label
-                  htmlFor="privacy-type"
+                  htmlFor="privacy-password"
                   className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
                 >
-                  <select
-                    id="privacy-type"
-                    value={privacyForm.accessType}
+                  <input
+                    id="privacy-password"
+                    type="password"
+                    value={privacyForm.password}
                     onChange={(e) =>
                       setPrivacyForm((prev) => ({
                         ...prev,
-                        accessType: e.target.value,
+                        password: e.target.value,
                       }))
                     }
+                    placeholder="Set private password (min 4)"
                     className="w-full bg-transparent text-sm"
-                  >
-                    <option value="public">Public Group</option>
-                    <option value="private">Private Group</option>
-                  </select>
+                  />
                 </label>
-                {privacyForm.accessType === 'private' && (
+              )}
+              <button
+                type="button"
+                className="h-10 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                onClick={submitPrivacy}
+                disabled={savingPrivacy}
+              >
+                {savingPrivacy ? 'Saving...' : 'Update Privacy'}
+              </button>
+              <button
+                type="button"
+                className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={() => {
+                  const token = String(group.link || '').replace(
+                    '/group/+',
+                    ''
+                  );
+                  dispatch(
+                    setModal({
+                      target: 'qr',
+                      data: {
+                        type: 'group',
+                        fullname: group.name,
+                        bio:
+                          group.accessType === 'private'
+                            ? 'Private group invite'
+                            : 'Public group invite',
+                        avatar:
+                          group.avatar ||
+                          'assets/images/default-group-avatar.png',
+                        shareUrl: `${
+                          window.location.origin
+                        }/chat?g=${encodeURIComponent(token)}`,
+                      },
+                    })
+                  );
+                }}
+              >
+                Show Invite QR
+              </button>
+              <button
+                type="button"
+                className="mt-1 h-11 px-3 rounded-xl border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-slate-50/80 dark:bg-spill-900/50 hover:bg-slate-100 dark:hover:bg-spill-800"
+                onClick={() => setPermissionModalOpen(true)}
+              >
+                <span className="flex items-center gap-2">
+                  <bi.BiLockAlt className="text-sky-600 dark:text-sky-400" />
+                  <span className="text-sm font-semibold">
+                    Group Permission Settings
+                  </span>
+                </span>
+                <span className="flex items-center gap-2">
+                  {permissionForm.adminApprovalRequired && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      Pending {pendingRequestCount}
+                    </span>
+                  )}
+                  <bi.BiChevronRight />
+                </span>
+              </button>
+              {permissionForm.adminApprovalRequired && (
+                <button
+                  type="button"
+                  className="h-11 px-3 rounded-xl border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-slate-50/80 dark:bg-spill-900/50 hover:bg-slate-100 dark:hover:bg-spill-800"
+                  onClick={() => setPendingListModalOpen(true)}
+                >
+                  <span className="flex items-center gap-2">
+                    <bi.BiUserCheck className="text-amber-600 dark:text-amber-400" />
+                    <span className="text-sm font-semibold">
+                      Pending User Requests
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      {pendingRequestCount}
+                    </span>
+                    <bi.BiChevronRight />
+                  </span>
+                </button>
+              )}
+              {group.accessType === 'private' && (
+                <div className="pt-2 grid gap-2">
+                  <p className="text-sm font-semibold">Change Password</p>
+                  {passwordRespond && (
+                    <p className="text-xs text-sky-600 dark:text-sky-400">
+                      {passwordRespond}
+                    </p>
+                  )}
                   <label
-                    htmlFor="privacy-password"
+                    htmlFor="old-group-password"
                     className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
                   >
                     <input
-                      id="privacy-password"
+                      id="old-group-password"
                       type="password"
-                      value={privacyForm.password}
+                      value={passwordForm.oldPassword}
                       onChange={(e) =>
-                        setPrivacyForm((prev) => ({
+                        setPasswordForm((prev) => ({
                           ...prev,
-                          password: e.target.value,
+                          oldPassword: e.target.value,
                         }))
                       }
-                      placeholder="Set private password (min 4)"
+                      placeholder="Current password"
                       className="w-full bg-transparent text-sm"
                     />
                   </label>
-                )}
-                <button
-                  type="button"
-                  className="h-10 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
-                  onClick={submitPrivacy}
-                  disabled={savingPrivacy}
-                >
-                  {savingPrivacy ? 'Saving...' : 'Update Privacy'}
-                </button>
-                <button
-                  type="button"
-                  className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
-                  onClick={() => {
-                    const token = String(group.link || '').replace('/group/+', '');
-                    dispatch(
-                      setModal({
-                        target: 'qr',
-                        data: {
-                          type: 'group',
-                          fullname: group.name,
-                          bio:
-                            group.accessType === 'private'
-                              ? 'Private group invite'
-                              : 'Public group invite',
-                          avatar:
-                            group.avatar || 'assets/images/default-group-avatar.png',
-                          shareUrl: `${window.location.origin}/chat?g=${encodeURIComponent(
-                            token
-                          )}`,
-                        },
-                      })
-                    );
-                  }}
-                >
-                  Show Invite QR
-                </button>
-                {group.accessType === 'private' && (
-                  <div className="pt-2 grid gap-2">
-                    <p className="text-sm font-semibold">Change Password</p>
-                    {passwordRespond && (
-                      <p className="text-xs text-sky-600 dark:text-sky-400">
-                        {passwordRespond}
-                      </p>
-                    )}
-                    <label
-                      htmlFor="old-group-password"
-                      className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
-                    >
-                      <input
-                        id="old-group-password"
-                        type="password"
-                        value={passwordForm.oldPassword}
-                        onChange={(e) =>
-                          setPasswordForm((prev) => ({
-                            ...prev,
-                            oldPassword: e.target.value,
-                          }))
-                        }
-                        placeholder="Current password"
-                        className="w-full bg-transparent text-sm"
-                      />
-                    </label>
-                    <label
-                      htmlFor="new-group-password"
-                      className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
-                    >
-                      <input
-                        id="new-group-password"
-                        type="password"
-                        value={passwordForm.newPassword}
-                        onChange={(e) =>
-                          setPasswordForm((prev) => ({
-                            ...prev,
-                            newPassword: e.target.value,
-                          }))
-                        }
-                        placeholder="New password"
-                        className="w-full bg-transparent text-sm"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 disabled:opacity-60"
-                      onClick={submitPasswordChange}
-                      disabled={savingPassword}
-                    >
-                      {savingPassword ? 'Updating...' : 'Change Password'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                  <label
+                    htmlFor="new-group-password"
+                    className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center"
+                  >
+                    <input
+                      id="new-group-password"
+                      type="password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) =>
+                        setPasswordForm((prev) => ({
+                          ...prev,
+                          newPassword: e.target.value,
+                        }))
+                      }
+                      placeholder="New password"
+                      className="w-full bg-transparent text-sm"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="h-10 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 disabled:opacity-60"
+                    onClick={submitPasswordChange}
+                    disabled={savingPassword}
+                  >
+                    {savingPassword ? 'Updating...' : 'Change Password'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="pt-6">
             <p className="px-4 opacity-60">{`${group.participantsId.length} participants`}</p>
             <div className="grid">
@@ -604,7 +897,7 @@ function GroupProfile() {
                       <p className="truncate mt-0.5 opacity-60">{elem.bio}</p>
                     </span>
                     {/* admin tag */}
-                    {elem.userId === group.adminId && (
+                    {adminIds.includes(elem.userId) && (
                       <span className="h-full">
                         <p className="font-bold text-xs py-0.5 px-2 rounded-full text-white bg-sky-600">
                           Admin
@@ -638,9 +931,153 @@ function GroupProfile() {
           </div>
         </div>
       )}
+      {group && permissionModalOpen && (
+        <div
+          className="fixed inset-0 z-[140] bg-black/40 backdrop-blur-[1px] flex justify-center items-center px-3"
+          onClick={() => setPermissionModalOpen(false)}
+          aria-hidden
+        >
+          <div
+            className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-spill-200 bg-white shadow-2xl dark:bg-spill-900 dark:border-spill-700"
+            onClick={(e) => e.stopPropagation()}
+            aria-hidden
+          >
+            <div className="h-14 px-4 border-b border-spill-200 dark:border-spill-700 flex items-center justify-between">
+              <h2 className="text-base font-bold">Group Permission Setting</h2>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={() => setPermissionModalOpen(false)}
+              >
+                <bi.BiX />
+              </button>
+            </div>
+            <div className="p-4 grid gap-4">
+              {permissionRespond && (
+                <p className="text-xs text-sky-600 dark:text-sky-400">
+                  {permissionRespond}
+                </p>
+              )}
+
+              <section className="p-3 rounded-xl border border-spill-200 dark:border-spill-700 grid gap-2 bg-slate-50/70 dark:bg-spill-800/60">
+                <h3 className="text-sm font-semibold">Member can:</h3>
+                {memberPermissionItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="h-11 px-3 rounded-lg border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-white dark:bg-spill-900"
+                  >
+                    <span className="text-sm">{item.label}</span>
+                    {renderPermissionToggle({
+                      checked: !!permissionForm[item.key],
+                      id: `permission-toggle-${item.key}`,
+                      onClick: () =>
+                        setPermissionForm((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[item.key],
+                        })),
+                    })}
+                  </div>
+                ))}
+              </section>
+
+              <section className="p-3 rounded-xl border border-spill-200 dark:border-spill-700 grid gap-2 bg-slate-50/70 dark:bg-spill-800/60">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Admin Can:</h3>
+                  {permissionForm.adminApprovalRequired && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      Pending {pendingRequestCount}
+                    </span>
+                  )}
+                </div>
+                <div className="h-11 px-3 rounded-lg border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-white dark:bg-spill-900">
+                  <span className="text-sm">Approved new Member</span>
+                  {renderPermissionToggle({
+                    checked: !!permissionForm.adminApprovalRequired,
+                    id: 'permission-toggle-admin-approval',
+                    onClick: () =>
+                      setPermissionForm((prev) => ({
+                        ...prev,
+                        adminApprovalRequired: !prev.adminApprovalRequired,
+                      })),
+                  })}
+                </div>
+              </section>
+
+              <button
+                type="button"
+                className="h-11 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                onClick={submitPermissions}
+                disabled={savingPermissions}
+              >
+                {savingPermissions ? 'Saving...' : 'Update Permission'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {group &&
-        group.participantsId.includes(master._id) &&
-        (group.accessType !== 'private' || group.adminId === master._id) && (
+        pendingListModalOpen &&
+        permissionForm.adminApprovalRequired && (
+          <div
+            className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-[1px] flex justify-center items-center px-3"
+            onClick={() => setPendingListModalOpen(false)}
+            aria-hidden
+          >
+            <div
+              className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-spill-200 bg-white shadow-2xl dark:bg-spill-900 dark:border-spill-700"
+              onClick={(e) => e.stopPropagation()}
+              aria-hidden
+            >
+              <div className="h-14 px-4 border-b border-spill-200 dark:border-spill-700 flex items-center justify-between">
+                <h2 className="text-base font-bold">
+                  Pending User Requests ({pendingRequestCount})
+                </h2>
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                  onClick={() => setPendingListModalOpen(false)}
+                >
+                  <bi.BiX />
+                </button>
+              </div>
+              <div className="p-4 grid gap-2">
+                {pendingProfiles.length === 0 && (
+                  <p className="text-sm opacity-70">No pending users</p>
+                )}
+                {pendingProfiles.map((pendingUser) => (
+                  <div
+                    key={pendingUser.userId}
+                    className="p-2 rounded-lg border border-spill-300 dark:border-spill-700 grid grid-cols-[auto_1fr_auto] gap-2 items-center"
+                  >
+                    <img
+                      src={pendingUser.avatar}
+                      alt=""
+                      className="w-10 h-10 rounded-full"
+                    />
+                    <p className="text-sm truncate">{pendingUser.fullname}</p>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="h-8 px-2 rounded-md text-xs bg-emerald-600 text-white"
+                        onClick={() => approvePendingMember(pendingUser.userId)}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="h-8 px-2 rounded-md text-xs border border-spill-300 dark:border-spill-700"
+                        onClick={() => rejectPendingMember(pendingUser.userId)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      {group && isMember && canAddParticipants && (
         <button
           type="button"
           className={`

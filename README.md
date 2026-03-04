@@ -93,7 +93,27 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-03`
+- Last updated: `2026-03-04`
+
+## Recent Changes (2026-03-04)
+
+- Updated group admin system to support multiple admins (`adminsId`):
+  - `Make as admin` now adds a new admin without replacing the existing admin.
+  - Added `Remove from admin` action.
+  - Enforced safety checks to keep at least one admin in a group.
+- Added shared group-admin helper logic on server and client for consistent permissions checks.
+- Improved group participant/admin flows end-to-end:
+  - admin promotion/demotion event handling via sockets
+  - participant removal now updates admin state safely
+  - admin checks in group actions now support multi-admin
+- Improved group permissions and moderation UX:
+  - professional group permission settings modal
+  - member/admin permission toggles
+  - pending user request list with approve/reject flow
+- Improved group context menu UI and actions:
+  - polished action buttons
+  - clearer admin management options
+- Updated group chat composer behavior to respect admin-only messaging using multi-admin checks.
 
 ## Recent Changes (2026-03-03)
 

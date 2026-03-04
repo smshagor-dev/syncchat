@@ -22,6 +22,7 @@ const {
   saveBufferFile,
   deleteLocalFileByUrl,
 } = require('../../helpers/storage');
+const { canGroupMemberSendMessage } = require('../../helpers/groupPermissions');
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
@@ -202,13 +203,20 @@ const buildReplyPayload = async (replyTo) => {
 };
 
 const canAccessGroupRoom = async ({ roomId, userId }) => {
-  if (!roomId || !userId) return false;
+  if (!roomId || !userId) {
+    return { canAccess: false, canSend: false };
+  }
   const groupDoc = await GroupModel.findOne({
     where: { roomId },
-    attributes: ['participantsId'],
+    attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
   });
-  if (!groupDoc) return false;
-  return asArray(toPlain(groupDoc)?.participantsId).includes(userId);
+  if (!groupDoc) return { canAccess: false, canSend: false };
+  const canAccess = asArray(toPlain(groupDoc)?.participantsId).includes(userId);
+  return {
+    canAccess,
+    canSend:
+      canAccess && canGroupMemberSendMessage({ group: groupDoc, userId }),
+  };
 };
 
 module.exports = (socket) => {
@@ -239,11 +247,11 @@ module.exports = (socket) => {
       let receiverOnline = false;
 
       if (args.roomType === 'group') {
-        const hasGroupAccess = await canAccessGroupRoom({
+        const groupAccess = await canAccessGroupRoom({
           roomId: args.roomId,
           userId: args.userId,
         });
-        if (!hasGroupAccess) return;
+        if (!groupAccess.canAccess || !groupAccess.canSend) return;
       }
 
       if (args.roomType === 'private') {
@@ -495,8 +503,8 @@ module.exports = (socket) => {
     }
 
     if (roomType === 'group') {
-      const hasGroupAccess = await canAccessGroupRoom({ roomId, userId });
-      if (!hasGroupAccess) return;
+      const groupAccess = await canAccessGroupRoom({ roomId, userId });
+      if (!groupAccess.canAccess || !groupAccess.canSend) return;
     }
 
     const isGroup = roomType === 'group';
@@ -827,11 +835,11 @@ module.exports = (socket) => {
         }
 
         if (toRoomType === 'group') {
-          const hasGroupAccess = await canAccessGroupRoom({
+          const groupAccess = await canAccessGroupRoom({
             roomId: toRoomId,
             userId,
           });
-          if (!hasGroupAccess) return;
+          if (!groupAccess.canAccess || !groupAccess.canSend) return;
         }
 
         const fromChats = toPlainMany(

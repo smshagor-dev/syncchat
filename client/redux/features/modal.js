@@ -41,6 +41,7 @@ const ModalSlice = createSlice({
     /* eslint-disable no-param-reassign */
     setModal(state, action) {
       const { target = '*', data = null } = action.payload;
+      const prevNewGroup = state.newGroup;
 
       if (target) {
         Object.keys(state).forEach((key) => {
@@ -49,6 +50,19 @@ const ModalSlice = createSlice({
           } else {
             state[key] = false;
           }
+        });
+      }
+
+      if (
+        process.env.NODE_ENV !== 'production' &&
+        (target === 'newGroup' || prevNewGroup !== state.newGroup)
+      ) {
+        // eslint-disable-next-line no-console
+        console.log('[modal trace]', {
+          target,
+          data,
+          prevNewGroup,
+          nextNewGroup: state.newGroup,
         });
       }
     },

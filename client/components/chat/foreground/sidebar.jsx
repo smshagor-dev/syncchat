@@ -33,6 +33,7 @@ function Sidebar({ inboxes }) {
     !page.list &&
     !page.communities &&
     !page.media &&
+    !page.starred &&
     !page.profile &&
     !page.selectParticipant;
 
@@ -46,6 +47,7 @@ function Sidebar({ inboxes }) {
       'archive',
       'list',
       'media',
+      'starred',
       'profile',
       'selectParticipant',
     ].forEach((target) => {
@@ -63,6 +65,7 @@ function Sidebar({ inboxes }) {
       'archive',
       'list',
       'media',
+      'starred',
       'profile',
       'selectParticipant',
     ].forEach((key) => {

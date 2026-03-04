@@ -322,6 +322,7 @@ exports.create = async (req, res) => {
       const group = await GroupModel.create({
         roomId,
         adminId: userId,
+        adminsId: [userId],
         participantsId: [userId],
         communityId: communityPlain._id,
         name: groupName,
@@ -429,6 +430,7 @@ exports.createGroup = async (req, res) => {
     const group = await GroupModel.create({
       roomId,
       adminId: userId,
+      adminsId: [userId],
       participantsId,
       communityId,
       name,

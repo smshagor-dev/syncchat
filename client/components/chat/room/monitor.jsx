@@ -22,6 +22,7 @@ import {
   ROOM_APPEARANCE_EVENT,
   getRoomAppearance,
 } from '../../../helpers/roomAppearance';
+import { isGroupAdmin } from '../../../helpers/groupAdmins';
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
@@ -69,6 +70,8 @@ function Monitor({
   } = useSelector((state) => state);
 
   const isGroup = chatRoom.data.roomType === 'group';
+  const isCurrentUserGroupAdmin =
+    isGroup && isGroupAdmin(chatRoom.data?.group, master._id);
   const isScrolled = useRef(false);
   const focusTimerRef = useRef(null);
   const audioRefs = useRef({});
@@ -109,6 +112,33 @@ function Monitor({
   const openDeleteFor = (chatId) => {
     dispatch(setSelectedChats([chatId]));
     dispatch(setModal({ target: 'confirmDeleteChat', data: true }));
+  };
+
+  const isStarredByMe = (chat) =>
+    Array.isArray(chat?.starredBy) && chat.starredBy.includes(master?._id);
+
+  const toggleStarFor = async (chat) => {
+    if (!chat?._id) return;
+    try {
+      const nextStar = !isStarredByMe(chat);
+      const { data } = await axios.patch(`/chats/${chat._id}/star`, {
+        starred: nextStar,
+      });
+      const nextStarredBy = data?.payload?.starredBy || [];
+      setChats((prev) =>
+        prev.map((item) =>
+          item._id === chat._id
+            ? {
+                ...item,
+                starredBy: nextStarredBy,
+              }
+            : item
+        )
+      );
+    } catch (error0) {
+      // eslint-disable-next-line no-console
+      console.error(error0?.response?.data?.message || error0.message);
+    }
   };
 
   const reactToMessage = (chatId, emoji) => {
@@ -192,10 +222,7 @@ function Monitor({
   const getEventFromChat = (chat) => parseEventFromText(chat?.text);
 
   const parseGroupInfoFromText = (text) => {
-    if (
-      typeof text !== 'string' ||
-      !text.startsWith(GROUP_INFO_PREFIX)
-    ) {
+    if (typeof text !== 'string' || !text.startsWith(GROUP_INFO_PREFIX)) {
       return null;
     }
     try {
@@ -249,6 +276,95 @@ function Monitor({
     delete store[roomId];
     setPinnedStore(store);
     setPinnedChatId(null);
+  };
+
+  const openGroupEditSettings = () => {
+    const rawGroup = chatRoom.data?.group || null;
+    if (!rawGroup?._id) {
+      dispatch(
+        setPage({
+          target: 'groupProfile',
+          data: false,
+        })
+      );
+      return;
+    }
+
+    // Open immediately with available room payload so click always responds.
+    dispatch(
+      setModal({
+        target: 'editGroup',
+        data: rawGroup,
+      })
+    );
+
+    // Keep group profile visible as fallback edit surface.
+    dispatch(
+      setPage({
+        target: 'groupProfile',
+        data: rawGroup._id,
+      })
+    );
+
+    // Refresh modal payload with latest server state (best-effort).
+    axios
+      .get(`/groups/${rawGroup._id}`)
+      .then(({ data }) => {
+        if (!data?.payload) return;
+        dispatch(
+          setModal({
+            target: 'editGroup',
+            data: {
+              ...rawGroup,
+              ...data.payload,
+            },
+          })
+        );
+      })
+      .catch(() => {
+        // no-op; modal is already open with local payload
+      });
+  };
+
+  const openGroupAddMembers = () => {
+    if (!chatRoom.data?.group) return;
+    dispatch(
+      setPage({
+        target: 'addParticipant',
+        data: {
+          participantsId: chatRoom.data.group.participantsId || [],
+          groupId: chatRoom.data.group._id,
+          roomId: chatRoom.data.group.roomId,
+        },
+      })
+    );
+  };
+
+  const openGroupInviteQr = () => {
+    if (!chatRoom.data?.group) return;
+    const token = String(chatRoom.data.group.link || '').replace(
+      '/group/+',
+      ''
+    );
+    dispatch(
+      setModal({
+        target: 'qr',
+        data: {
+          type: 'group',
+          fullname: chatRoom.data.group.name || 'Group',
+          bio:
+            chatRoom.data.group.accessType === 'private'
+              ? 'Private group invite'
+              : 'Public group invite',
+          avatar:
+            chatRoom.data.group.avatar ||
+            'assets/images/default-group-avatar.png',
+          shareUrl: `${window.location.origin}/chat?g=${encodeURIComponent(
+            token
+          )}`,
+        },
+      })
+    );
   };
 
   const openMessageMenu = (event, chatId) => {
@@ -806,9 +922,13 @@ function Monitor({
           const groupInfoData = getGroupInfoFromChat(lead);
           const isGroupInfo = !!groupInfoData;
           const callLogMeta =
-            isPoll || isEvent || isGroupInfo ? null : getCallLogMeta(lead?.text);
+            isPoll || isEvent || isGroupInfo
+              ? null
+              : getCallLogMeta(lead?.text);
           const groupActionMeta =
-            isPoll || isEvent || isGroupInfo ? null : getGroupActionMeta(lead?.text);
+            isPoll || isEvent || isGroupInfo
+              ? null
+              : getGroupActionMeta(lead?.text);
           const systemMeta = callLogMeta || groupActionMeta;
           const isSystemLine = !!systemMeta;
           const SystemIcon = systemMeta?.icon || bi.BiInfoCircle;
@@ -840,7 +960,84 @@ function Monitor({
                   </span>
                 </div>
               )}
-              {!isSystemLine && (
+              {!isSystemLine && isGroupInfo && (
+                <div className="w-full px-3 md:px-5 py-2 flex flex-col items-center gap-3">
+                  <div className="max-w-[520px] rounded-xl border border-amber-200/70 bg-amber-100/90 px-3 py-2 text-center text-xs font-medium text-amber-900 shadow-sm dark:border-amber-700/60 dark:bg-amber-900/25 dark:text-amber-200">
+                    <span className="inline-flex items-center gap-1">
+                      <bi.BiLockAlt />
+                      Messages and calls are end-to-end encrypted. Only people
+                      in this chat can read, listen to, or share them.
+                    </span>
+                  </div>
+                  <div className="w-full max-w-[420px] rounded-3xl border border-slate-200/70 bg-white/90 p-4 text-center shadow-xl backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/80">
+                    <img
+                      src={
+                        resolveUploadUrl(chatRoom.data?.group?.avatar) ||
+                        'assets/images/default-group-avatar.png'
+                      }
+                      alt=""
+                      className="mx-auto h-20 w-20 rounded-full object-cover border border-slate-200 dark:border-spill-700"
+                    />
+                    <h3 className="mt-3 text-3xl font-light tracking-tight text-slate-900 dark:text-white">
+                      {groupInfoData.createdBy} created this group
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-spill-300">
+                      {Number(groupInfoData.totalParticipants || 0)} members ·{' '}
+                      {Math.max(
+                        0,
+                        Number(groupInfoData.totalParticipants || 0) - 1
+                      )}{' '}
+                      contacts · Created{' '}
+                      {moment(lead.createdAt).isSame(moment(), 'day')
+                        ? 'today'
+                        : moment(lead.createdAt).format('ll')}
+                    </p>
+                    {isCurrentUserGroupAdmin && (
+                      <button
+                        type="button"
+                        className="mt-2 text-sm font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openGroupEditSettings();
+                        }}
+                      >
+                        Edit group setting
+                      </button>
+                    )}
+                    {isCurrentUserGroupAdmin && (
+                      <div className="mt-3 grid gap-2">
+                        <button
+                          type="button"
+                          className="h-11 rounded-full border border-emerald-300/60 text-emerald-700 font-semibold hover:bg-emerald-50 dark:border-emerald-700/60 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openGroupAddMembers();
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <bi.BiUserPlus />
+                            Add members
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="h-11 rounded-full border border-emerald-300/60 text-emerald-700 font-semibold hover:bg-emerald-50 dark:border-emerald-700/60 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openGroupInviteQr();
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <bi.BiLinkAlt />
+                            Invite via link or QR code
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!isSystemLine && !isGroupInfo && (
                 <div
                   className={`
                     ${albumLast.userId !== nextAfterAlbum?.userId && 'mb-2'}
@@ -1187,53 +1384,6 @@ function Monitor({
                             </span>
                           </p>
                         )}
-                        {isGroupInfo && (
-                          <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/55">
-                            <span className="mb-2 inline-flex w-fit items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
-                              <span>{groupInfoData.icon}</span>
-                              Group Created
-                            </span>
-                            <div className="grid gap-2 text-sm">
-                              <div>
-                                <p className="text-[11px] uppercase tracking-wide opacity-70">
-                                  Group Name
-                                </p>
-                                <p className="font-semibold break-all">
-                                  {groupInfoData.groupName}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-wide opacity-70">
-                                  Created By
-                                </p>
-                                <p className="font-medium break-all">
-                                  {groupInfoData.createdBy}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-wide opacity-70">
-                                  Total Participants
-                                </p>
-                                <p className="font-medium">
-                                  {groupInfoData.totalParticipants}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-wide opacity-70">
-                                  Privacy
-                                </p>
-                                <p className="font-medium capitalize flex items-center gap-1">
-                                  {groupInfoData.accessType === 'private' ? (
-                                    <bi.BiLockAlt className="text-amber-600 dark:text-amber-400" />
-                                  ) : (
-                                    <bi.BiLockOpenAlt className="text-emerald-600 dark:text-emerald-400" />
-                                  )}
-                                  {groupInfoData.accessType}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
                         {isEvent && (
                           <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/55">
                             <span className="mb-2 inline-flex w-fit items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
@@ -1543,6 +1693,26 @@ function Monitor({
               >
                 <bi.BiCheckSquare size={18} />
                 <span>Select</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"
+                onClick={async () => {
+                  await toggleStarFor(menuTarget);
+                  setMessageMenu(null);
+                }}
+              >
+                <bi.BiStar
+                  size={18}
+                  className={
+                    isStarredByMe(menuTarget) ? 'text-amber-500' : undefined
+                  }
+                />
+                <span>
+                  {isStarredByMe(menuTarget)
+                    ? 'Unstar Message'
+                    : 'Star Message'}
+                </span>
               </button>
               <button
                 type="button"
