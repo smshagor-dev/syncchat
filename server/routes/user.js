@@ -5,6 +5,8 @@ const ctrl = require('../controllers/user');
 
 router.post('/users/register', ctrl.register);
 router.post('/users/login', ctrl.login);
+router.get('/users/social-config', ctrl.socialConfig);
+router.post('/users/social-auth', ctrl.socialAuth);
 router.post('/users/forgot-pass/request', ctrl.requestForgotPass);
 router.post('/users/forgot-pass/verify', ctrl.verifyForgotPass);
 router.post('/users/forgot-pass/reset', ctrl.resetForgotPass);

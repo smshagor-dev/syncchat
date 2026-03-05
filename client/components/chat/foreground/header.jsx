@@ -13,6 +13,7 @@ function Header({
   chatFilter,
   setChatFilter,
   filterCounts,
+  onOpenMobileSidebar = () => {},
   isInboxSelectMode = false,
   selectedInboxCount = 0,
   onExitSelectMode,
@@ -41,6 +42,7 @@ function Header({
     !page.status &&
     !page.communities &&
     !page.media &&
+    !page.policy &&
     !page.starred &&
     !page.profile &&
     !page.selectParticipant;
@@ -68,8 +70,20 @@ function Header({
       <div className="h-16 pl-4 pr-2 flex gap-5 justify-between items-center">
         {!selectModeActive ? (
           <>
-            {/* brand name */}
-            <h1 className="text-xl font-bold">{config.brandName}</h1>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="md:hidden p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenMobileSidebar();
+                }}
+              >
+                <bi.BiMenu size={22} />
+              </button>
+              {/* brand name */}
+              <h1 className="text-xl font-bold">{config.brandName}</h1>
+            </div>
             <div className="flex">
               {[
                 {

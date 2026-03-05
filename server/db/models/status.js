@@ -38,6 +38,21 @@ const StatusModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    views: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    reactions: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    replies: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     expiresAt: {
       type: DataTypes.DATE,
       allowNull: false,

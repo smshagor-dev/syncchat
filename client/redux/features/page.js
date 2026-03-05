@@ -12,6 +12,7 @@ const PageSlice = createSlice({
     list: false,
     communities: false,
     media: false,
+    policy: false,
     starred: false,
     selectParticipant: false,
     friendProfile: false,

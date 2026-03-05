@@ -140,6 +140,18 @@ function Setting() {
         },
       ],
     },
+    {
+      section: '',
+      child: [
+        {
+          target: 'logout',
+          title: 'Log out',
+          desc: null,
+          toggle: false,
+          icon: <bi.BiLogOut />,
+        },
+      ],
+    },
   ];
 
   const closeAppLockDialog = () => {
@@ -367,6 +379,15 @@ function Setting() {
                       openAppLockDialog('change');
                     } else if (child.target === 'media') {
                       dispatch(setPage({ target: 'media', data: true }));
+                    } else if (child.target === 'terms') {
+                      dispatch(
+                        setPage({
+                          target: 'policy',
+                          data: { tab: 'terms' },
+                        })
+                      );
+                    } else if (child.target === 'logout') {
+                      dispatch(setModal({ target: 'signout', data: true }));
                     } else {
                       dispatch(setModal({ target: child.target, data: true }));
                     }

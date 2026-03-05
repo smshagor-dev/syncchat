@@ -10,6 +10,7 @@ import socket from '../../../helpers/socket';
 import { setChatRoom } from '../../../redux/features/room';
 import InboxMenu from '../../modals/inboxMenu';
 import { setModal } from '../../../redux/features/modal';
+import { setPage } from '../../../redux/features/page';
 import { setRefreshInbox } from '../../../redux/features/chore';
 import { setSelectedInboxes } from '../../../redux/features/chore';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
@@ -28,7 +29,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
   const {
     user: { master, setting },
     room: { chat: chatRoom },
-    chore: { selectedInboxes },
+    chore: { selectedInboxes, refreshInbox },
     modal,
     page,
   } = useSelector((state) => state);
@@ -50,6 +51,26 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     newPassword: '',
     loading: false,
     error: '',
+  });
+  const [privacyShieldVisible, setPrivacyShieldVisible] = React.useState(false);
+  const [statuses, setStatuses] = React.useState([]);
+  const [statusLoaded, setStatusLoaded] = React.useState(false);
+  const [statusViewer, setStatusViewer] = React.useState({
+    open: false,
+    userId: null,
+    index: 0,
+  });
+  const [statusReplyText, setStatusReplyText] = React.useState('');
+  const [statusReactionPulse, setStatusReactionPulse] = React.useState('');
+  const [statusReactionBursts, setStatusReactionBursts] = React.useState([]);
+  const [statusActivity, setStatusActivity] = React.useState({
+    open: false,
+    loading: false,
+    statusId: null,
+    counts: { views: 0, reactions: 0, replies: 0 },
+    views: [],
+    reactions: [],
+    replies: [],
   });
   const unlockResolverRef = React.useRef(null);
 
@@ -210,6 +231,344 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     return /^poll\s*:/i.test(text.trim()) || /^poll$/i.test(text.trim());
   };
 
+  const showStatusRail =
+    !page.calls &&
+    !page.starred &&
+    !page.contact &&
+    !page.setting &&
+    !page.status &&
+    !page.communities &&
+    !page.media &&
+    !page.policy &&
+    !page.profile &&
+    !page.selectParticipant;
+
+  const loadStatuses = React.useCallback(
+    async (signal) => {
+      try {
+        const { data } = await axios.get('/statuses', { signal });
+        setStatuses(data.payload || []);
+      } catch (error0) {
+        if (error0.name !== 'CanceledError' && error0.name !== 'AbortError') {
+          console.error(error0?.response?.data?.message || error0.message);
+        }
+      } finally {
+        setStatusLoaded(true);
+      }
+    },
+    [setStatuses]
+  );
+
+  useEffect(() => {
+    if (!showStatusRail) return undefined;
+    const abortCtrl = new AbortController();
+    setStatusLoaded(false);
+    loadStatuses(abortCtrl.signal);
+    return () => abortCtrl.abort();
+  }, [showStatusRail, refreshInbox, loadStatuses]);
+
+  const statusGroups = React.useMemo(() => {
+    const map = new Map();
+    statuses.forEach((item) => {
+      if (!item?.profile || !item?.userId) return;
+      const group = map.get(item.userId) || {
+        userId: item.userId,
+        profile: item.profile,
+        items: [],
+      };
+      group.items.push(item);
+      map.set(item.userId, group);
+    });
+
+    const list = [...map.values()];
+    list.forEach((group) => {
+      group.items.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    });
+
+    list.sort((a, b) => {
+      const aTime = new Date(a.items[0]?.createdAt || 0).getTime();
+      const bTime = new Date(b.items[0]?.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+    return list;
+  }, [statuses]);
+
+  const myStatusGroup =
+    statusGroups.find((group) => group.userId === master?._id) || null;
+  const friendStatusGroups = statusGroups.filter(
+    (group) => group.userId !== master?._id
+  );
+
+  const viewingStatusGroup =
+    statusGroups.find((group) => group.userId === statusViewer.userId) || null;
+  const viewingStatusItems = viewingStatusGroup?.items || [];
+  const viewingStatusItem = viewingStatusItems[statusViewer.index] || null;
+
+  const openStatusViewer = (userId, index = 0) => {
+    setStatusReplyText('');
+    setStatusActivity((prev) => ({ ...prev, open: false }));
+    setStatusViewer({ open: true, userId, index });
+  };
+
+  const closeStatusViewer = () => {
+    setStatusReplyText('');
+    setStatusViewer({ open: false, userId: null, index: 0 });
+  };
+
+  const stepStatusViewer = (next) => {
+    if (!viewingStatusItems.length) return;
+    const max = viewingStatusItems.length - 1;
+    const index = Math.max(0, Math.min(max, statusViewer.index + next));
+    setStatusViewer((prev) => ({ ...prev, index }));
+  };
+
+  useEffect(() => {
+    if (!statusViewer.open || !viewingStatusItem) return undefined;
+    if (viewingStatusItem.type === 'video') return undefined;
+
+    const timer = setTimeout(() => {
+      if (statusViewer.index >= viewingStatusItems.length - 1) {
+        closeStatusViewer();
+      } else {
+        stepStatusViewer(1);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [
+    statusViewer.open,
+    statusViewer.index,
+    viewingStatusItem,
+    viewingStatusItems.length,
+  ]);
+
+  useEffect(() => {
+    if (!statusViewer.open || !viewingStatusItem || viewingStatusItem.isMine) return;
+
+    const markViewed = async () => {
+      try {
+        await axios.post(`/statuses/${viewingStatusItem._id}/view`);
+        setStatuses((prev) =>
+          prev.map((item) =>
+            item._id === viewingStatusItem._id
+              ? {
+                  ...item,
+                  hasViewed: true,
+                  viewCount: Number(item.viewCount || 0) + (item.hasViewed ? 0 : 1),
+                }
+              : item
+          )
+        );
+      } catch (error0) {
+        console.error(error0?.response?.data?.message || error0.message);
+      }
+    };
+
+    markViewed();
+  }, [statusViewer.open, viewingStatusItem?._id]);
+
+  useEffect(() => {
+    const handleStatusUpdate = (payload) => {
+      if (!payload?.statusId) return;
+      setStatuses((prev) =>
+        prev.map((item) => {
+          if (item._id !== payload.statusId) return item;
+
+          const nextItem = { ...item };
+          if (typeof payload.reactionCount === 'number') {
+            nextItem.reactionCount = payload.reactionCount;
+          }
+          if (typeof payload.replyCount === 'number') {
+            nextItem.replyCount = payload.replyCount;
+          }
+          if (
+            payload.type === 'react' &&
+            payload.actorId === master?._id &&
+            Object.prototype.hasOwnProperty.call(payload, 'myReaction')
+          ) {
+            nextItem.myReaction = payload.myReaction;
+          }
+          return nextItem;
+        })
+      );
+    };
+
+    const handleStatusNew = (payload) => {
+      if (!payload?._id) return;
+      setStatuses((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        if (list.some((item) => item._id === payload._id)) return list;
+        return [payload, ...list];
+      });
+      setStatusLoaded(true);
+    };
+
+    socket.on('status/update', handleStatusUpdate);
+    socket.on('status/new', handleStatusNew);
+    return () => {
+      socket.off('status/update', handleStatusUpdate);
+      socket.off('status/new', handleStatusNew);
+    };
+  }, [master?._id]);
+
+  const sendStatusReaction = async (emoji) => {
+    if (!viewingStatusItem || viewingStatusItem.isMine) return;
+    const burstId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const burstDuration = 900 + Math.floor(Math.random() * 500);
+    const burstLeft = 42 + Math.random() * 16;
+    const burstDrift = -10 + Math.random() * 20;
+    setStatusReactionBursts((prev) => [
+      ...prev,
+      {
+        id: burstId,
+        emoji,
+        left: burstLeft,
+        drift: burstDrift,
+        duration: burstDuration,
+      },
+    ]);
+    setTimeout(() => {
+      setStatusReactionBursts((prev) =>
+        prev.filter((item) => item.id !== burstId)
+      );
+    }, burstDuration + 120);
+
+    setStatusReactionPulse(emoji);
+    setTimeout(() => {
+      setStatusReactionPulse('');
+    }, 220);
+    try {
+      const { data } = await axios.post(`/statuses/${viewingStatusItem._id}/react`, {
+        emoji,
+      });
+      setStatuses((prev) =>
+        prev.map((item) =>
+          item._id === viewingStatusItem._id
+            ? {
+                ...item,
+                reactionCount:
+                  typeof data?.payload?.reactionCount === 'number'
+                    ? data.payload.reactionCount
+                    : item.reactionCount,
+              }
+            : item
+        )
+      );
+    } catch (error0) {
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const sendStatusReply = async () => {
+    if (!viewingStatusItem || viewingStatusItem.isMine) return;
+    const text = String(statusReplyText || '').trim();
+    if (!text) return;
+    try {
+      const { data } = await axios.post(`/statuses/${viewingStatusItem._id}/reply`, {
+        text,
+      });
+      setStatusReplyText('');
+      setStatuses((prev) =>
+        prev.map((item) =>
+          item._id === viewingStatusItem._id
+            ? {
+                ...item,
+                replyCount:
+                  typeof data?.payload?.replyCount === 'number'
+                    ? data.payload.replyCount
+                    : Number(item.replyCount || 0) + 1,
+              }
+            : item
+        )
+      );
+    } catch (error0) {
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const openStatusActivity = async () => {
+    if (!viewingStatusItem?.isMine) return;
+    try {
+      setStatusActivity((prev) => ({
+        ...prev,
+        open: true,
+        loading: true,
+        statusId: viewingStatusItem._id,
+      }));
+      const { data } = await axios.get(`/statuses/${viewingStatusItem._id}/activity`);
+      setStatusActivity({
+        open: true,
+        loading: false,
+        statusId: viewingStatusItem._id,
+        counts: data?.payload?.counts || { views: 0, reactions: 0, replies: 0 },
+        views: data?.payload?.views || [],
+        reactions: data?.payload?.reactions || [],
+        replies: data?.payload?.replies || [],
+      });
+    } catch (error0) {
+      setStatusActivity((prev) => ({ ...prev, loading: false }));
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const statusActivityRows = React.useMemo(() => {
+    const rowMap = new Map();
+
+    const ensureRow = (userId, profile) => {
+      const key = userId || 'unknown';
+      const prev = rowMap.get(key) || {
+        userId: key,
+        profile: profile || null,
+        viewedAt: null,
+        reactions: [],
+        replies: [],
+      };
+      if (!prev.profile && profile) prev.profile = profile;
+      rowMap.set(key, prev);
+      return prev;
+    };
+
+    (statusActivity.views || []).forEach((entry) => {
+      const row = ensureRow(entry.userId, entry.profile);
+      row.viewedAt = entry.viewedAt || entry.createdAt || row.viewedAt;
+    });
+
+    (statusActivity.reactions || []).forEach((entry) => {
+      const row = ensureRow(entry.userId, entry.profile);
+      row.reactions.push({
+        emoji: entry.emoji,
+        createdAt: entry.createdAt,
+      });
+    });
+
+    (statusActivity.replies || []).forEach((entry) => {
+      const row = ensureRow(entry.userId, entry.profile);
+      row.replies.push({
+        text: entry.text,
+        createdAt: entry.createdAt,
+      });
+    });
+
+    return [...rowMap.values()].sort(
+      (a, b) =>
+        new Date(
+          b.viewedAt ||
+            b.reactions[0]?.createdAt ||
+            b.replies[0]?.createdAt ||
+            0
+        ).getTime() -
+        new Date(
+          a.viewedAt ||
+            a.reactions[0]?.createdAt ||
+            a.replies[0]?.createdAt ||
+            0
+        ).getTime()
+    );
+  }, [statusActivity.views, statusActivity.reactions, statusActivity.replies]);
+
   const openInboxRoom = async (elem) => {
     const chatUnlocked = await verifyPrivateChatLockAccess(elem);
     if (!chatUnlocked) return false;
@@ -276,12 +635,52 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     inbox.markUnreadBy.includes(master?._id);
   const isMutedInbox = (inbox) =>
     Array.isArray(inbox?.mutedBy) && inbox.mutedBy.includes(master?._id);
+  const isAdvancedPrivacyEnabled = (inbox) =>
+    Array.isArray(inbox?.privacyShieldBy) &&
+    inbox.privacyShieldBy.includes(master?._id);
+  const getInboxTone = (inbox) =>
+    inbox?.notificationToneBy?.[master?._id] || 'default-ringtone';
   const isPrivateChatLocked = (inbox) =>
     inbox?.roomType === 'private' &&
     Array.isArray(inbox?.chatLockBy) &&
     inbox.chatLockBy.includes(master?._id);
   const isPrivateLockedGroup = (inbox) =>
     inbox?.roomType === 'group' && inbox?.group?.accessType === 'private';
+
+  const playTone = (toneKey) => {
+    if (toneKey === 'default-ringtone') {
+      const audio = new Audio('assets/sound/default-ringtone.mp3');
+      audio.volume = 1;
+      audio.play().catch(() => {});
+      return;
+    }
+
+    const tonePatterns = {
+      'classic-bell': [880, 660],
+      'digital-pop': [740, 920, 740],
+      'soft-chime': [520, 660, 780],
+    };
+    const sequence = tonePatterns[toneKey] || tonePatterns['soft-chime'];
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    sequence.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const start = ctx.currentTime + index * 0.17;
+      const end = start + 0.12;
+      gain.gain.exponentialRampToValueAtTime(0.16, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+      osc.start(start);
+      osc.stop(end + 0.02);
+    });
+  };
 
   const closeUnlockDialog = (result = false) => {
     if (unlockResolverRef.current) {
@@ -515,13 +914,50 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       ]);
     });
 
+    socket.on('group/avatar', (payload) => {
+      if (!payload?.roomId || !payload?.avatar) return;
+
+      setInboxes((prev) =>
+        prev.map((elem) =>
+          elem.roomType === 'group' && elem.roomId === payload.roomId
+            ? {
+                ...elem,
+                group: {
+                  ...elem.group,
+                  avatar: payload.avatar,
+                },
+              }
+            : elem
+        )
+      );
+
+      if (
+        chatRoom?.data?.roomType === 'group' &&
+        chatRoom?.data?.roomId === payload.roomId
+      ) {
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              group: {
+                ...chatRoom.data.group,
+                avatar: payload.avatar,
+              },
+            },
+          })
+        );
+      }
+    });
+
     return () => {
       socket.off('group/create');
       socket.off('group/exit');
       socket.off('inbox/read');
       socket.off('inbox/delete');
+      socket.off('group/avatar');
     };
-  }, [setting]);
+  }, [setting, chatRoom]);
 
   useEffect(() => {
     if (!page.calls) return undefined;
@@ -591,10 +1027,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       const isMuted = isMutedInbox(payload);
 
       if (isNotSender && !setting.mute && !isMuted) {
-        const audio = new Audio('assets/sound/default-ringtone.mp3');
-        audio.volume = 1;
-
-        audio.play();
+        playTone(getInboxTone(payload));
 
         const isGroup = payload.roomType === 'group';
         const sender = payload.owners.find(
@@ -625,7 +1058,47 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     return () => {
       socket.off('inbox/find');
     };
-  }, [setting.mute]);
+  }, [setting.mute, master?._id]);
+
+  useEffect(() => {
+    if (!chatRoom?.isOpen || !chatRoom?.data) {
+      setPrivacyShieldVisible(false);
+      return undefined;
+    }
+    if (!isAdvancedPrivacyEnabled(chatRoom.data)) {
+      setPrivacyShieldVisible(false);
+      return undefined;
+    }
+
+    let hideTimer = null;
+    const showShield = () => {
+      setPrivacyShieldVisible(true);
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => setPrivacyShieldVisible(false), 1200);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === 'PrintScreen') {
+        showShield();
+      }
+    };
+    const onHidden = () => {
+      if (document.hidden) showShield();
+    };
+    const onBlur = () => showShield();
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onHidden);
+
+    return () => {
+      if (hideTimer) clearTimeout(hideTimer);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onHidden);
+      setPrivacyShieldVisible(false);
+    };
+  }, [chatRoom?.isOpen, chatRoom?.data, master?._id]);
 
   useEffect(
     () => () => {
@@ -640,8 +1113,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
   return (
     <div
       id="inbox"
-      className="relative pb-16 md:pb-0 z-0 flex flex-col overflow-y-auto bg-white scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400 dark:bg-spill-950 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600"
+      className="relative pb-[108px] md:pb-0 z-0 flex flex-col overflow-y-auto bg-white scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400 dark:bg-spill-950 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600"
     >
+      {privacyShieldVisible && (
+        <div className="fixed inset-0 z-[990] bg-black pointer-events-none" />
+      )}
       {unlockDialog.open && (
         <div
           className="absolute inset-0 z-[320] grid place-items-center bg-slate-900/50 px-4"
@@ -864,6 +1340,95 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
             <i className="text-amber-500">
               <bi.BiStar size={18} />
             </i>
+          </div>
+        </div>
+      )}
+      {showStatusRail && (
+        <div className="border-b border-slate-200 px-3 py-2 dark:border-spill-700">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-700 dark:text-spill-100">
+              Status
+            </p>
+            <button
+              type="button"
+              className="text-xs font-semibold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+              onClick={() => dispatch(setPage({ target: 'status', data: true }))}
+            >
+              Open status
+            </button>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              type="button"
+              className="w-[74px] shrink-0 grid gap-1 justify-items-center"
+              onClick={() => dispatch(setPage({ target: 'status', data: true }))}
+            >
+              <span className="relative rounded-full p-[2px] bg-gradient-to-tr from-sky-500 via-cyan-400 to-emerald-400">
+                <img
+                  src={
+                    resolveUploadUrl(master?.avatar) ||
+                    'assets/images/default-avatar.png'
+                  }
+                  alt=""
+                  className="h-14 w-14 rounded-full border-2 border-white object-cover dark:border-spill-900"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-sky-600 text-white ring-2 ring-white dark:ring-spill-900">
+                  <bi.BiPlus size={13} />
+                </span>
+              </span>
+              <span className="truncate text-[11px] font-medium">Create</span>
+            </button>
+
+            {myStatusGroup && (
+              <button
+                type="button"
+                className="w-[74px] shrink-0 grid gap-1 justify-items-center"
+                onClick={() => openStatusViewer(myStatusGroup.userId)}
+              >
+                <span className="rounded-full p-[2px] bg-gradient-to-tr from-rose-500 via-orange-400 to-amber-300">
+                  <img
+                    src={
+                      resolveUploadUrl(myStatusGroup.profile.avatar) ||
+                      'assets/images/default-avatar.png'
+                    }
+                    alt=""
+                    className="h-14 w-14 rounded-full border-2 border-white object-cover dark:border-spill-900"
+                  />
+                </span>
+                <span className="truncate text-[11px] font-medium">My status</span>
+              </button>
+            )}
+
+            {statusLoaded &&
+              friendStatusGroups.map((group) => (
+                <button
+                  key={group.userId}
+                  type="button"
+                  className="w-[74px] shrink-0 grid gap-1 justify-items-center"
+                  onClick={() => openStatusViewer(group.userId)}
+                >
+                  <span className="rounded-full p-[2px] bg-gradient-to-tr from-rose-500 via-orange-400 to-amber-300">
+                    <img
+                      src={
+                        resolveUploadUrl(group.profile.avatar) ||
+                        'assets/images/default-avatar.png'
+                      }
+                      alt=""
+                      className="h-14 w-14 rounded-full border-2 border-white object-cover dark:border-spill-900"
+                    />
+                  </span>
+                  <span className="w-full truncate text-[11px] font-medium">
+                    {group.profile.fullname}
+                  </span>
+                </button>
+              ))}
+            {!statusLoaded && (
+              <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-spill-800 dark:text-spill-300">
+                <i className="animate-spin">
+                  <bi.BiLoaderAlt size={17} />
+                </i>
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -1365,8 +1930,322 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
             </div>
           );
         })}
+      {statusViewer.open &&
+        viewingStatusItem &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[960] bg-black/90 text-white grid grid-rows-[auto_1fr_auto]">
+          <div className="px-3 pt-3 pb-2 border-b border-white/20">
+            <div className="flex gap-1 mb-2">
+              {viewingStatusItems.map((item, index) => (
+                <span
+                  key={item._id}
+                  className="h-1 flex-1 rounded-full bg-white/20 overflow-hidden"
+                >
+                  <span
+                    className={`h-full block ${
+                      index < statusViewer.index
+                        ? 'bg-white'
+                        : index === statusViewer.index
+                          ? 'bg-white/90 animate-pulse'
+                          : 'bg-transparent'
+                    }`}
+                  />
+                </span>
+              ))}
+            </div>
+            <div className="h-10 flex justify-between items-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src={
+                    resolveUploadUrl(viewingStatusGroup?.profile?.avatar) ||
+                    'assets/images/default-avatar.png'
+                  }
+                  alt=""
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+                <span className="min-w-0">
+                  <p className="font-semibold truncate">
+                    {viewingStatusGroup?.profile?.fullname}
+                  </p>
+                  <p className="text-xs opacity-75">
+                    {moment(viewingStatusItem.createdAt).fromNow()}
+                  </p>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {viewingStatusItem.isMine && (
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20"
+                    onClick={openStatusActivity}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <bi.BiShow size={15} />
+                      {viewingStatusItem.viewCount || 0}
+                    </span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-white/15"
+                  onClick={closeStatusViewer}
+                >
+                  <bi.BiX size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+              {statusReactionBursts.map((item) => (
+                <span
+                  key={item.id}
+                  className="status-reaction-burst"
+                  style={{
+                    left: `${item.left}%`,
+                    '--burst-drift': `${item.drift}px`,
+                    '--burst-duration': `${item.duration}ms`,
+                  }}
+                >
+                  {item.emoji}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              aria-label="Previous status"
+              className="absolute left-0 top-0 bottom-0 w-1/3 z-10"
+              onClick={() => stepStatusViewer(-1)}
+              disabled={statusViewer.index <= 0}
+            />
+            <button
+              type="button"
+              aria-label="Next status"
+              className="absolute right-0 top-0 bottom-0 w-1/3 z-10"
+              onClick={() => stepStatusViewer(1)}
+              disabled={statusViewer.index >= viewingStatusItems.length - 1}
+            />
+
+            {viewingStatusItem.type === 'text' && (
+              <div
+                className="absolute inset-0 flex items-center justify-center p-8"
+                style={{ backgroundColor: viewingStatusItem.bgColor || '#0ea5e9' }}
+              >
+                <p className="text-center text-xl font-semibold whitespace-pre-wrap break-words">
+                  {viewingStatusItem.text}
+                </p>
+              </div>
+            )}
+
+            {viewingStatusItem.type === 'photo' && (
+              <div className="absolute inset-0 grid grid-rows-[1fr_auto] bg-black">
+                <div className="min-h-0 flex items-center justify-center px-3 py-3 md:px-8 md:py-6">
+                  <div className="w-full max-w-[min(92vw,980px)] h-full flex items-center justify-center">
+                    <img
+                      src={resolveUploadUrl(viewingStatusItem.mediaUrl)}
+                      alt=""
+                      className="max-h-full max-w-full h-auto w-auto object-contain rounded-md"
+                    />
+                  </div>
+                </div>
+                {viewingStatusItem.text && (
+                  <div className="w-full max-w-[min(92vw,980px)] mx-auto">
+                    <p className="p-4 bg-black/60 text-sm whitespace-pre-wrap break-words">
+                      {viewingStatusItem.text}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {viewingStatusItem.type === 'video' && (
+              <div className="absolute inset-0 grid grid-rows-[1fr_auto] bg-black">
+                <div className="min-h-0 flex items-center justify-center px-3 py-3 md:px-8 md:py-6">
+                  <div className="w-full max-w-[min(92vw,980px)] h-full flex items-center justify-center">
+                    <video
+                      src={resolveUploadUrl(viewingStatusItem.mediaUrl)}
+                      controls
+                      autoPlay
+                      onEnded={() => {
+                        if (statusViewer.index >= viewingStatusItems.length - 1) {
+                          closeStatusViewer();
+                        } else {
+                          stepStatusViewer(1);
+                        }
+                      }}
+                      className="max-h-full max-w-full h-auto w-auto object-contain rounded-md"
+                    >
+                      <track kind="captions" />
+                    </video>
+                  </div>
+                </div>
+                {viewingStatusItem.text && (
+                  <div className="w-full max-w-[min(92vw,980px)] mx-auto">
+                    <p className="p-4 bg-black/60 text-sm whitespace-pre-wrap break-words">
+                      {viewingStatusItem.text}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {viewingStatusItem.isMine ? (
+            <div className="px-3 py-2 border-t border-white/20">
+              <div className="w-full max-w-[min(92vw,980px)] mx-auto flex items-center justify-between">
+                <p className="text-sm opacity-85">
+                  Views {viewingStatusItem.viewCount || 0} | Replies{' '}
+                  {viewingStatusItem.replyCount || 0}
+                </p>
+                <button
+                  type="button"
+                  className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 grid place-items-center"
+                  onClick={openStatusActivity}
+                  title="View details"
+                >
+                  <bi.BiListUl size={18} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="px-3 py-2 border-t border-white/20">
+              <div className="w-full max-w-[min(92vw,980px)] mx-auto grid gap-2">
+                <div className="flex items-center gap-2">
+                  {[
+                    '\u2764\uFE0F',
+                    '\uD83D\uDD25',
+                    '\uD83D\uDE02',
+                    '\uD83D\uDE2E',
+                    '\uD83D\uDE22',
+                    '\uD83D\uDC4F',
+                  ].map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={`h-8 w-8 rounded-full text-lg grid place-items-center transition-all duration-150 bg-white/10 hover:bg-white/20 ${
+                        statusReactionPulse === emoji ? 'scale-125 bg-sky-500/40' : ''
+                      }`}
+                      onClick={() => sendStatusReaction(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={statusReplyText}
+                    onChange={(e) => setStatusReplyText(e.target.value)}
+                    className="h-10 rounded-lg px-3 bg-white/10 text-sm placeholder:text-white/60"
+                    placeholder="Reply to this status..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') sendStatusReply();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="h-10 w-10 rounded-lg bg-sky-600 hover:bg-sky-500 grid place-items-center"
+                    onClick={sendStatusReply}
+                    title="Send reply"
+                  >
+                    <bi.BiSend size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          </div>,
+          document.body
+        )}
+
+      {statusActivity.open &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[970] bg-black/60"
+            aria-hidden
+            onClick={() => setStatusActivity((prev) => ({ ...prev, open: false }))}
+          >
+            <div
+              className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl max-h-[78vh] overflow-y-auto rounded-t-3xl border border-white/10 bg-[#1f2329] px-4 pb-6 pt-2 text-white shadow-2xl status-activity-sheet"
+              aria-hidden
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto mb-2 h-1.5 w-14 rounded-full bg-white/30" />
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-3xl font-bold leading-none">
+                  {statusActivity.counts.views} viewers
+                </h3>
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-white/10"
+                  onClick={() =>
+                    setStatusActivity((prev) => ({ ...prev, open: false }))
+                  }
+                >
+                  <bi.BiX size={20} />
+                </button>
+              </div>
+
+              {statusActivity.loading ? (
+                <div className="py-8 flex justify-center">
+                  <i className="animate-spin">
+                    <bi.BiLoaderAlt size={22} />
+                  </i>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {statusActivityRows.length === 0 && (
+                    <p className="text-sm text-white/70">No viewers yet</p>
+                  )}
+                  {statusActivityRows.map((row) => (
+                    <div
+                      key={`status-activity-row-${row.userId}`}
+                      className="grid grid-cols-[auto_1fr] gap-3 items-start"
+                    >
+                      <img
+                        src={
+                          resolveUploadUrl(row.profile?.avatar) ||
+                          'assets/images/default-avatar.png'
+                        }
+                        alt=""
+                        className="h-12 w-12 rounded-full object-cover"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-xl leading-tight">
+                          {row.profile?.fullname || 'User'}
+                        </p>
+                        {row.reactions.length > 0 && (
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            {row.reactions.map((item, index) => (
+                              <span
+                                key={`reaction-${row.userId}-${index}`}
+                                className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-white/10 px-1 text-base leading-none"
+                              >
+                                {item.emoji}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {row.replies.length > 0 && (
+                          <p className="mt-0.5 truncate text-base text-white/85">
+                            {row.replies[0].text}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
 
 export default Inbox;
+

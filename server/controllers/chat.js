@@ -73,6 +73,35 @@ const resolveArchivedByAfterIncoming = async ({
   return pullFromArray(currentArchivedBy, toUnarchive);
 };
 
+const getPrivateChatBlockState = async ({ senderId, ownersId }) => {
+  const roomOwners = asArray(ownersId).filter(Boolean);
+  if (!senderId || roomOwners.length < 2 || !roomOwners.includes(senderId)) {
+    return null;
+  }
+
+  const receiverId = roomOwners.find((ownerId) => ownerId !== senderId);
+  if (!receiverId) return null;
+
+  const [senderSetting, receiverSetting] = await Promise.all([
+    SettingModel.findOne({
+      where: { userId: senderId },
+      attributes: ['blockedUserIds'],
+    }),
+    SettingModel.findOne({
+      where: { userId: receiverId },
+      attributes: ['blockedUserIds'],
+    }),
+  ]);
+
+  const senderBlocked = asArray(toPlain(senderSetting)?.blockedUserIds);
+  const receiverBlocked = asArray(toPlain(receiverSetting)?.blockedUserIds);
+
+  return {
+    senderBlockedReceiver: senderBlocked.includes(receiverId),
+    receiverBlockedSender: receiverBlocked.includes(senderId),
+  };
+};
+
 exports.upload = async (req, res) => {
   try {
     logger.info('CHAT_UPLOAD_START', {
@@ -256,6 +285,24 @@ exports.sendFile = async (req, res) => {
         return;
       }
     }
+    if (roomType === 'private') {
+      const privateBlock = await getPrivateChatBlockState({
+        senderId,
+        ownersId: safeOwners,
+      });
+      if (
+        privateBlock?.senderBlockedReceiver ||
+        privateBlock?.receiverBlockedSender
+      ) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'You cannot send messages in this chat',
+        });
+        return;
+      }
+    }
 
     const originalname = filePayload.originalname || 'attachment';
     const inferredFormat = path
@@ -407,12 +454,16 @@ exports.findByRoomId = async (req, res) => {
 
 exports.findMedia = async (req, res) => {
   try {
+    const requestedRoomId = String(req.query.roomId || '').trim();
     const allInboxes = await InboxModel.findAll();
-    const roomDocs = toPlainMany(allInboxes).filter(
-      (inbox) =>
+    const roomDocs = toPlainMany(allInboxes).filter((inbox) => {
+      const belongsToUser =
         asArray(inbox.ownersId).includes(req.user._id) &&
-        !asArray(inbox.deletedBy).includes(req.user._id)
-    );
+        !asArray(inbox.deletedBy).includes(req.user._id);
+      if (!belongsToUser) return false;
+      if (!requestedRoomId) return true;
+      return inbox.roomId === requestedRoomId;
+    });
 
     const roomsId = roomDocs.map((doc) => doc.roomId);
     if (roomsId.length === 0) {

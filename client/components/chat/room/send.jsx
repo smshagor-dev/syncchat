@@ -38,6 +38,7 @@ function Send({ setChats, setNewMessage, control }) {
   const isBlocked =
     !isGroup &&
     setting?.blockedUserIds?.includes(chatRoom.data?.profile?.userId);
+  const [isBlockedByFriend, setIsBlockedByFriend] = useState(false);
 
   const [emojiBoard, setEmojiBoard] = useState(false);
   const [form, setForm] = useState({
@@ -121,7 +122,7 @@ function Send({ setChats, setNewMessage, control }) {
   };
 
   const startVoiceRecording = async () => {
-    if (isBlocked || isRecording || isSendingVoice) return;
+    if (isBlocked || isBlockedByFriend || isRecording || isSendingVoice) return;
     if (!canSendInCurrentRoom()) return;
 
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -260,7 +261,7 @@ function Send({ setChats, setNewMessage, control }) {
   };
 
   const handleSubmit = () => {
-    if (isBlocked) return;
+    if (isBlocked || isBlockedByFriend) return;
     if (form.text.length > 0 || form.file) {
       if (canSendInCurrentRoom()) {
         socket.emit('chat/insert', {
@@ -324,10 +325,76 @@ function Send({ setChats, setNewMessage, control }) {
       }, 150);
     });
 
+    socket.on('chat/relay-update', ({ chatId, text, replyTo }) => {
+      if (!chatId) return;
+      setChats((prev) =>
+        (prev || []).map((chat) =>
+          chat._id === chatId
+            ? {
+                ...chat,
+                text: text ?? chat.text,
+                replyTo: replyTo ?? null,
+                reply: null,
+              }
+            : chat
+        )
+      );
+    });
+
     return () => {
       socket.off('chat/insert');
+      socket.off('chat/relay-update');
     };
   }, []);
+
+  useEffect(() => {
+    if (isGroup) {
+      setIsBlockedByFriend(false);
+      return undefined;
+    }
+
+    const friendId = chatRoom?.data?.profile?.userId;
+    if (!friendId) {
+      setIsBlockedByFriend(false);
+      return undefined;
+    }
+
+    let canceled = false;
+    axios
+      .get(`/contacts/${friendId}/block-state`)
+      .then(({ data }) => {
+        if (canceled) return;
+        setIsBlockedByFriend(!!data?.payload?.blockedYou);
+      })
+      .catch(() => {
+        if (canceled) return;
+        setIsBlockedByFriend(false);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [isGroup, chatRoom?.data?.profile?.userId, chatRoom?.refreshId]);
+
+  useEffect(() => {
+    const onBlockUpdate = (payload) => {
+      if (isGroup) return;
+      const friendId = chatRoom?.data?.profile?.userId;
+      if (!friendId) return;
+
+      if (
+        payload?.actorId === friendId &&
+        payload?.targetId === master?._id
+      ) {
+        setIsBlockedByFriend(!!payload?.blocked);
+      }
+    };
+
+    socket.on('contact/block-update', onBlockUpdate);
+    return () => {
+      socket.off('contact/block-update', onBlockUpdate);
+    };
+  }, [isGroup, chatRoom?.data?.profile?.userId, master?._id]);
 
   useEffect(
     () => () => {
@@ -347,6 +414,7 @@ function Send({ setChats, setNewMessage, control }) {
   const hasText = form.text.trim().length > 0;
   const composerMode = (() => {
     if (isBlocked) return 'blocked';
+    if (isBlockedByFriend) return 'blockedByFriend';
     if (showAdminOnlyNotice) return 'adminOnly';
     return 'normal';
   })();
@@ -406,6 +474,20 @@ function Send({ setChats, setNewMessage, control }) {
             );
           }
 
+          if (composerMode === 'blockedByFriend') {
+            const blockerName = chatRoom?.data?.profile?.fullname || 'User';
+            return (
+              <div className="col-span-3 h-11 px-3 rounded-lg border border-rose-200 bg-rose-50 flex items-center justify-center gap-2 dark:border-rose-800 dark:bg-rose-900/20">
+                <i className="text-rose-600 dark:text-rose-400">
+                  <bi.BiBlock size={18} />
+                </i>
+                <p className="text-xs sm:text-sm font-medium text-rose-700 dark:text-rose-300">
+                  {`${blockerName} Block You. you can not send message.`}
+                </p>
+              </div>
+            );
+          }
+
           return (
             <>
               <span className="flex">
@@ -424,7 +506,7 @@ function Send({ setChats, setNewMessage, control }) {
                       (!isGroup && profile.active) ||
                       (isGroup && participant)
                     ) {
-                      if (isBlocked) return;
+                      if (isBlocked || isBlockedByFriend) return;
                       setEmojiBoard((prev) => !prev);
                     }
                   }}
@@ -448,7 +530,7 @@ function Send({ setChats, setNewMessage, control }) {
                       (!isGroup && profile.active) ||
                       (isGroup && participant)
                     ) {
-                      if (isBlocked) return;
+                      if (isBlocked || isBlockedByFriend) return;
                       dispatch(setModal({ target: 'attachMenu' }));
                     }
                   }}

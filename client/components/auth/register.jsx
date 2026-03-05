@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import config from '../../config';
+import SocialAuth from './socialAuth';
 
 function Register({ setRespond }) {
   const [process, setProcess] = useState(false);
@@ -214,6 +215,11 @@ function Register({ setRespond }) {
           <p>Create account</p>
         )}
       </button>
+
+      <SocialAuth
+        setRespond={setRespond}
+        rememberValue={form.username}
+      />
     </form>
   );
 }

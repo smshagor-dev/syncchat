@@ -34,6 +34,11 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    notificationToneBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {},
+    },
     pinnedBy: {
       type: DataTypes.JSON,
       allowNull: false,
@@ -50,6 +55,11 @@ const InboxModel = sequelize.define(
       defaultValue: [],
     },
     markUnreadBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    privacyShieldBy: {
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: [],

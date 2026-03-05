@@ -6,7 +6,11 @@ import { setModal } from '../../../redux/features/modal';
 import { setPage } from '../../../redux/features/page';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
 
-function Sidebar({ inboxes }) {
+function Sidebar({
+  inboxes,
+  mobileOpen = false,
+  onCloseMobile = () => {},
+}) {
   const dispatch = useDispatch();
   const master = useSelector((state) => state.user.master);
   const page = useSelector((state) => state.page);
@@ -33,6 +37,7 @@ function Sidebar({ inboxes }) {
     !page.list &&
     !page.communities &&
     !page.media &&
+    !page.policy &&
     !page.starred &&
     !page.profile &&
     !page.selectParticipant;
@@ -47,6 +52,7 @@ function Sidebar({ inboxes }) {
       'archive',
       'list',
       'media',
+      'policy',
       'starred',
       'profile',
       'selectParticipant',
@@ -65,6 +71,7 @@ function Sidebar({ inboxes }) {
       'archive',
       'list',
       'media',
+      'policy',
       'starred',
       'profile',
       'selectParticipant',
@@ -140,86 +147,193 @@ function Sidebar({ inboxes }) {
     },
   ];
 
+  const runSidebarAction = (action) => {
+    action();
+    if (mobileOpen) onCloseMobile();
+  };
+
   return (
-    <aside className="hidden md:flex h-full w-[72px] flex-col items-center border-r border-slate-700/70 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 py-3 text-slate-300 dark:border-spill-700 dark:from-spill-900 dark:via-spill-900 dark:to-spill-950">
-      <div className="flex w-full flex-col items-center gap-2">
-        {quickActionsTop.map((item) => (
-          <button
-            key={item.target}
-            type="button"
-            title={item.target}
-            className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
-              item.active
-                ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              item.onClick();
-            }}
-          >
-            {item.icon}
-            {item.badge && (
-              <span
-                className={`absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
-              >
-                {item.badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+    <>
+      <aside className="hidden md:flex h-full w-[72px] flex-col items-center border-r border-slate-700/70 bg-slate-900 py-3 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
+        <div className="flex w-full flex-col items-center gap-2">
+          {quickActionsTop.map((item) => (
+            <button
+              key={item.target}
+              type="button"
+              title={item.target}
+              className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
+                item.active
+                  ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                item.onClick();
+              }}
+            >
+              {item.icon}
+              {item.badge && (
+                <span
+                  className={`absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
+                >
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
-      <div className="my-4 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+        <div className="my-4 h-px w-9 bg-slate-700 dark:bg-spill-700" />
 
-      <div className="mt-auto flex w-full flex-col items-center gap-2">
-        {quickActionsBottom.map((item) => (
+        <div className="mt-auto flex w-full flex-col items-center gap-2">
+          {quickActionsBottom.map((item) => (
+            <button
+              key={item.target}
+              type="button"
+              title={item.target}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+              onClick={(e) => {
+                e.stopPropagation();
+                item.onClick();
+              }}
+            >
+              {item.icon}
+            </button>
+          ))}
           <button
-            key={item.target}
             type="button"
-            title={item.target}
+            title="settings"
             className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
             onClick={(e) => {
               e.stopPropagation();
-              item.onClick();
+              dispatch(setPage({ target: 'setting' }));
             }}
           >
-            {item.icon}
+            <bi.BiCog size={20} />
           </button>
-        ))}
-        <button
-          type="button"
-          title="settings"
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
-          onClick={(e) => {
-            e.stopPropagation();
-            dispatch(setPage({ target: 'setting' }));
-          }}
-        >
-          <bi.BiCog size={20} />
-        </button>
-        <div className="my-2 h-px w-9 bg-slate-700 dark:bg-spill-700" />
-        <button
-          type="button"
-          className="overflow-hidden rounded-full border-2 border-slate-700 transition hover:border-sky-400 dark:border-spill-600"
-          onClick={(e) => {
-            e.stopPropagation();
-            dispatch(
-              setPage({
-                target: 'profile',
-                data: master._id,
-              })
-            );
-          }}
-        >
-          <img
-            src={sidebarAvatar}
-            alt=""
-            className="h-9 w-9 rounded-full object-cover"
+          <div className="my-2 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+          <button
+            type="button"
+            className="overflow-hidden rounded-full border-2 border-slate-700 transition hover:border-sky-400 dark:border-spill-600"
+            onClick={(e) => {
+              e.stopPropagation();
+              dispatch(
+                setPage({
+                  target: 'profile',
+                  data: master._id,
+                })
+              );
+            }}
+          >
+            <img
+              src={sidebarAvatar}
+              alt=""
+              className="h-9 w-9 rounded-full object-cover"
+            />
+          </button>
+        </div>
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-[120] md:hidden" aria-hidden>
+          <div
+            className="absolute inset-0 bg-black/45"
+            aria-hidden
+            onClick={onCloseMobile}
           />
-        </button>
-      </div>
-    </aside>
+          <aside className="absolute left-0 top-0 h-[100dvh] min-h-screen w-[86px] flex flex-col items-center border-r border-slate-700/70 bg-slate-900 py-3 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
+            <div className="w-full px-2 mb-2 flex justify-end">
+              <button
+                type="button"
+                className="p-2 rounded-full text-slate-300 hover:bg-slate-800 dark:hover:bg-spill-700"
+                onClick={onCloseMobile}
+              >
+                <bi.BiX size={18} />
+              </button>
+            </div>
+            <div className="flex w-full flex-col items-center gap-2">
+              {quickActionsTop.map((item) => (
+                <button
+                  key={`mobile-${item.target}`}
+                  type="button"
+                  title={item.target}
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
+                    item.active
+                      ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    runSidebarAction(item.onClick);
+                  }}
+                >
+                  {item.icon}
+                  {item.badge && (
+                    <span
+                      className={`absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="my-4 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+            <div className="mt-auto flex w-full flex-col items-center gap-2">
+              {quickActionsBottom.map((item) => (
+                <button
+                  key={`mobile-${item.target}`}
+                  type="button"
+                  title={item.target}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    runSidebarAction(item.onClick);
+                  }}
+                >
+                  {item.icon}
+                </button>
+              ))}
+              <button
+                type="button"
+                title="settings"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  runSidebarAction(() =>
+                    dispatch(setPage({ target: 'setting' }))
+                  );
+                }}
+              >
+                <bi.BiCog size={20} />
+              </button>
+              <div className="my-2 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+              <button
+                type="button"
+                className="overflow-hidden rounded-full border-2 border-slate-700 transition hover:border-sky-400 dark:border-spill-600"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  runSidebarAction(() =>
+                    dispatch(
+                      setPage({
+                        target: 'profile',
+                        data: master._id,
+                      })
+                    )
+                  );
+                }}
+              >
+                <img
+                  src={sidebarAvatar}
+                  alt=""
+                  className="h-9 w-9 rounded-full object-cover"
+                />
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 

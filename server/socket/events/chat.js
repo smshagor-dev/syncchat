@@ -265,12 +265,11 @@ module.exports = (socket) => {
 
         const { receiverId, senderBlockedReceiver, receiverBlockedSender } =
           blockState;
-        if (senderBlockedReceiver) return;
+        if (senderBlockedReceiver || receiverBlockedSender) return;
 
-        hiddenOwners = receiverBlockedSender ? [receiverId] : [];
-        visibleOwners = receiverBlockedSender
-          ? visibleOwners.filter((ownerId) => ownerId !== receiverId)
-          : visibleOwners;
+        hiddenOwners = [];
+        visibleOwners = visibleOwners.filter((ownerId) => ownerId !== receiverId);
+        visibleOwners = addToSet(visibleOwners, [receiverId]);
 
         const receiverProfile = await ProfileModel.findOne({
           where: { userId: receiverId },
@@ -665,12 +664,11 @@ module.exports = (socket) => {
 
         const { receiverId, senderBlockedReceiver, receiverBlockedSender } =
           blockState;
-        if (senderBlockedReceiver) return;
+        if (senderBlockedReceiver || receiverBlockedSender) return;
 
-        hiddenOwners = receiverBlockedSender ? [receiverId] : [];
-        visibleOwners = receiverBlockedSender
-          ? visibleOwners.filter((ownerId) => ownerId !== receiverId)
-          : visibleOwners;
+        hiddenOwners = [];
+        visibleOwners = visibleOwners.filter((ownerId) => ownerId !== receiverId);
+        visibleOwners = addToSet(visibleOwners, [receiverId]);
 
         const receiverProfile = await ProfileModel.findOne({
           where: { userId: receiverId },
@@ -826,11 +824,8 @@ module.exports = (socket) => {
             roomId: toRoomId,
           });
           if (blockState === true) return;
-          if (blockState.senderBlockedReceiver) return;
-          if (blockState.receiverBlockedSender) {
-            visibleOwners = visibleOwners.filter(
-              (ownerId) => ownerId !== blockState.receiverId
-            );
+          if (blockState.senderBlockedReceiver || blockState.receiverBlockedSender) {
+            return;
           }
         }
 

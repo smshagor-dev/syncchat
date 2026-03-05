@@ -93,7 +93,33 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-04`
+- Last updated: `2026-03-05`
+
+## Recent Changes (2026-03-05)
+
+- Added real-time status post delivery using sockets:
+  - new status broadcasts instantly to owner + friends (`status/new`)
+  - inbox status rail and status page now update without manual refresh
+- Updated status rail "Create" item to show current user avatar with add badge.
+- Improved logout flow:
+  - fixed chat-list 3-dot menu logout modal open behavior
+  - added logout option at the end of Settings page
+  - fixed signout modal popup layering/positioning (`fixed inset` behavior)
+- Added social auth support (DB upsert + token flow) for:
+  - Google
+  - Facebook
+  - Telegram
+- Added social auth endpoints:
+  - `GET /api/users/social-config`
+  - `POST /api/users/social-auth`
+- Updated env docs for social providers:
+  - `GOOGLE_CLIENT_ID`
+  - `FACEBOOK_APP_ID`
+  - `TELEGRAM_BOT_USERNAME`
+  - `TELEGRAM_BOT_TOKEN`
+- Updated login/register social UI:
+  - Google/Facebook/Telegram shown in one horizontal row
+  - improved responsive sizing for mobile layout
 
 ## Recent Changes (2026-03-04)
 

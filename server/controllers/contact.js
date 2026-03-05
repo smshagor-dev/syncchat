@@ -306,14 +306,64 @@ const updateBlockedUsers = async (userId, friendId, shouldBlock) => {
   return [...blocked];
 };
 
+exports.blockState = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { friendId } = req.params;
+
+    const [mySetting, friendSetting] = await Promise.all([
+      SettingModel.findOne({
+        where: { userId },
+        attributes: ['blockedUserIds'],
+      }),
+      SettingModel.findOne({
+        where: { userId: friendId },
+        attributes: ['blockedUserIds'],
+      }),
+    ]);
+
+    const myBlocked = toPlain(mySetting)?.blockedUserIds || [];
+    const friendBlocked = toPlain(friendSetting)?.blockedUserIds || [];
+
+    response({
+      res,
+      payload: {
+        youBlocked: myBlocked.includes(friendId),
+        blockedYou: friendBlocked.includes(userId),
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
 exports.block = async (req, res) => {
   try {
     const { friendId } = req.params;
+    const actorId = req.user._id;
     const blockedUserIds = await updateBlockedUsers(
-      req.user._id,
+      actorId,
       friendId,
       true
     );
+
+    if (global?.io) {
+      global.io.to(friendId).emit('contact/block-update', {
+        actorId,
+        targetId: friendId,
+        blocked: true,
+      });
+      global.io.to(actorId).emit('contact/block-update', {
+        actorId,
+        targetId: friendId,
+        blocked: true,
+      });
+    }
 
     response({
       res,
@@ -333,11 +383,25 @@ exports.block = async (req, res) => {
 exports.unblock = async (req, res) => {
   try {
     const { friendId } = req.params;
+    const actorId = req.user._id;
     const blockedUserIds = await updateBlockedUsers(
-      req.user._id,
+      actorId,
       friendId,
       false
     );
+
+    if (global?.io) {
+      global.io.to(friendId).emit('contact/block-update', {
+        actorId,
+        targetId: friendId,
+        blocked: false,
+      });
+      global.io.to(actorId).emit('contact/block-update', {
+        actorId,
+        targetId: friendId,
+        blocked: false,
+      });
+    }
 
     response({
       res,

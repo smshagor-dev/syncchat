@@ -10,6 +10,7 @@ const group = require('./group');
 const avatar = require('./avatar');
 const status = require('./status');
 const community = require('./community');
+const report = require('./report');
 
 router.use(user);
 router.use(chat);
@@ -21,5 +22,6 @@ router.use(group);
 router.use(avatar);
 router.use(status);
 router.use(community);
+router.use(report);
 
 module.exports = router;

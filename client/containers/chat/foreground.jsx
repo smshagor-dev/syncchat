@@ -6,6 +6,7 @@ import * as bi from 'react-icons/bi';
 import * as fg from '../../components/chat/foreground';
 import * as page from '../../pages';
 import Sidebar from '../../components/chat/foreground/sidebar';
+import MobileNav from '../../components/chat/foreground/mobileNav';
 import { setChatRoom } from '../../redux/features/room';
 import {
   setRefreshInbox,
@@ -22,6 +23,7 @@ function ForeGround() {
   const [inboxes, setInboxes] = useState(null);
   const [search, setSearch] = useState('');
   const [chatFilter, setChatFilter] = useState('all');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [deepLink, setDeepLink] = useState({
     username: null,
     groupToken: null,
@@ -90,6 +92,12 @@ function ForeGround() {
   useEffect(() => {
     setChatFilter('all');
   }, [search]);
+
+  useEffect(() => {
+    if (chatRoom?.isOpen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [chatRoom?.isOpen]);
 
   const selectedInboxRows =
     Array.isArray(selectedInboxes) && selectedInboxes.length > 0
@@ -355,6 +363,7 @@ function ForeGround() {
       <page.setting />
       <page.status />
       <page.media />
+      <page.policy />
       <page.contact />
       <page.communities />
       <page.profile />
@@ -362,12 +371,18 @@ function ForeGround() {
 
       <fg.minibox />
       <fg.openContact />
-      <Sidebar inboxes={inboxes} />
+      <MobileNav />
+      <Sidebar
+        inboxes={inboxes}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
       <div className="grid grid-rows-[auto_1fr] overflow-hidden">
         <fg.header
           setSearch={setSearch}
           chatFilter={chatFilter}
           setChatFilter={setChatFilter}
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           filterCounts={{
             all: visibleInboxes.length,
             unread: unreadCount,

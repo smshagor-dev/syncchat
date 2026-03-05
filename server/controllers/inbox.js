@@ -27,6 +27,47 @@ exports.find = async (req, res) => {
   }
 };
 
+exports.findByRoomId = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const userId = req.user?._id;
+    const inboxes = await Inbox.find({ roomId });
+    const inbox = inboxes[0];
+
+    if (!inbox) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Inbox not found',
+      });
+      return;
+    }
+
+    if (!asArray(inbox.ownersId).includes(userId)) {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Forbidden',
+      });
+      return;
+    }
+
+    response({
+      res,
+      payload: inbox,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
 const toggleForUser = (current, userId, nextValue = null) => {
   const values = asArray(current);
   const enabled =
@@ -69,6 +110,14 @@ exports.updatePreferences = async (req, res) => {
       case 'mute':
         updates.mutedBy = toggleForUser(inbox.mutedBy, userId, value);
         break;
+      case 'notificationTone': {
+        const tone = String(value || '').trim() || 'default-ringtone';
+        updates.notificationToneBy = {
+          ...(inbox.notificationToneBy || {}),
+          [userId]: tone,
+        };
+        break;
+      }
       case 'pin':
         updates.pinnedBy = toggleForUser(inbox.pinnedBy, userId, value);
         break;
@@ -80,6 +129,13 @@ exports.updatePreferences = async (req, res) => {
         break;
       case 'markUnread':
         updates.markUnreadBy = toggleForUser(inbox.markUnreadBy, userId, value);
+        break;
+      case 'advancedPrivacy':
+        updates.privacyShieldBy = toggleForUser(
+          inbox.privacyShieldBy,
+          userId,
+          value
+        );
         break;
       case 'chatLock': {
         if (inbox.roomType !== 'private') {

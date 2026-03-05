@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth');
 const ctrl = require('../controllers/inbox');
 
 router.get('/inboxes', authenticate, ctrl.find);
+router.get('/inboxes/:roomId', authenticate, ctrl.findByRoomId);
 router.patch(
   '/inboxes/:roomId/preferences',
   authenticate,

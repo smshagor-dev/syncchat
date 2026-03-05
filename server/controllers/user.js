@@ -1,6 +1,8 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const { Op } = require('sequelize');
 
 const UserModel = require('../db/models/user');
@@ -17,10 +19,304 @@ const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 
+const JWT_SECRET = 'shhhhh';
+
+const SOCIAL_EMAIL_DOMAIN = 'social.syncchat.local';
+
 const createError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const normalizeUsernameSeed = (value = '') =>
+  String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+
+const buildSyntheticEmail = ({ provider, providerUserId }) =>
+  `${provider}_${providerUserId}@${SOCIAL_EMAIL_DOMAIN}`;
+
+const mergeSocialAccounts = ({ current = [], next }) => {
+  const list = asArray(current).filter((item) => item?.provider && item?.providerId);
+  const exists = list.find(
+    (item) =>
+      item.provider === next.provider && String(item.providerId) === String(next.providerId)
+  );
+
+  if (exists) {
+    return list.map((item) =>
+      item.provider === next.provider && String(item.providerId) === String(next.providerId)
+        ? {
+            ...item,
+            ...next,
+            linkedAt: item.linkedAt || next.linkedAt,
+          }
+        : item
+    );
+  }
+
+  return [...list, next];
+};
+
+const generateUniqueUsername = async (seed) => {
+  const normalized = normalizeUsernameSeed(seed);
+  const base = normalized.length >= 3 ? normalized : `${normalized}user`.slice(0, 24);
+  const prefix = base.slice(0, 18);
+
+  for (let i = 0; i < 2000; i += 1) {
+    const suffix = i === 0 ? '' : String(i);
+    const candidate = `${prefix}${suffix}`.slice(0, 24);
+    // eslint-disable-next-line no-await-in-loop
+    const existing = await UserModel.findOne({
+      where: { username: candidate },
+      attributes: ['_id'],
+    });
+    if (!existing) return candidate;
+  }
+
+  return `user_${crypto.randomBytes(4).toString('hex')}`.slice(0, 24);
+};
+
+const verifyGooglePayload = async ({ credential }) => {
+  if (!credential) throw createError(400, 'Google credential is required');
+
+  const { data } = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+    params: { id_token: credential },
+    timeout: 12000,
+  });
+
+  const expectedAud = process.env.GOOGLE_CLIENT_ID;
+  if (expectedAud && data.aud !== expectedAud) {
+    throw createError(401, 'Google token audience mismatch');
+  }
+
+  if (!data.sub) {
+    throw createError(401, 'Invalid Google account payload');
+  }
+
+  return {
+    provider: 'google',
+    providerUserId: String(data.sub),
+    email: String(data.email || '').toLowerCase() || null,
+    fullname: String(data.name || data.given_name || 'Google User').trim(),
+    usernameHint: String(data.email || data.name || data.given_name || 'google_user')
+      .split('@')[0]
+      .trim(),
+    avatar: data.picture || null,
+  };
+};
+
+const verifyFacebookPayload = async ({ accessToken }) => {
+  if (!accessToken) throw createError(400, 'Facebook access token is required');
+
+  const { data } = await axios.get('https://graph.facebook.com/me', {
+    params: {
+      fields: 'id,name,email,picture.width(256).height(256)',
+      access_token: accessToken,
+    },
+    timeout: 12000,
+  });
+
+  if (!data?.id) {
+    throw createError(401, 'Invalid Facebook account payload');
+  }
+
+  return {
+    provider: 'facebook',
+    providerUserId: String(data.id),
+    email:
+      String(data.email || '').toLowerCase() ||
+      buildSyntheticEmail({ provider: 'facebook', providerUserId: String(data.id) }),
+    fullname: String(data.name || 'Facebook User').trim(),
+    usernameHint: String(data.name || `facebook_${data.id}`).trim(),
+    avatar: data?.picture?.data?.url || null,
+  };
+};
+
+const verifyTelegramPayload = ({ telegram }) => {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) throw createError(500, 'Telegram bot token is missing on server');
+  if (!telegram || typeof telegram !== 'object') {
+    throw createError(400, 'Telegram payload is required');
+  }
+
+  const hash = String(telegram.hash || '');
+  if (!hash) throw createError(401, 'Invalid Telegram payload hash');
+
+  const allowedKeys = [
+    'id',
+    'first_name',
+    'last_name',
+    'username',
+    'photo_url',
+    'auth_date',
+    'hash',
+  ];
+
+  const compact = {};
+  allowedKeys.forEach((key) => {
+    if (telegram[key] !== undefined && telegram[key] !== null) {
+      compact[key] = telegram[key];
+    }
+  });
+
+  const dataCheckString = Object.keys(compact)
+    .filter((key) => key !== 'hash')
+    .sort()
+    .map((key) => `${key}=${compact[key]}`)
+    .join('\n');
+
+  const secretKey = crypto.createHash('sha256').update(botToken).digest();
+  const expectedHash = crypto
+    .createHmac('sha256', secretKey)
+    .update(dataCheckString)
+    .digest('hex');
+
+  if (expectedHash !== hash) {
+    throw createError(401, 'Telegram verification failed');
+  }
+
+  const authDate = Number(compact.auth_date || 0);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!authDate || Math.abs(nowSec - authDate) > 24 * 60 * 60) {
+    throw createError(401, 'Telegram auth data expired');
+  }
+
+  const providerUserId = String(compact.id || '');
+  if (!providerUserId) {
+    throw createError(401, 'Invalid Telegram account payload');
+  }
+
+  const fullname = String(
+    [compact.first_name || '', compact.last_name || ''].join(' ').trim() || 'Telegram User'
+  );
+
+  return {
+    provider: 'telegram',
+    providerUserId,
+    email: buildSyntheticEmail({
+      provider: 'telegram',
+      providerUserId,
+    }),
+    fullname,
+    usernameHint: String(compact.username || compact.first_name || `telegram_${providerUserId}`),
+    avatar: compact.photo_url || null,
+  };
+};
+
+const verifySocialPayload = async ({ provider, payload }) => {
+  if (provider === 'google') {
+    return verifyGooglePayload(payload || {});
+  }
+  if (provider === 'facebook') {
+    return verifyFacebookPayload(payload || {});
+  }
+  if (provider === 'telegram') {
+    return verifyTelegramPayload(payload || {});
+  }
+
+  throw createError(400, 'Unsupported social provider');
+};
+
+const findUserBySocialIdentity = async ({ email, provider, providerUserId }) => {
+  const where = email ? { email } : null;
+  if (where) {
+    const user = await UserModel.findOne({ where });
+    if (user) return user;
+  }
+
+  const profiles = await ProfileModel.findAll({
+    attributes: ['userId', 'socialAccounts'],
+  });
+  const profile = profiles
+    .map((item) => item.get({ plain: true }))
+    .find((item) =>
+      asArray(item.socialAccounts).some(
+        (entry) =>
+          entry?.provider === provider &&
+          String(entry?.providerId || '') === String(providerUserId)
+      )
+    );
+
+  if (!profile?.userId) return null;
+  return UserModel.findOne({ where: { _id: profile.userId } });
+};
+
+const upsertSocialUser = async (socialData) => {
+  const nowIso = new Date().toISOString();
+  const socialAccount = {
+    provider: socialData.provider,
+    providerId: socialData.providerUserId,
+    username: socialData.usernameHint || '',
+    linkedAt: nowIso,
+  };
+
+  let user = await findUserBySocialIdentity({
+    email: socialData.email,
+    provider: socialData.provider,
+    providerUserId: socialData.providerUserId,
+  });
+
+  if (!user) {
+    const username = await generateUniqueUsername(
+      socialData.usernameHint || socialData.fullname || socialData.provider
+    );
+    const fullname = String(socialData.fullname || username).trim().slice(0, 32) || username;
+    const email =
+      String(socialData.email || '').toLowerCase() ||
+      buildSyntheticEmail({
+        provider: socialData.provider,
+        providerUserId: socialData.providerUserId,
+      });
+    const password = encrypt(crypto.randomBytes(32).toString('hex'));
+
+    user = await UserModel.create({
+      username,
+      fullname,
+      email,
+      password,
+      verified: true,
+      otp: null,
+    });
+
+    await SettingModel.create({ userId: user._id });
+    await ProfileModel.create({
+      userId: user._id,
+      username,
+      fullname,
+      email,
+      avatar: socialData.avatar || null,
+      socialAccounts: [socialAccount],
+    });
+
+    return { user, created: true };
+  }
+
+  const profile = await ProfileModel.findOne({ where: { userId: user._id } });
+  if (profile) {
+    const nextSocialAccounts = mergeSocialAccounts({
+      current: profile.socialAccounts,
+      next: socialAccount,
+    });
+
+    await profile.update({
+      socialAccounts: nextSocialAccounts,
+      avatar: profile.avatar || socialData.avatar || null,
+      fullname: profile.fullname || socialData.fullname || user.fullname,
+      email: profile.email || user.email,
+    });
+  }
+
+  if (!user.verified) {
+    await user.update({ verified: true, otp: null });
+  }
+
+  return { user, created: false };
 };
 
 exports.register = async (req, res) => {
@@ -41,7 +337,7 @@ exports.register = async (req, res) => {
       fullname: req.body.fullname,
     });
 
-    const token = jwt.sign({ _id: userId }, 'shhhhh');
+    const token = jwt.sign({ _id: userId }, JWT_SECRET);
     const template = fs.readFileSync(
       path.resolve(__dirname, '../helpers/templates/otp.html'),
       'utf8'
@@ -157,12 +453,53 @@ exports.login = async (req, res) => {
       throw createError(401, 'Invalid password');
     }
 
-    const token = jwt.sign({ _id: user._id }, 'shhhhh');
+    const token = jwt.sign({ _id: user._id }, JWT_SECRET);
 
     response({
       res,
       statusCode: 200,
       message: 'Successfully logged in',
+      payload: token,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.socialConfig = async (req, res) => {
+  response({
+    res,
+    payload: {
+      googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+      facebookAppId: process.env.FACEBOOK_APP_ID || '',
+      telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || '',
+    },
+  });
+};
+
+exports.socialAuth = async (req, res) => {
+  try {
+    const provider = String(req.body.provider || '')
+      .trim()
+      .toLowerCase();
+    const payload = req.body.payload || {};
+
+    const socialData = await verifySocialPayload({ provider, payload });
+    const { user, created } = await upsertSocialUser(socialData);
+
+    const token = jwt.sign({ _id: user._id }, JWT_SECRET);
+
+    response({
+      res,
+      statusCode: created ? 201 : 200,
+      message: created
+        ? 'Successfully created a new account'
+        : 'Successfully logged in',
       payload: token,
     });
   } catch (error0) {

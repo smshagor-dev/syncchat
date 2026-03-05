@@ -97,7 +97,7 @@ function Minibox() {
             target: 'logout',
             html: 'Log out',
             icon: <bi.BiLogOut />,
-            action: () => dispatch(setModal({ target: 'signout' })),
+            action: () => dispatch(setModal({ target: 'signout', data: true })),
           },
         ].map((elem) => (
           <React.Fragment key={elem.target}>

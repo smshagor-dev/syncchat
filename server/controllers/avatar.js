@@ -59,7 +59,7 @@ exports.upload = async (req, res) => {
     if (isGroup) {
       const group = await GroupModel.findOne({
         where: { _id: targetId },
-        attributes: ['avatar'],
+        attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
       });
       if (group?.avatar) await deleteLocalFileByUrl(group.avatar);
 
@@ -67,6 +67,19 @@ exports.upload = async (req, res) => {
         { avatar: uploaded.url },
         { where: { _id: targetId } }
       );
+
+      if (group?.roomId && global?.io) {
+        const payload = {
+          groupId: group._id,
+          roomId: group.roomId,
+          avatar: uploaded.url,
+        };
+        // Emit to room watchers and all group members so inbox list updates instantly.
+        global.io.to(group.roomId).emit('group/avatar', payload);
+        if (Array.isArray(group.participantsId) && group.participantsId.length) {
+          global.io.to(group.participantsId).emit('group/avatar', payload);
+        }
+      }
     } else {
       const userId = targetId || req.user._id;
       const profile = await ProfileModel.findOne({

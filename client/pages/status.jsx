@@ -6,6 +6,7 @@ import * as bi from 'react-icons/bi';
 import { setPage } from '../redux/features/page';
 import base64Encode from '../helpers/base64Encode';
 import resolveUploadUrl from '../helpers/resolveUploadUrl';
+import socket from '../helpers/socket';
 
 const TEXT_BG_COLORS = [
   '#0ea5e9',
@@ -93,6 +94,51 @@ function Status() {
     boot();
     return () => abortCtrl.abort();
   }, [page.status]);
+
+  useEffect(() => {
+    const handleStatusUpdate = (payload) => {
+      if (!payload?.statusId) return;
+      setStatuses((prev) =>
+        prev.map((item) => {
+          if (item._id !== payload.statusId) return item;
+
+          const nextItem = { ...item };
+          if (typeof payload.reactionCount === 'number') {
+            nextItem.reactionCount = payload.reactionCount;
+          }
+          if (typeof payload.replyCount === 'number') {
+            nextItem.replyCount = payload.replyCount;
+          }
+          if (
+            payload.type === 'react' &&
+            payload.actorId === master?._id &&
+            Object.prototype.hasOwnProperty.call(payload, 'myReaction')
+          ) {
+            nextItem.myReaction = payload.myReaction;
+          }
+          return nextItem;
+        })
+      );
+    };
+
+    const handleStatusNew = (payload) => {
+      if (!payload?._id) return;
+      setStatuses((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        if (list.some((item) => item._id === payload._id)) return list;
+        return [payload, ...list];
+      });
+      setLoaded(true);
+    };
+
+    socket.on('status/update', handleStatusUpdate);
+    socket.on('status/new', handleStatusNew);
+
+    return () => {
+      socket.off('status/update', handleStatusUpdate);
+      socket.off('status/new', handleStatusNew);
+    };
+  }, [master?._id]);
 
   const statusGroups = useMemo(() => {
     const map = new Map();

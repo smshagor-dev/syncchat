@@ -49,3 +49,50 @@ a {
     radial-gradient(circle at 25px 25px, rgba(148, 163, 184, 0.08) 2px, transparent 0),
     radial-gradient(circle at 75px 75px, rgba(56, 189, 248, 0.06) 2px, transparent 0);
 }
+
+.status-reaction-burst {
+  position: absolute;
+  bottom: 72px;
+  transform: translateX(-50%) translateY(0) scale(0.7);
+  font-size: 30px;
+  line-height: 1;
+  opacity: 0;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+  animation: status-reaction-rise var(--burst-duration, 1200ms) ease-out forwards;
+}
+
+@keyframes status-reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.7);
+  }
+  15% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateX(calc(-50% + var(--burst-drift, 0px))) translateY(-42vh)
+      scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% + var(--burst-drift, 0px))) translateY(-56vh)
+      scale(1.18);
+  }
+}
+
+.status-activity-sheet {
+  animation: status-activity-sheet-up 220ms ease-out;
+}
+
+@keyframes status-activity-sheet-up {
+  0% {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
