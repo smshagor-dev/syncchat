@@ -64,6 +64,51 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    hiddenBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    secretChatEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    secretDisappearSeconds: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    secretScreenshotAlerts: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    secretForwardBlocked: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    secretSaveBlocked: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    secretExportBlocked: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+    secretSessionId: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
+    },
+    secretSessionKey: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      defaultValue: null,
+    },
     chatLockBy: {
       type: DataTypes.JSON,
       allowNull: false,

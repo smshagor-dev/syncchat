@@ -36,9 +36,10 @@ const isMatch = (inbox, queries = {}) => {
   });
 };
 
-exports.find = async (queries, search = '') => {
+exports.find = async (queries, search = '', options = {}) => {
   const viewerId =
     typeof queries?.ownersId === 'string' ? String(queries.ownersId) : null;
+  const includeHidden = !!options.includeHidden;
   const inboxesRaw = await InboxModel.findAll();
   const inboxes = toPlainMany(inboxesRaw).filter((inbox) =>
     isMatch(inbox, queries)
@@ -98,6 +99,7 @@ exports.find = async (queries, search = '') => {
     .map((inbox) => {
       const sanitized = { ...inbox };
       delete sanitized.chatLockHashes;
+      delete sanitized.secretSessionKey;
 
       return {
       ...sanitized,
@@ -119,6 +121,9 @@ exports.find = async (queries, search = '') => {
     }})
     .filter((inbox) => {
       if (viewerId && asArray(inbox.deletedBy).includes(viewerId)) {
+        return false;
+      }
+      if (!includeHidden && viewerId && asArray(inbox.hiddenBy).includes(viewerId)) {
         return false;
       }
       if (!search) return true;

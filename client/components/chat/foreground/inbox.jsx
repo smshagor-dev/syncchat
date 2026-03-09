@@ -688,6 +688,54 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     return true;
   };
 
+  const mergeActiveRoomFromInbox = React.useCallback(
+    (payload) => {
+      if (!payload?.roomId || chatRoom?.data?.roomId !== payload.roomId) return;
+
+      if (payload.roomType === 'private') {
+        const profile =
+          payload.owners?.find((x) => x.userId !== master?._id) || null;
+
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              ...payload,
+              secretSessionId:
+                payload.secretSessionId || chatRoom.data?.secretSessionId || '',
+              profile: !profile
+                ? {
+                    avatar: 'assets/images/default-avatar.png',
+                    fullname: '[inactive]',
+                    updatedAt: new Date().toISOString(),
+                    active: false,
+                  }
+                : {
+                    ...profile,
+                    active: true,
+                  },
+            },
+          })
+        );
+        return;
+      }
+
+      dispatch(
+        setChatRoom({
+          ...chatRoom,
+          data: {
+            ...chatRoom.data,
+            ...payload,
+            group: payload.channel || payload.group || chatRoom.data.group,
+            channel: payload.channel || chatRoom.data.channel || null,
+          },
+        })
+      );
+    },
+    [chatRoom, dispatch, master?._id]
+  );
+
   const isFavouriteInbox = (inbox) =>
     !!(
       inbox?.isFavourite ||
@@ -703,6 +751,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     Array.isArray(inbox?.archivedBy) && inbox.archivedBy.includes(master?._id);
   const isListedInbox = (inbox) =>
     Array.isArray(inbox?.listedBy) && inbox.listedBy.includes(master?._id);
+  const isHiddenInbox = (inbox) =>
+    Array.isArray(inbox?.hiddenBy) && inbox.hiddenBy.includes(master?._id);
   const isPinnedInbox = (inbox) =>
     Array.isArray(inbox?.pinnedBy) && inbox.pinnedBy.includes(master?._id);
   const isManuallyUnreadInbox = (inbox) =>
@@ -912,6 +962,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
 
   const baseInboxes = (inboxes || [])
     .filter((elem) => !elem.deletedBy.includes(master._id))
+    .filter((elem) => !isHiddenInbox(elem))
     .filter((elem) =>
       page.archive ? isArchivedInbox(elem) : !isArchivedInbox(elem)
     )
@@ -971,6 +1022,52 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       document.removeEventListener('pointerdown', handleOutsidePointerDown);
     };
   }, [modal.inboxMenu]);
+
+  useEffect(() => {
+    const handleHide = (event) => {
+      const roomId = event.detail?.roomId;
+      if (!roomId) return;
+      setInboxes((prev) =>
+        (prev || []).map((elem) =>
+          elem.roomId === roomId
+            ? {
+                ...elem,
+                hiddenBy: Array.isArray(elem.hiddenBy)
+                  ? [...new Set([...elem.hiddenBy, master?._id])]
+                  : [master?._id],
+              }
+            : elem
+        )
+      );
+      if (chatRoom?.data?.roomId === roomId) {
+        dispatch(setChatRoom({ isOpen: false, data: false }));
+      }
+    };
+
+    const handleUnhide = (event) => {
+      const roomId = event.detail?.roomId;
+      if (!roomId) return;
+      setInboxes((prev) =>
+        (prev || []).map((elem) =>
+          elem.roomId === roomId
+            ? {
+                ...elem,
+                hiddenBy: Array.isArray(elem.hiddenBy)
+                  ? elem.hiddenBy.filter((id) => id !== master?._id)
+                  : [],
+              }
+            : elem
+        )
+      );
+    };
+
+    window.addEventListener('syncchat:inbox-hide', handleHide);
+    window.addEventListener('syncchat:inbox-unhide', handleUnhide);
+    return () => {
+      window.removeEventListener('syncchat:inbox-hide', handleHide);
+      window.removeEventListener('syncchat:inbox-unhide', handleUnhide);
+    };
+  }, [chatRoom?.data?.roomId, dispatch, master?._id, setInboxes]);
 
   useEffect(() => {
     socket.on('inbox/read', (payload) => {
@@ -1163,6 +1260,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         const olds = (prev || []).filter((elem) => elem._id !== payload._id);
         return [payload, ...olds];
       });
+      mergeActiveRoomFromInbox(payload);
 
       const isNotSender = payload.content.from !== master._id;
       const isMuted = isMutedInbox(payload);
@@ -1198,10 +1296,43 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       }
     });
 
+    socket.on('inbox/preferences', (payload) => {
+      if (!payload?.roomId) return;
+      setInboxes((prev) => {
+        const olds = (prev || []).filter((elem) => elem.roomId !== payload.roomId);
+        const current = (prev || []).find((elem) => elem.roomId === payload.roomId);
+        return [{ ...current, ...payload }, ...olds];
+      });
+      mergeActiveRoomFromInbox(payload);
+      window.dispatchEvent(
+        new CustomEvent('syncchat:room-refresh-chats', {
+          detail: { roomId: payload.roomId },
+        })
+      );
+      dispatch(setRefreshInbox(uuidv4()));
+    });
+
+    const handleRoomInboxUpdate = (event) => {
+      const payload = event?.detail?.inbox;
+      if (!payload?._id && !payload?.roomId) return;
+      setInboxes((prev) => {
+        const olds = (prev || []).filter((elem) => elem.roomId !== payload.roomId);
+        const current = (prev || []).find((elem) => elem.roomId === payload.roomId);
+        return [{ ...current, ...payload }, ...olds];
+      });
+      mergeActiveRoomFromInbox(payload);
+    };
+    window.addEventListener('syncchat:room-inbox-update', handleRoomInboxUpdate);
+
     return () => {
       socket.off('inbox/find');
+      socket.off('inbox/preferences');
+      window.removeEventListener(
+        'syncchat:room-inbox-update',
+        handleRoomInboxUpdate
+      );
     };
-  }, [setting.mute, master?._id]);
+  }, [mergeActiveRoomFromInbox, setting.mute, master?._id]);
 
   useEffect(() => {
     if (!chatRoom?.isOpen || !chatRoom?.data) {
@@ -1836,6 +1967,10 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
           const callStatus = getCallStatusMeta(elem.content?.text);
           const eventStatus = isEventMessage(elem.content?.text);
           const pollStatus = isPollMessage(elem.content?.text);
+          const oneTimeMatch = String(elem.content?.text || '').match(
+            /^1-time (photo|video|message)$/i
+          );
+          const oneTimeType = oneTimeMatch ? oneTimeMatch[1].toLowerCase() : '';
           let previewContent = null;
 
           if (isLockedPreview) {
@@ -1880,6 +2015,23 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
               >
                 <bi.BiBarChartAlt2 />
                 <p className="truncate">Poll</p>
+              </span>
+            );
+          } else if (oneTimeType) {
+            const OneTimeIcon =
+              oneTimeType === 'photo'
+                ? bi.BiImage
+                : oneTimeType === 'video'
+                  ? bi.BiVideo
+                  : bi.BiLowVision;
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 text-sky-600 dark:text-sky-400 ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <OneTimeIcon />
+                <p className="truncate capitalize">{`Sent a ${oneTimeType}`}</p>
               </span>
             );
           } else {
@@ -2080,20 +2232,21 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                           </i>
                         )}
 
-                      {elem.file && elem.file.type === 'image' && (
+                      {elem.file && elem.file.type === 'image' && !oneTimeType && (
                         <img
                           src={resolveUploadUrl(elem.file.url)}
                           alt=""
                           className="h-5"
                         />
                       )}
-                      {elem.file && isAudioFile(elem.file) && (
+                      {elem.file && isAudioFile(elem.file) && !oneTimeType && (
                         <i>
                           <ri.RiMicFill size={20} />
                         </i>
                       )}
                       {elem.file &&
                         elem.file.type !== 'image' &&
+                        elem.file.type !== 'video' &&
                         !isAudioFile(elem.file) && (
                           <i>
                             <ri.RiFileTextFill size={20} />

@@ -33,6 +33,8 @@ function RoomHeaderMenu() {
 
   const isGroup = roomType === 'group';
   const isChannel = !!chatData?.channel;
+  const isSecretChat =
+    roomType === 'private' && !!chatData?.secretChatEnabled;
   const hasForMe = (value) =>
     Array.isArray(value) && value.includes(master?._id);
   const isMuted = hasForMe(chatData?.mutedBy);
@@ -69,6 +71,18 @@ function RoomHeaderMenu() {
   };
 
   const exportChatHistory = async () => {
+    const { data } = await axios.get(`/inboxes/${roomId}`);
+    const liveInbox = data?.payload || {};
+    const liveSecretChat =
+      liveInbox?.roomType === 'private' && !!liveInbox?.secretChatEnabled;
+
+    if (liveSecretChat && liveInbox?.secretExportBlocked !== false) {
+      notification({
+        title: 'Export blocked',
+        body: 'Export is blocked in secret chat',
+      });
+      return;
+    }
     const chats = await fetchAllChats(roomId);
     const title = isGroup
       ? group?.name || 'group'
@@ -239,6 +253,25 @@ function RoomHeaderMenu() {
             style: '',
           },
           {
+            _key: 'k-01a',
+            html: 'Secret chat settings',
+            icon: <bi.BiShieldQuarter />,
+            action() {
+              if (isGroup || !profile?.active) return;
+              dispatch(
+                setPage({
+                  target: 'friendProfile',
+                  data: {
+                    userId: profile.userId,
+                    roomId,
+                    title: profile?.fullname || 'Contact',
+                  },
+                })
+              );
+            },
+            style: isGroup ? 'hidden' : 'block',
+          },
+          {
             _key: 'k-02',
             html: 'Select message',
             icon: <bi.BiCheckCircle />,
@@ -402,12 +435,14 @@ function RoomHeaderMenu() {
           },
           {
             _key: 'k-11',
-            html: 'Export chat history',
+            html: isSecretChat ? 'Export blocked in secret chat' : 'Export chat history',
             icon: <bi.BiExport />,
             async action() {
               await exportChatHistory();
             },
-            style: '',
+            style: isSecretChat
+              ? 'text-slate-400 dark:text-spill-500'
+              : '',
           },
           {
             _key: 'k-12',

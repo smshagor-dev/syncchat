@@ -93,7 +93,42 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-08`
+- Last updated: `2026-03-09`
+
+## Recent Changes (2026-03-09)
+
+- Added end-to-end hidden chat system:
+  - `Hide chat` action from chat-list menu
+  - hidden chats are removed from the main inbox list immediately
+  - hidden chat management inside `Settings -> Privacy`
+  - unhide flow restores chats back to the main list
+  - backend persistence with hidden-chat filtering on fetch
+- Added advanced secret chat / privacy chat system:
+  - Advanced Privacy Chat subpage inside friend profile
+  - Secret Chat toggle, screenshot alerts, and disappearing timer
+  - secret session generation and regeneration
+  - secret system notices in the center of the chat timeline
+  - forwarding, save/download, and export blocking for secret chats
+  - secret chat state sync across room, profile panel, and inbox refresh flow
+- Added end-to-end message scheduling:
+  - schedule send for later
+  - recurring reminders (`daily`, `weekly`, `monthly`)
+  - `send when online` for private chats
+  - room-level scheduled message list with cancel action
+  - background scheduler worker on the server
+  - Socket.IO sync for scheduled message updates
+- Added reusable scheduled-message delivery pipeline on the backend so scheduled messages use the same room/inbox realtime flow as normal chat messages.
+- Added one-time encrypted message/media flow:
+  - one-time text from the composer
+  - one-time photo/video from the send-file modal
+  - blurred/locked preview in chat before opening
+  - server-side open-once enforcement
+  - after one open, the same user cannot view it again
+  - Socket.IO sync when a one-time message is opened
+- Updated chat history and inbox preview handling for one-time content:
+  - real content is not exposed in normal room payload before open
+  - inbox preview shows secure generic wording instead of leaking content
+  - chat list preview shows icon + `Sent a photo/video/message` for one-time items
 
 ## Recent Changes (2026-03-08)
 

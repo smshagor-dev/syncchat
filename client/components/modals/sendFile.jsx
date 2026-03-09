@@ -102,6 +102,7 @@ function SendFile() {
   const [sendStatus, setSendStatus] = useState('');
   const [previewIndex, setPreviewIndex] = useState(0);
   const [postToStatus, setPostToStatus] = useState(false);
+  const [viewOnce, setViewOnce] = useState(false);
 
   const activeItem = items[previewIndex] || null;
   const hasStatusEligibleItem = items.some(
@@ -112,6 +113,7 @@ function SendFile() {
     setCaption(sendFile?.caption || '');
     setPreviewIndex(0);
     setPostToStatus(false);
+    setViewOnce(false);
     setSendError('');
     setSendStatus('');
   }, [sendFile]);
@@ -128,6 +130,7 @@ function SendFile() {
     setSendStatus('');
     setPreviewIndex(0);
     setPostToStatus(false);
+    setViewOnce(false);
     dispatch(setModal({ target: 'sendFile', data: false }));
   };
 
@@ -203,6 +206,8 @@ function SendFile() {
               ...uploaded,
               type: toServerFileType(item?.type),
             },
+            viewOnce:
+              viewOnce && ['photo', 'video'].includes(String(item?.type || '')),
           },
           { headers }
         );
@@ -373,6 +378,18 @@ function SendFile() {
             />
             Post to status too
             {!hasStatusEligibleItem && (
+              <span className="opacity-60">(only photo/video)</span>
+            )}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={viewOnce}
+              disabled={!['photo', 'video'].includes(String(activeItem?.type || ''))}
+              onChange={(e) => setViewOnce(e.target.checked)}
+            />
+            Send as 1-time view
+            {!['photo', 'video'].includes(String(activeItem?.type || '')) && (
               <span className="opacity-60">(only photo/video)</span>
             )}
           </label>

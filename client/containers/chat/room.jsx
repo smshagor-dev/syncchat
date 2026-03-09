@@ -108,6 +108,36 @@ function Room() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleRefreshChats = async (event) => {
+      const targetRoomId = event?.detail?.roomId;
+      if (!targetRoomId || targetRoomId !== chatRoom?.data?.roomId) return;
+
+      const abortCtrl = new AbortController();
+      setLoaded(false);
+      setControl((prev) => ({ ...prev, skip: 0 }));
+      try {
+        const { data } = await axios.get(`/chats/${targetRoomId}`, {
+          params: { skip: 0, limit: control.limit },
+          signal: abortCtrl.signal,
+        });
+        setChats(Array.isArray(data?.payload) ? data.payload : []);
+      } catch (error0) {
+        console.error(error0?.response?.data?.message || error0.message);
+      } finally {
+        setLoaded(true);
+      }
+    };
+
+    window.addEventListener('syncchat:room-refresh-chats', handleRefreshChats);
+    return () => {
+      window.removeEventListener(
+        'syncchat:room-refresh-chats',
+        handleRefreshChats
+      );
+    };
+  }, [chatRoom?.data?.roomId, control.limit]);
+
   return (
     <div
       className={`

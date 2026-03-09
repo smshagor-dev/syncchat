@@ -9,6 +9,9 @@ const Inbox = require('../../helpers/models/inbox');
 const {
   normalizePrivacySettingPayload,
 } = require('../../helpers/privacy');
+const {
+  processScheduledMessages,
+} = require('../../helpers/scheduledMessages');
 
 const connectedSocketIdsByUser = new Map();
 const knownDeviceSignaturesByUser = new Map();
@@ -169,6 +172,8 @@ module.exports = (socket) => {
         );
       }
     }
+
+    processScheduledMessages({ targetUserId: userId }).catch(() => {});
 
     if (shouldEmitSecurityChange(userId, socket)) {
       await emitSecurityChangeNotice(userId);

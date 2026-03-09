@@ -24,6 +24,7 @@ const {
   uploadRootDir,
 } = require('./storage');
 const { normalizePrivacySettingPayload } = require('./privacy');
+const { isSecretEnabled } = require('./secretChat');
 
 const execFileAsync = promisify(execFile);
 const EXPORT_LIFETIME_MS = 48 * 60 * 60 * 1000;
@@ -133,7 +134,8 @@ const buildExportBundle = async (userId) => {
   const inboxes = toPlainMany(inboxesRaw).filter(
     (inbox) =>
       asArray(inbox.ownersId).includes(userId) &&
-      !asArray(inbox.deletedBy).includes(userId)
+      !asArray(inbox.deletedBy).includes(userId) &&
+      !(isSecretEnabled(inbox) && inbox.secretExportBlocked)
   );
   const roomIds = inboxes.map((item) => item.roomId);
   const chatsRaw = roomIds.length

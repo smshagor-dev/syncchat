@@ -4,6 +4,7 @@ const ctrl = require('../controllers/setting');
 
 router.get('/settings', authenticate, ctrl.find);
 router.get('/settings/blocked-contacts', authenticate, ctrl.blockedContacts);
+router.get('/settings/hidden-chats', authenticate, ctrl.hiddenChats);
 router.get('/settings/account-export', authenticate, ctrl.accountExportStatus);
 router.put('/settings', authenticate, ctrl.update);
 router.post('/settings/account-export', authenticate, ctrl.requestAccountExport);

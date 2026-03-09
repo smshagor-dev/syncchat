@@ -111,6 +111,24 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!master?._id) return undefined;
+
+    const handleSocketConnect = () => {
+      socket.emit('user/connect', master._id);
+      authDebug('socket:user/connect emitted on reconnect', master._id);
+    };
+
+    socket.on('connect', handleSocketConnect);
+    if (socket.connected) {
+      handleSocketConnect();
+    }
+
+    return () => {
+      socket.off('connect', handleSocketConnect);
+    };
+  }, [master?._id]);
+
+  useEffect(() => {
     document.onvisibilitychange = (e) => {
       if (master) {
         const active = e.target.visibilityState === 'visible';

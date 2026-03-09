@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import axios from 'axios';
@@ -15,7 +15,9 @@ import {
   setRefreshInbox,
 } from '../redux/features/chore';
 import { setSetting } from '../redux/features/user';
+import { setChatRoom } from '../redux/features/room';
 import { getPresenceMeta } from '../helpers/presence';
+import socket from '../helpers/socket';
 
 const SOCIAL_LABELS = {
   facebook: 'Facebook',
@@ -78,9 +80,10 @@ const NOTIFICATION_TONES = [
 function FriendProfile() {
   const dispatch = useDispatch();
   const {
-    chore: { refreshFriendProfile },
+    chore: { refreshFriendProfile, refreshInbox },
     page: { friendProfile },
     user: { setting, master },
+    room: { chat: chatRoom },
   } = useSelector((state) => state);
   const friendProfileUserId =
     typeof friendProfile === 'object' && friendProfile !== null
@@ -90,6 +93,13 @@ function FriendProfile() {
     typeof friendProfile === 'object' && friendProfile !== null
       ? friendProfile.roomId || null
       : null;
+  const resolvedFriendProfileRoomId =
+    friendProfileRoomId ||
+    (chatRoom?.data?.roomType === 'private' &&
+    (chatRoom?.data?.profile?.userId === friendProfileUserId ||
+      chatRoom?.data?.ownersId?.includes(friendProfileUserId))
+      ? chatRoom.data.roomId
+      : null);
 
   const [profile, setProfile] = useState(null);
   const [actionMessage, setActionMessage] = useState('');
@@ -99,6 +109,7 @@ function FriendProfile() {
     photos: [],
   });
   const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [privacySubpageOpen, setPrivacySubpageOpen] = useState(false);
   const [encryptionPopupOpen, setEncryptionPopupOpen] = useState(false);
   const [inboxPrefs, setInboxPrefs] = useState({
     loading: false,
@@ -107,6 +118,13 @@ function FriendProfile() {
     advancedPrivacy: false,
     favourite: false,
     listed: false,
+    secretChatEnabled: false,
+    secretDisappearSeconds: 0,
+    secretScreenshotAlerts: true,
+    secretSessionId: '',
+    secretForwardBlocked: true,
+    secretSaveBlocked: true,
+    secretExportBlocked: true,
   });
   const [commonGroups, setCommonGroups] = useState([]);
   const [commonGroupsLoaded, setCommonGroupsLoaded] = useState(false);
@@ -116,6 +134,9 @@ function FriendProfile() {
     loading: false,
     error: '',
   });
+  const secretSessionRepairRef = useRef('');
+  const resolveSecretSessionId = (source, fallback = '') =>
+    String(source?.secretSessionId || fallback || '');
   const profileAvatar =
     resolveUploadUrl(profile?.avatar) || 'assets/images/default-avatar.png';
   const displayName = profile?.fullname || profile?.username || '[inactive]';
@@ -240,7 +261,7 @@ function FriendProfile() {
   };
 
   const handleGetRoomMedia = async (signal) => {
-    if (!friendProfileRoomId) {
+    if (!resolvedFriendProfileRoomId) {
       setRoomMedia({
         loaded: true,
         counts: { media: 0, link: 0, file: 0 },
@@ -252,7 +273,7 @@ function FriendProfile() {
     try {
       setRoomMedia((prev) => ({ ...prev, loaded: false }));
       const { data } = await axios.get('/chats/media', {
-        params: { roomId: friendProfileRoomId },
+        params: { roomId: resolvedFriendProfileRoomId },
         signal,
       });
       const payload = Array.isArray(data?.payload) ? data.payload : [];
@@ -280,7 +301,7 @@ function FriendProfile() {
   };
 
   const handleGetInboxPreference = async (signal) => {
-    if (!friendProfileRoomId || !master?._id) {
+    if (!resolvedFriendProfileRoomId || !master?._id) {
       setInboxPrefs((prev) => ({
         ...prev,
         loading: false,
@@ -290,10 +311,30 @@ function FriendProfile() {
 
     try {
       setInboxPrefs((prev) => ({ ...prev, loading: true }));
-      const { data } = await axios.get(`/inboxes/${friendProfileRoomId}`, {
+      const { data } = await axios.get(`/inboxes/${resolvedFriendProfileRoomId}`, {
         signal,
       });
       const inbox = data?.payload || {};
+
+      if (chatRoom?.data?.roomId === resolvedFriendProfileRoomId) {
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              ...inbox,
+              secretSessionId: resolveSecretSessionId(
+                inbox,
+                chatRoom.data?.secretSessionId
+              ),
+              profile: chatRoom.data.profile,
+              group: chatRoom.data.group,
+              channel: chatRoom.data.channel,
+            },
+          })
+        );
+      }
+
       setInboxPrefs({
         loading: false,
         muted:
@@ -309,6 +350,13 @@ function FriendProfile() {
         listed:
           Array.isArray(inbox.listedBy) &&
           inbox.listedBy.includes(master._id),
+        secretChatEnabled: !!inbox.secretChatEnabled,
+        secretDisappearSeconds: Number(inbox.secretDisappearSeconds || 0),
+        secretScreenshotAlerts: inbox.secretScreenshotAlerts !== false,
+        secretSessionId: resolveSecretSessionId(inbox, chatRoom.data?.secretSessionId),
+        secretForwardBlocked: inbox.secretForwardBlocked !== false,
+        secretSaveBlocked: inbox.secretSaveBlocked !== false,
+        secretExportBlocked: inbox.secretExportBlocked !== false,
       });
     } catch (error0) {
       setInboxPrefs((prev) => ({ ...prev, loading: false }));
@@ -339,19 +387,213 @@ function FriendProfile() {
   };
 
   const updateInboxPreference = async (action, value) => {
-    if (!friendProfileRoomId) return;
+    if (!resolvedFriendProfileRoomId) return;
 
     try {
-      await axios.patch(`/inboxes/${friendProfileRoomId}/preferences`, {
-        action,
-        value,
-      });
+      const { data } = await axios.patch(
+        `/inboxes/${resolvedFriendProfileRoomId}/preferences`,
+        {
+          action,
+          value,
+        }
+      );
+
+      const inbox = data?.payload || {};
+      if (chatRoom?.data?.roomId === resolvedFriendProfileRoomId) {
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              ...inbox,
+              secretSessionId: resolveSecretSessionId(
+                inbox,
+                chatRoom.data?.secretSessionId
+              ),
+              profile: chatRoom.data.profile,
+              group: chatRoom.data.group,
+              channel: chatRoom.data.channel,
+            },
+          })
+        );
+      }
+
+      setInboxPrefs((prev) => ({
+        ...prev,
+        muted:
+          Array.isArray(inbox.mutedBy) && inbox.mutedBy.includes(master._id),
+        tone:
+          inbox?.notificationToneBy?.[master._id] || prev.tone,
+        advancedPrivacy:
+          Array.isArray(inbox.privacyShieldBy) &&
+          inbox.privacyShieldBy.includes(master._id),
+        favourite:
+          Array.isArray(inbox.favouriteBy) &&
+          inbox.favouriteBy.includes(master._id),
+        listed:
+          Array.isArray(inbox.listedBy) &&
+          inbox.listedBy.includes(master._id),
+        secretChatEnabled: !!inbox.secretChatEnabled,
+        secretDisappearSeconds: Number(inbox.secretDisappearSeconds || 0),
+        secretScreenshotAlerts: inbox.secretScreenshotAlerts !== false,
+        secretSessionId: resolveSecretSessionId(inbox, prev.secretSessionId),
+        secretForwardBlocked: inbox.secretForwardBlocked !== false,
+        secretSaveBlocked: inbox.secretSaveBlocked !== false,
+        secretExportBlocked: inbox.secretExportBlocked !== false,
+      }));
+
+      window.dispatchEvent(
+        new CustomEvent('syncchat:room-inbox-update', {
+          detail: { roomId: resolvedFriendProfileRoomId, inbox },
+        })
+      );
+
       dispatch(setRefreshInbox(uuidv4()));
     } catch (error0) {
       const message = error0?.response?.data?.message || error0.message;
       setActionMessage(message);
     }
   };
+
+  useEffect(() => {
+    if (!resolvedFriendProfileRoomId) return;
+    if (chatRoom?.data?.roomId !== resolvedFriendProfileRoomId) return;
+
+    setInboxPrefs((prev) => ({
+      ...prev,
+      muted:
+        Array.isArray(chatRoom.data?.mutedBy) &&
+        chatRoom.data.mutedBy.includes(master._id),
+      tone:
+        chatRoom.data?.notificationToneBy?.[master._id] ||
+        prev.tone ||
+        'default-ringtone',
+      advancedPrivacy:
+        Array.isArray(chatRoom.data?.privacyShieldBy) &&
+        chatRoom.data.privacyShieldBy.includes(master._id),
+      favourite:
+        Array.isArray(chatRoom.data?.favouriteBy) &&
+        chatRoom.data.favouriteBy.includes(master._id),
+      listed:
+        Array.isArray(chatRoom.data?.listedBy) &&
+        chatRoom.data.listedBy.includes(master._id),
+      secretChatEnabled: !!chatRoom.data?.secretChatEnabled,
+      secretDisappearSeconds: Number(
+        chatRoom.data?.secretDisappearSeconds || 0
+      ),
+      secretScreenshotAlerts: chatRoom.data?.secretScreenshotAlerts !== false,
+      secretSessionId: resolveSecretSessionId(chatRoom.data, prev.secretSessionId),
+      secretForwardBlocked: chatRoom.data?.secretForwardBlocked !== false,
+      secretSaveBlocked: chatRoom.data?.secretSaveBlocked !== false,
+      secretExportBlocked: chatRoom.data?.secretExportBlocked !== false,
+    }));
+  }, [
+    resolvedFriendProfileRoomId,
+    chatRoom?.data?.roomId,
+    chatRoom?.data?.mutedBy,
+    chatRoom?.data?.notificationToneBy,
+    chatRoom?.data?.privacyShieldBy,
+    chatRoom?.data?.favouriteBy,
+    chatRoom?.data?.listedBy,
+    chatRoom?.data?.secretChatEnabled,
+    chatRoom?.data?.secretDisappearSeconds,
+    chatRoom?.data?.secretScreenshotAlerts,
+    chatRoom?.data?.secretSessionId,
+    chatRoom?.data?.secretForwardBlocked,
+    chatRoom?.data?.secretSaveBlocked,
+    chatRoom?.data?.secretExportBlocked,
+    master._id,
+  ]);
+
+  useEffect(() => {
+    const handleInboxPreferences = (payload) => {
+      if (!payload?.roomId || payload.roomId !== resolvedFriendProfileRoomId) return;
+
+      setInboxPrefs((prev) => ({
+        ...prev,
+        loading: false,
+        muted:
+          Array.isArray(payload.mutedBy) && payload.mutedBy.includes(master._id),
+        tone:
+          payload?.notificationToneBy?.[master._id] ||
+          prev.tone ||
+          'default-ringtone',
+        advancedPrivacy:
+          Array.isArray(payload.privacyShieldBy) &&
+          payload.privacyShieldBy.includes(master._id),
+        favourite:
+          Array.isArray(payload.favouriteBy) &&
+          payload.favouriteBy.includes(master._id),
+        listed:
+          Array.isArray(payload.listedBy) &&
+          payload.listedBy.includes(master._id),
+        secretChatEnabled: !!payload.secretChatEnabled,
+        secretDisappearSeconds: Number(payload.secretDisappearSeconds || 0),
+        secretScreenshotAlerts: payload.secretScreenshotAlerts !== false,
+        secretSessionId: resolveSecretSessionId(payload, prev.secretSessionId),
+        secretForwardBlocked: payload.secretForwardBlocked !== false,
+        secretSaveBlocked: payload.secretSaveBlocked !== false,
+        secretExportBlocked: payload.secretExportBlocked !== false,
+      }));
+    };
+
+    socket.on('inbox/preferences', handleInboxPreferences);
+    return () => {
+      socket.off('inbox/preferences', handleInboxPreferences);
+    };
+  }, [resolvedFriendProfileRoomId, master._id]);
+
+  useEffect(() => {
+    if (!resolvedFriendProfileRoomId) return;
+
+    const repairKey = `${resolvedFriendProfileRoomId}:${inboxPrefs.secretChatEnabled}:${inboxPrefs.secretSessionId}`;
+    if (!inboxPrefs.secretChatEnabled || inboxPrefs.secretSessionId) {
+      secretSessionRepairRef.current = '';
+      return;
+    }
+    if (secretSessionRepairRef.current === repairKey) return;
+
+    secretSessionRepairRef.current = repairKey;
+    let canceled = false;
+
+    const repairSecretSession = async () => {
+      try {
+        await axios.patch(`/inboxes/${resolvedFriendProfileRoomId}/preferences`, {
+          action: 'secretRegenerateSession',
+          value: true,
+        });
+        if (!canceled) {
+          await handleGetInboxPreference();
+        }
+      } catch (error0) {
+        if (!canceled) {
+          setActionMessage(
+            error0?.response?.data?.message || error0.message || 'Secret session repair failed'
+          );
+        }
+      }
+    };
+
+    repairSecretSession();
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    resolvedFriendProfileRoomId,
+    inboxPrefs.secretChatEnabled,
+    inboxPrefs.secretSessionId,
+  ]);
+
+  const SECRET_TIMER_OPTIONS = [
+    { value: 0, label: 'Off' },
+    { value: 10, label: '10 sec' },
+    { value: 30, label: '30 sec' },
+    { value: 60, label: '1 min' },
+    { value: 300, label: '5 min' },
+    { value: 3600, label: '1 hour' },
+    { value: 86400, label: '1 day' },
+  ];
 
   useEffect(() => {
     const abortCtrl = new AbortController();
@@ -365,8 +607,9 @@ function FriendProfile() {
     };
   }, [
     friendProfileUserId,
-    friendProfileRoomId,
+    resolvedFriendProfileRoomId,
     refreshFriendProfile,
+    refreshInbox,
     master?._id,
   ]);
 
@@ -378,15 +621,15 @@ function FriendProfile() {
       aria-checked={checked}
       className={`${
         checked
-          ? 'bg-sky-600 shadow-sky-500/40'
+          ? 'bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-500 shadow-sky-500/30'
           : 'bg-slate-300 dark:bg-spill-700 shadow-transparent'
-      } relative h-7 w-12 rounded-full p-1 shadow-inner transition-all duration-200 ease-out`}
+      } relative isolate inline-flex h-7 w-12 shrink-0 items-center rounded-full border border-transparent px-1 shadow-inner transition-all duration-200 ease-out`}
       onClick={onClick}
     >
       <span
         className={`${
           checked ? 'translate-x-5' : 'translate-x-0'
-        } pointer-events-none absolute top-1 left-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-out`}
+        } pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-out`}
       />
     </button>
   );
@@ -409,7 +652,7 @@ function FriendProfile() {
       }));
 
       await axios.post('/reports/chat', {
-        roomId: friendProfileRoomId,
+        roomId: resolvedFriendProfileRoomId,
         roomType: 'private',
         targetId: profile?.userId,
         reason: reason.slice(0, 500),
@@ -455,19 +698,34 @@ function FriendProfile() {
       {/* header */}
       <div className="h-16 px-2 z-10 flex gap-6 justify-between items-center">
         <div className="flex gap-4 items-center">
-          <button
-            type="button"
-            className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
-            onClick={() => {
-              dispatch(setPage({ target: 'friendProfile' }));
-            }}
-          >
-            <bi.BiArrowBack className="block md:hidden" />
-            <bi.BiX className="hidden md:block" />
-          </button>
-          <h1 className="text-2xl font-bold">Profile</h1>
+          {privacySubpageOpen ? (
+            <>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={() => setPrivacySubpageOpen(false)}
+              >
+                <bi.BiArrowBack />
+              </button>
+              <h1 className="text-2xl font-bold">Advanced Privacy Chat</h1>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={() => {
+                  dispatch(setPage({ target: 'friendProfile' }));
+                }}
+              >
+                <bi.BiArrowBack className="block md:hidden" />
+                <bi.BiX className="hidden md:block" />
+              </button>
+              <h1 className="text-2xl font-bold">Profile</h1>
+            </>
+          )}
         </div>
-        {profile && (
+        {profile && !privacySubpageOpen && (
           <div className="flex items-center gap-1">
             {!profile.saved && (
               <button
@@ -496,7 +754,7 @@ function FriendProfile() {
           </div>
         )}
       </div>
-      {profile && (
+      {profile && !privacySubpageOpen && (
         <div className="pb-16 overflow-y-auto scrollbar-thin scrollbar-thumb-spill-200 hover:scrollbar-thumb-spill-300 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600">
           {actionMessage && (
             <p className="px-4 pt-1 text-xs text-sky-600 dark:text-sky-400">
@@ -600,19 +858,19 @@ function FriendProfile() {
                     type="button"
                     className="py-2 rounded-lg border border-spill-200 dark:border-spill-700 hover:bg-spill-50 dark:hover:bg-spill-800"
                     onClick={() =>
-                      friendProfileRoomId &&
+                      resolvedFriendProfileRoomId &&
                       dispatch(
                         setPage({
                           target: 'media',
                           data: {
-                            roomId: friendProfileRoomId,
+                            roomId: resolvedFriendProfileRoomId,
                             title: displayName,
                             initialTab: item.tab,
                           },
                         })
                       )
                     }
-                    disabled={!friendProfileRoomId}
+                    disabled={!resolvedFriendProfileRoomId}
                   >
                     <p className="text-base font-semibold">{item.value}</p>
                     <p className="text-xs opacity-70">{item.label}</p>
@@ -776,27 +1034,22 @@ function FriendProfile() {
               <span>Encription</span>
               <bi.BiChevronRight />
             </button>
-            <div className="py-3 px-4 grid grid-cols-[auto_1fr_auto] gap-3 items-center border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+            <button
+              type="button"
+              className="py-3 px-4 grid grid-cols-[auto_1fr_auto] gap-3 items-center text-left border-0 border-b border-solid border-spill-100 dark:border-spill-800 hover:bg-spill-50 dark:hover:bg-spill-800/60"
+              onClick={() => setPrivacySubpageOpen(true)}
+            >
               <i>
                 <bi.BiShieldQuarter />
               </i>
               <span className="text-sm">
-                <p className="font-medium">Advance privecy chat</p>
+                <p className="font-medium">Advanced Privacy Chat</p>
                 <p className="opacity-70 text-xs">
-                  On thakle screenshot/screen video try korle privacy shield
-                  show hobe.
+                  Privacy shield, secret chat, timer, and screenshot alerts.
                 </p>
               </span>
-              {renderToggle({
-                id: 'friend-advanced-privacy-toggle',
-                checked: inboxPrefs.advancedPrivacy,
-                onClick: async () => {
-                  const next = !inboxPrefs.advancedPrivacy;
-                  setInboxPrefs((prev) => ({ ...prev, advancedPrivacy: next }));
-                  await updateInboxPreference('advancedPrivacy', next);
-                },
-              })}
-            </div>
+              <bi.BiChevronRight />
+            </button>
           </div>
           <div className="mt-4 grid">
             {[
@@ -827,8 +1080,8 @@ function FriendProfile() {
                 label: 'Clear chat',
                 icon: <bi.BiEraser />,
                 onClick: async () => {
-                  if (!friendProfileRoomId) return;
-                  await axios.post(`/inboxes/${friendProfileRoomId}/clear`);
+                  if (!resolvedFriendProfileRoomId) return;
+                  await axios.post(`/inboxes/${resolvedFriendProfileRoomId}/clear`);
                   setActionMessage('Chat cleared successfully');
                 },
               },
@@ -857,8 +1110,8 @@ function FriendProfile() {
                 label: 'Delete chat',
                 icon: <bi.BiTrashAlt />,
                 onClick: async () => {
-                  if (!friendProfileRoomId) return;
-                  await axios.delete(`/chats/${friendProfileRoomId}`);
+                  if (!resolvedFriendProfileRoomId) return;
+                  await axios.delete(`/chats/${resolvedFriendProfileRoomId}`);
                   setActionMessage('Chat deleted successfully');
                   dispatch(setRefreshInbox(uuidv4()));
                 },
@@ -894,14 +1147,14 @@ function FriendProfile() {
               onClick={() => setEncryptionPopupOpen(false)}
             >
               <div
-                className="w-full max-w-md rounded-2xl border border-spill-200 bg-white text-spill-900 shadow-2xl px-6 py-7 dark:border-[#20252c] dark:bg-[#12171d] dark:text-[#eef1f4]"
+                className="w-full max-w-md rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-sky-50 text-spill-900 shadow-2xl px-6 py-7 dark:border-spill-700 dark:bg-gradient-to-br dark:from-spill-900 dark:via-spill-900 dark:to-spill-950 dark:text-spill-50"
                 aria-hidden
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    className="p-1.5 rounded-full text-spill-500 hover:text-spill-900 hover:bg-spill-100 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
+                    className="p-1.5 rounded-full text-spill-500 hover:text-spill-900 hover:bg-slate-100 dark:text-spill-300 dark:hover:text-white dark:hover:bg-spill-800"
                     onClick={() => setEncryptionPopupOpen(false)}
                   >
                     <bi.BiX />
@@ -909,28 +1162,28 @@ function FriendProfile() {
                 </div>
                 <div className="grid justify-items-center text-center">
                   <div className="w-28 h-20 mb-4 relative">
-                    <span className="absolute left-1 top-8 w-9 h-9 rounded-full border-[5px] border-spill-700 dark:border-white/90" />
-                    <span className="absolute left-6 top-11 w-9 h-[5px] bg-spill-700 rotate-45 origin-left rounded-full dark:bg-white/90" />
-                    <span className="absolute left-11 top-3 w-12 h-12 rounded-xl bg-emerald-100 border-2 border-emerald-300 flex items-center justify-center dark:bg-[#dff5d2] dark:border-[#0f151b]">
-                      <bi.BiLockAlt size={24} className="text-emerald-800 dark:text-[#24311f]" />
+                    <span className="absolute left-1 top-8 w-9 h-9 rounded-full border-[5px] border-slate-500 dark:border-spill-200" />
+                    <span className="absolute left-6 top-11 w-9 h-[5px] bg-slate-500 rotate-45 origin-left rounded-full dark:bg-spill-200" />
+                    <span className="absolute left-11 top-3 w-12 h-12 rounded-xl bg-sky-100 border-2 border-sky-200 flex items-center justify-center dark:bg-sky-500/15 dark:border-sky-500/25">
+                      <bi.BiLockAlt size={24} className="text-sky-700 dark:text-sky-300" />
                     </span>
-                    <span className="absolute right-2 top-8 w-10 h-10 rounded-full bg-[#23d366] border-2 border-emerald-600 flex items-center justify-center dark:border-[#0f151b]">
-                      <bi.BiTime size={18} className="text-emerald-900 dark:text-[#0f151b]" />
+                    <span className="absolute right-2 top-8 w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 border-2 border-sky-600 flex items-center justify-center dark:border-sky-400/50">
+                      <bi.BiTime size={18} className="text-white" />
                     </span>
-                    <span className="absolute right-0 bottom-2 w-12 h-3 rounded-full bg-spill-300 dark:bg-white/90" />
-                    <span className="absolute right-4 bottom-1 w-6 h-5 rounded-full bg-[#23d366] border border-emerald-600 dark:border-[#0f151b]" />
+                    <span className="absolute right-0 bottom-2 w-12 h-3 rounded-full bg-slate-300 dark:bg-spill-300" />
+                    <span className="absolute right-4 bottom-1 w-6 h-5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 border border-sky-600 dark:border-sky-400/50" />
                   </div>
                   <h2 className="text-[37px] leading-10 font-semibold">
                     Your chats and calls are private
                   </h2>
-                  <p className="mt-3 text-[17px] leading-7 text-spill-700 dark:text-white/85">
+                  <p className="mt-3 text-[17px] leading-7 text-slate-600 dark:text-spill-200/85">
                     End-to-end encryption keeps your personal messages and calls
                     between you and the people you choose. No one outside of
                     the chat, not even us, can read, listen to, or share them.
                     This includes:
                   </p>
                 </div>
-                <div className="mt-6 grid gap-4 text-[17px] text-spill-800 dark:text-white/92">
+                <div className="mt-6 grid gap-4 text-[17px] text-spill-800 dark:text-spill-100">
                   <div className="w-full max-w-[320px] mx-auto grid gap-4">
                     {[
                       {
@@ -958,7 +1211,7 @@ function FriendProfile() {
                         key={item.text}
                         className="grid grid-cols-[20px_1fr] gap-3 items-center"
                       >
-                        <span className="text-spill-700 dark:text-white/90">
+                        <span className="text-sky-700 dark:text-sky-300">
                           {item.icon}
                         </span>
                         <p className="text-left">{item.text}</p>
@@ -969,7 +1222,7 @@ function FriendProfile() {
                 <div className="mt-7 flex justify-end gap-3">
                   <button
                     type="button"
-                    className="h-11 px-4 rounded-full text-emerald-600 flex items-center font-semibold hover:bg-emerald-50 dark:text-[#23d366] dark:hover:bg-[#1a2027]"
+                    className="h-11 px-4 rounded-full text-sky-700 flex items-center font-semibold hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-spill-800"
                     onClick={() => {
                       setEncryptionPopupOpen(false);
                       dispatch(
@@ -984,7 +1237,7 @@ function FriendProfile() {
                   </button>
                   <button
                     type="button"
-                    className="h-11 px-7 rounded-full bg-[#23d366] text-white font-semibold hover:brightness-110 dark:text-[#0d1b12]"
+                    className="h-11 px-7 rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-500 text-white font-semibold hover:brightness-110"
                     onClick={() => setEncryptionPopupOpen(false)}
                   >
                     OK
@@ -1076,6 +1329,169 @@ function FriendProfile() {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {profile && privacySubpageOpen && (
+        <div className="pb-10 overflow-y-auto scrollbar-thin scrollbar-thumb-spill-200 hover:scrollbar-thumb-spill-300 dark:scrollbar-thumb-spill-700 dark:hover:scrollbar-thumb-spill-600">
+          <div className="px-4 py-3 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+            <p className="text-sm text-slate-600 dark:text-spill-300">
+              Choose how this chat protects privacy. Changes are shared in the
+              conversation so both people know the protection state.
+            </p>
+          </div>
+          <div className="py-3 px-4 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+            <div className="flex items-center justify-between gap-3">
+              <span className="grid grid-cols-[auto_1fr] gap-3 items-center">
+                <i>
+                  <bi.BiShieldQuarter />
+                </i>
+                <span className="text-sm">
+                  <p className="font-medium">Advanced Privacy Chat</p>
+                  <p className="opacity-70 text-xs">
+                    Show a privacy shield when screenshot or screen recording is attempted.
+                  </p>
+                </span>
+              </span>
+              {renderToggle({
+                id: 'friend-advanced-privacy-toggle',
+                checked: inboxPrefs.advancedPrivacy,
+                onClick: async () => {
+                  const next = !inboxPrefs.advancedPrivacy;
+                  setInboxPrefs((prev) => ({ ...prev, advancedPrivacy: next }));
+                  await updateInboxPreference('advancedPrivacy', next);
+                },
+              })}
+            </div>
+          </div>
+          <div className="py-3 px-4 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+            <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-slate-50 p-4 shadow-sm dark:border-spill-700 dark:from-spill-900 dark:via-spill-900 dark:to-spill-950">
+              <div className="flex items-start justify-between gap-3">
+                <span className="grid grid-cols-[auto_1fr] gap-3 items-start">
+                  <span className="mt-0.5 grid h-11 w-11 place-items-center rounded-2xl bg-sky-100 text-sky-700 shadow-inner dark:bg-sky-500/15 dark:text-sky-300">
+                    <bi.BiGhost size={20} />
+                  </span>
+                  <span className="text-sm">
+                    <span className="inline-flex items-center gap-2">
+                      <p className="font-semibold text-spill-900 dark:text-spill-50">
+                        Secret Chat
+                      </p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          inboxPrefs.secretChatEnabled
+                            ? 'bg-sky-600 text-white dark:bg-sky-500 dark:text-spill-950'
+                            : 'bg-slate-200 text-slate-700 dark:bg-spill-800 dark:text-spill-200'
+                        }`}
+                      >
+                        {inboxPrefs.secretChatEnabled ? 'ON' : 'OFF'}
+                      </span>
+                    </span>
+                    <p className="mt-1 max-w-[240px] opacity-70 text-xs leading-5">
+                      Uses a separate protected session with disappearing messages
+                      and blocked forward, save, and export actions.
+                    </p>
+                  </span>
+                </span>
+                {renderToggle({
+                  id: 'friend-secret-chat-toggle',
+                  checked: inboxPrefs.secretChatEnabled,
+                  onClick: async () => {
+                    const next = !inboxPrefs.secretChatEnabled;
+                    setInboxPrefs((prev) => ({
+                      ...prev,
+                      secretChatEnabled: next,
+                      secretDisappearSeconds: next
+                        ? prev.secretDisappearSeconds || 30
+                        : 0,
+                    }));
+                    await updateInboxPreference('secretChat', {
+                      enabled: next,
+                      disappearSeconds: next
+                        ? inboxPrefs.secretDisappearSeconds || 30
+                        : 0,
+                      screenshotAlerts: true,
+                    });
+                    await handleGetInboxPreference();
+                    setActionMessage(
+                      next ? 'Secret chat enabled' : 'Secret chat disabled'
+                    );
+                  },
+                })}
+              </div>
+            </div>
+            {inboxPrefs.secretChatEnabled && (
+              <div className="mt-3 grid gap-3">
+                <label className="h-10 px-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/80 dark:bg-spill-900/60 flex items-center gap-2">
+                  <bi.BiTimer />
+                  <select
+                    id="friend-secret-timer"
+                    name="friendSecretTimer"
+                    value={inboxPrefs.secretDisappearSeconds}
+                    className="w-full bg-transparent text-sm"
+                    onChange={async (e) => {
+                      const nextTimer = Number(e.target.value || 0);
+                      setInboxPrefs((prev) => ({
+                        ...prev,
+                        secretDisappearSeconds: nextTimer,
+                      }));
+                      await updateInboxPreference(
+                        'secretDisappearSeconds',
+                        nextTimer
+                      );
+                    }}
+                  >
+                    {SECRET_TIMER_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="h-10 px-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/80 dark:bg-spill-900/60 flex items-center justify-between">
+                  <span className="text-sm">Screenshot alerts</span>
+                  {renderToggle({
+                    id: 'friend-secret-alert-toggle',
+                    checked: inboxPrefs.secretScreenshotAlerts,
+                    onClick: async () => {
+                      const next = !inboxPrefs.secretScreenshotAlerts;
+                      setInboxPrefs((prev) => ({
+                        ...prev,
+                        secretScreenshotAlerts: next,
+                      }));
+                      await updateInboxPreference('secretScreenshotAlerts', next);
+                    },
+                  })}
+                </div>
+                <div className="rounded-lg border border-spill-200 bg-slate-50/80 px-3 py-2 text-xs dark:border-spill-700 dark:bg-spill-900/60">
+                  <p className="font-semibold">Session ID</p>
+                  <p className="mt-1 break-all opacity-80">
+                    {inboxPrefs.secretSessionId || 'Pending session'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-200 px-2 py-1 dark:bg-spill-800">
+                      Forward blocked
+                    </span>
+                    <span className="rounded-full bg-slate-200 px-2 py-1 dark:bg-spill-800">
+                      Save blocked
+                    </span>
+                    <span className="rounded-full bg-slate-200 px-2 py-1 dark:bg-spill-800">
+                      Export blocked
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-3 rounded-full border border-sky-500 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-500 dark:text-sky-300 dark:hover:bg-sky-500/10"
+                    onClick={async () => {
+                      await updateInboxPreference('secretRegenerateSession', true);
+                      await handleGetInboxPreference();
+                      setActionMessage('Secret session regenerated');
+                    }}
+                  >
+                    Regenerate session
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

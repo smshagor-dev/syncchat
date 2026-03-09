@@ -57,6 +57,41 @@ const ChatModel = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    encryptedText: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
+    },
+    encryptionSessionId: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
+    },
+    expiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    isSecretSystemMessage: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    viewOnce: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    viewOnceType: {
+      type: DataTypes.ENUM('none', 'text', 'image', 'video'),
+      allowNull: false,
+      defaultValue: 'none',
+    },
+    viewOnceOpenedBy: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
   },
   {
     timestamps: true,

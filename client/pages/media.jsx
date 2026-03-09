@@ -17,6 +17,7 @@ function Media() {
   const [loaded, setLoaded] = useState(false);
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState(mediaContext?.initialTab || 'media');
+  const [allowDownload, setAllowDownload] = useState(true);
 
   useEffect(() => {
     setTab(mediaContext?.initialTab || 'media');
@@ -49,6 +50,35 @@ function Media() {
 
     return () => abortCtrl.abort();
   }, [page.media, roomId]);
+
+  useEffect(() => {
+    const abortCtrl = new AbortController();
+
+    const getRoomSecretState = async () => {
+      if (!roomId) {
+        setAllowDownload(true);
+        return;
+      }
+
+      try {
+        const { data } = await axios.get(`/inboxes/${roomId}`, {
+          signal: abortCtrl.signal,
+        });
+        const inbox = data?.payload || {};
+        const blocked =
+          inbox?.roomType === 'private' &&
+          !!inbox?.secretChatEnabled &&
+          inbox?.secretSaveBlocked !== false;
+        setAllowDownload(!blocked);
+      } catch (error0) {
+        setAllowDownload(true);
+      }
+    };
+
+    getRoomSecretState();
+
+    return () => abortCtrl.abort();
+  }, [roomId]);
 
   const tabs = [
     { target: 'media', html: 'Media' },
@@ -155,7 +185,10 @@ function Media() {
                             dispatch(
                               setModal({
                                 target: 'photoFull',
-                                data: resolveUploadUrl(item.file.url),
+                                data: {
+                                  url: resolveUploadUrl(item.file.url),
+                                  allowDownload,
+                                },
                               })
                             )
                           }
@@ -210,13 +243,15 @@ function Media() {
                           {moment(item.createdAt).fromNow()}
                         </p>
                       </span>
-                      <a
-                        href={resolveUploadUrl(item.file.url)}
-                        download={item.file.originalname}
-                        className="p-2 rounded-full hover:bg-spill-200 dark:hover:bg-spill-700"
-                      >
-                        <bi.BiDownload />
-                      </a>
+                      {allowDownload && (
+                        <a
+                          href={resolveUploadUrl(item.file.url)}
+                          download={item.file.originalname}
+                          className="p-2 rounded-full hover:bg-spill-200 dark:hover:bg-spill-700"
+                        >
+                          <bi.BiDownload />
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>

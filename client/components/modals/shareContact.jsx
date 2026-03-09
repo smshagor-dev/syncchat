@@ -102,9 +102,18 @@ function ShareContact() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return inboxes;
+    const source = isForwardMode
+      ? inboxes.filter(
+          (inbox) =>
+            !(
+              inbox?.secretChatEnabled &&
+              (inbox?.secretForwardBlocked ?? true)
+            )
+        )
+      : inboxes;
+    if (!q) return source;
 
-    return inboxes.filter((inbox) => {
+    return source.filter((inbox) => {
       if (inbox.roomType === 'group') {
         return (inbox.group?.name || '').toLowerCase().includes(q);
       }
@@ -116,7 +125,7 @@ function ShareContact() {
         (friend?.username || '').toLowerCase().includes(q)
       );
     });
-  }, [inboxes, search, master?._id]);
+  }, [inboxes, isForwardMode, search, master?._id]);
 
   const buildShareText = () =>
     `Shared contact:\n${activeShareContact.fullname}\n@${
@@ -124,6 +133,12 @@ function ShareContact() {
     }${activeShareContact.phone ? `\nPhone: ${activeShareContact.phone}` : ''}${
       activeShareContact.email ? `\nEmail: ${activeShareContact.email}` : ''
     }`;
+
+  const getLiveInbox = async (roomId) => {
+    if (!roomId) return null;
+    const { data } = await axios.get(`/inboxes/${roomId}`);
+    return data?.payload || null;
+  };
 
   const emitShare = ({ roomId, roomType, ownersId }) => {
     if (!activeShareContact) return;
@@ -139,25 +154,46 @@ function ShareContact() {
   };
 
   const handleShareToInbox = (inbox) => {
-    if (isForwardMode) {
-      socket.emit('chat/forward', {
-        userId: master._id,
-        fromRoomId: activeShareContact.fromRoomId,
-        chatsId: activeShareContact.chatsId || [],
-        toRoomId: inbox.roomId,
-        toRoomType: inbox.roomType,
-        toOwnersId: inbox.ownersId,
-      });
-      closeModal();
-      return;
-    }
+    (async () => {
+      try {
+        if (isForwardMode) {
+          const [fromInbox, toInbox] = await Promise.all([
+            getLiveInbox(activeShareContact.fromRoomId),
+            getLiveInbox(inbox.roomId),
+          ]);
 
-    emitShare({
-      roomId: inbox.roomId,
-      roomType: inbox.roomType,
-      ownersId: inbox.ownersId,
-    });
-    closeModal();
+          if (
+            (fromInbox?.secretChatEnabled &&
+              (fromInbox?.secretForwardBlocked ?? true)) ||
+            (toInbox?.secretChatEnabled &&
+              (toInbox?.secretForwardBlocked ?? true))
+          ) {
+            setStatus('Forward is blocked in secret chat');
+            return;
+          }
+
+          socket.emit('chat/forward', {
+            userId: master._id,
+            fromRoomId: activeShareContact.fromRoomId,
+            chatsId: activeShareContact.chatsId || [],
+            toRoomId: inbox.roomId,
+            toRoomType: inbox.roomType,
+            toOwnersId: inbox.ownersId,
+          });
+          closeModal();
+          return;
+        }
+
+        emitShare({
+          roomId: inbox.roomId,
+          roomType: inbox.roomType,
+          ownersId: inbox.ownersId,
+        });
+        closeModal();
+      } catch (error0) {
+        setStatus(error0?.response?.data?.message || error0.message);
+      }
+    })();
   };
 
   const handleShareToUser = async (user) => {
@@ -173,6 +209,15 @@ function ShareContact() {
 
       if (!roomId) {
         throw new Error('Could not open chat for this user');
+      }
+
+      const secretInbox = await getLiveInbox(roomId);
+      if (
+        isForwardMode &&
+        secretInbox &&
+        (secretInbox.secretForwardBlocked ?? true)
+      ) {
+        throw new Error('Forward is blocked in secret chat');
       }
 
       if (isForwardMode) {

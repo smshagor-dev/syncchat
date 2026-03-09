@@ -52,6 +52,16 @@ function Send({ setChats, setNewMessage, control }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isSendingVoice, setIsSendingVoice] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [showSchedulePanel, setShowSchedulePanel] = useState(false);
+  const [scheduledItems, setScheduledItems] = useState([]);
+  const [scheduleForm, setScheduleForm] = useState({
+    mode: 'once',
+    scheduledFor: '',
+    recurringType: 'daily',
+  });
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [viewOnceText, setViewOnceText] = useState(false);
   const recorderRef = useRef(null);
   const recordStreamRef = useRef(null);
   const recordChunksRef = useRef([]);
@@ -70,6 +80,14 @@ function Send({ setChats, setNewMessage, control }) {
             : group?.permissions?.memberCanSendMessage !== false))) ||
       (!isGroup && profile?.active)
     );
+  };
+
+  const getDefaultScheduleValue = () => {
+    const next = new Date(Date.now() + 5 * 60 * 1000);
+    next.setSeconds(0, 0);
+    return new Date(next.getTime() - next.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
   };
 
   const clearRecordTimer = () => {
@@ -282,6 +300,8 @@ function Send({ setChats, setNewMessage, control }) {
           userId: master._id,
           roomId: chatRoom.data.roomId,
           replyTo: replyingChat?._id || null,
+          viewOnce: viewOnceText && nextText.trim().length > 0,
+          viewOnceType: 'text',
         });
       } else return;
 
@@ -289,12 +309,103 @@ function Send({ setChats, setNewMessage, control }) {
       setTimeout(() => setEmojiBoard(false), 150);
       // reset form
       setForm({ text: '', file: null });
+      setViewOnceText(false);
       dispatch(setReplyingChat(null));
     }
   };
 
+  const loadScheduledMessages = async () => {
+    if (!chatRoom?.data?.roomId) return;
+
+    try {
+      setIsLoadingSchedules(true);
+      const { data } = await axios.get('/chats/scheduled', {
+        params: { roomId: chatRoom.data.roomId },
+      });
+      setScheduledItems(Array.isArray(data?.payload) ? data.payload : []);
+    } catch (error0) {
+      console.error(error0?.response?.data?.message || error0.message);
+    } finally {
+      setIsLoadingSchedules(false);
+    }
+  };
+
+  const handleScheduleCreate = async () => {
+    const nextText = setting?.replaceTextWithEmoji
+      ? replaceTextTokensWithEmoji(form.text)
+      : form.text;
+    const safeText = nextText.trim();
+
+    if (!safeText || isScheduling) return;
+
+    const payload = {
+      roomId: chatRoom.data.roomId,
+      ownersId: chatRoom.data.ownersId,
+      roomType: chatRoom.data.roomType,
+      text: safeText,
+      replyTo: replyingChat?._id || null,
+      mode: scheduleForm.mode,
+      scheduledFor:
+        scheduleForm.mode === 'when-online'
+          ? null
+          : scheduleForm.scheduledFor
+            ? new Date(scheduleForm.scheduledFor).toISOString()
+            : null,
+      recurringType:
+        scheduleForm.mode === 'recurring' ? scheduleForm.recurringType : 'none',
+      targetUserId:
+        scheduleForm.mode === 'when-online'
+          ? chatRoom.data?.profile?.userId || null
+          : null,
+    };
+
+    try {
+      setIsScheduling(true);
+      const { data } = await axios.post('/chats/scheduled', payload);
+      if (data?.payload) {
+        setScheduledItems((prev) => {
+          const next = [data.payload, ...(prev || []).filter((item) => item._id !== data.payload._id)];
+          return next.sort(
+            (a, b) =>
+              new Date(a.nextRunAt || a.createdAt).getTime() -
+              new Date(b.nextRunAt || b.createdAt).getTime()
+          );
+        });
+      }
+      setForm({ text: '', file: null });
+      dispatch(setReplyingChat(null));
+      setShowSchedulePanel(false);
+      setScheduleForm({
+        mode: 'once',
+        scheduledFor: '',
+        recurringType: 'daily',
+      });
+    } catch (error0) {
+      // eslint-disable-next-line no-alert
+      alert(error0?.response?.data?.message || error0.message);
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const handleCancelScheduled = async (scheduleId) => {
+    try {
+      await axios.delete(`/chats/scheduled/${scheduleId}`);
+      setScheduledItems((prev) =>
+        (prev || []).filter((item) => item._id !== scheduleId)
+      );
+    } catch (error0) {
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  useEffect(() => {
+    loadScheduledMessages();
+  }, [chatRoom?.data?.roomId]);
+
   useEffect(() => {
     socket.on('chat/insert', (payload) => {
+      if (!payload?.roomId || payload.roomId !== chatRoom?.data?.roomId) return;
       if (payload.deletedBy?.includes(master._id)) return;
 
       if (
@@ -364,7 +475,47 @@ function Send({ setChats, setNewMessage, control }) {
       socket.off('chat/insert');
       socket.off('chat/relay-update');
     };
-  }, [master._id, setting?.mute, setting?.outgoingMessageSoundEnabled]);
+  }, [
+    chatRoom?.data?.roomId,
+    master._id,
+    setting?.mute,
+    setting?.outgoingMessageSoundEnabled,
+  ]);
+
+  useEffect(() => {
+    const handleScheduledUpsert = (payload) => {
+      if (!payload?.roomId || payload.roomId !== chatRoom?.data?.roomId) return;
+      if (payload.status && payload.status !== 'pending') {
+        setScheduledItems((prev) =>
+          (prev || []).filter((item) => item._id !== payload._id)
+        );
+        return;
+      }
+      setScheduledItems((prev) => {
+        const next = [payload, ...(prev || []).filter((item) => item._id !== payload._id)];
+        return next.sort(
+          (a, b) =>
+            new Date(a.nextRunAt || a.createdAt).getTime() -
+            new Date(b.nextRunAt || b.createdAt).getTime()
+        );
+      });
+    };
+
+    const handleScheduledRemove = (payload) => {
+      if (!payload?._id || payload.roomId !== chatRoom?.data?.roomId) return;
+      setScheduledItems((prev) =>
+        (prev || []).filter((item) => item._id !== payload._id)
+      );
+    };
+
+    socket.on('scheduled/upsert', handleScheduledUpsert);
+    socket.on('scheduled/remove', handleScheduledRemove);
+
+    return () => {
+      socket.off('scheduled/upsert', handleScheduledUpsert);
+      socket.off('scheduled/remove', handleScheduledRemove);
+    };
+  }, [chatRoom?.data?.roomId]);
 
   useEffect(() => {
     if (isGroup) {
@@ -426,11 +577,25 @@ function Send({ setChats, setNewMessage, control }) {
     []
   );
 
+  useEffect(() => {
+    if (!showSchedulePanel) return;
+    setScheduleForm((prev) =>
+      prev.scheduledFor
+        ? prev
+        : {
+            ...prev,
+            scheduledFor: getDefaultScheduleValue(),
+          }
+    );
+  }, [showSchedulePanel]);
+
   const formatRecordTime = `${String(Math.floor(recordSeconds / 60)).padStart(
     2,
     '0'
   )}:${String(recordSeconds % 60).padStart(2, '0')}`;
   const hasText = form.text.trim().length > 0;
+  const canScheduleWhenOnline =
+    !isGroup && !!chatRoom?.data?.profile?.userId && chatRoom?.data?.profile?.active;
   const composerMode = (() => {
     if (isBlocked) return 'blocked';
     if (isBlockedByFriend) return 'blockedByFriend';
@@ -461,6 +626,199 @@ function Send({ setChats, setNewMessage, control }) {
           >
             <bi.BiX />
           </button>
+        </div>
+      )}
+      {viewOnceText && composerMode === 'normal' && (
+        <div className="px-3 pt-2">
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
+            This text will be blurred in chat and can be opened only one time.
+          </div>
+        </div>
+      )}
+      {showSchedulePanel && composerMode === 'normal' && (
+        <div className="px-3 pt-3 pb-2 border-b border-slate-200 bg-slate-50 dark:border-spill-700 dark:bg-spill-900/60">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-spill-700 dark:bg-spill-800">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-700 dark:text-spill-100">
+                  Message scheduling
+                </p>
+                <p className="text-xs text-slate-500 dark:text-spill-400">
+                  Schedule send, recurring reminders, or send when the recipient comes online.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-spill-700"
+                onClick={() => setShowSchedulePanel(false)}
+              >
+                <bi.BiX />
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                { id: 'once', label: 'Schedule send' },
+                { id: 'recurring', label: 'Recurring' },
+                { id: 'when-online', label: 'Send online' },
+              ]
+                .filter((item) => item.id !== 'when-online' || canScheduleWhenOnline)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                      scheduleForm.mode === item.id
+                        ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-300'
+                    }`}
+                    onClick={() =>
+                      setScheduleForm((prev) => ({
+                        ...prev,
+                        mode: item.id,
+                      }))
+                    }
+                  >
+                    {item.label}
+                  </button>
+                ))}
+            </div>
+
+            {scheduleForm.mode !== 'when-online' && (
+              <div className="mt-3">
+                <label
+                  htmlFor="scheduled-message-time"
+                  className="mb-1 block text-xs font-medium text-slate-500 dark:text-spill-400"
+                >
+                  Delivery time
+                </label>
+                <input
+                  id="scheduled-message-time"
+                  name="scheduled_for"
+                  type="datetime-local"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-100"
+                  value={scheduleForm.scheduledFor}
+                  onChange={(e) =>
+                    setScheduleForm((prev) => ({
+                      ...prev,
+                      scheduledFor: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            )}
+
+            {scheduleForm.mode === 'recurring' && (
+              <div className="mt-3">
+                <label
+                  htmlFor="scheduled-message-recurring"
+                  className="mb-1 block text-xs font-medium text-slate-500 dark:text-spill-400"
+                >
+                  Repeat
+                </label>
+                <select
+                  id="scheduled-message-recurring"
+                  name="recurring_type"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-100"
+                  value={scheduleForm.recurringType}
+                  onChange={(e) =>
+                    setScheduleForm((prev) => ({
+                      ...prev,
+                      recurringType: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="daily">Daily reminder</option>
+                  <option value="weekly">Weekly reminder</option>
+                  <option value="monthly">Monthly reminder</option>
+                </select>
+              </div>
+            )}
+
+            {scheduleForm.mode === 'when-online' && (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-300">
+                This message will send automatically when{' '}
+                {chatRoom?.data?.profile?.fullname || 'the recipient'} comes online.
+              </div>
+            )}
+
+            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-spill-700 dark:text-spill-400">
+              {hasText
+                ? `Draft to schedule: "${form.text.trim()}"`
+                : 'Write a message in the composer first, then schedule it from here.'}
+            </div>
+
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-spill-300 dark:hover:bg-spill-700"
+                onClick={() => setShowSchedulePanel(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+                disabled={
+                  !hasText ||
+                  isScheduling ||
+                  (scheduleForm.mode !== 'when-online' &&
+                    !scheduleForm.scheduledFor)
+                }
+                onClick={handleScheduleCreate}
+              >
+                {isScheduling ? 'Saving...' : 'Save schedule'}
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-spill-400">
+                  Upcoming
+                </p>
+                {isLoadingSchedules && (
+                  <span className="text-[11px] text-slate-400 dark:text-spill-500">
+                    Loading...
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {(scheduledItems || []).length === 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-400">
+                    No scheduled messages in this chat.
+                  </div>
+                )}
+                {(scheduledItems || []).map((item) => (
+                  <div
+                    key={item._id}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-spill-700 dark:bg-spill-900"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-slate-700 dark:text-spill-100">
+                          {item.text}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-spill-400">
+                          {item.mode === 'when-online'
+                            ? `Send when ${chatRoom?.data?.profile?.fullname || 'recipient'} is online`
+                            : `${item.mode === 'recurring' ? `${item.recurringType} reminder` : 'Scheduled'} • ${new Date(
+                                item.nextRunAt || item.scheduledFor || item.createdAt
+                              ).toLocaleString()}`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/20"
+                        onClick={() => handleCancelScheduled(item._id)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
       <div className="px-2 h-16 grid grid-cols-[auto_1fr_auto] gap-2 items-center">
@@ -556,6 +914,43 @@ function Send({ setChats, setNewMessage, control }) {
                 >
                   <i>
                     <bi.BiPaperclip />
+                  </i>
+                </button>
+                <button
+                  type="button"
+                  className={`p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700 ${
+                    viewOnceText
+                      ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
+                      : ''
+                  }`}
+                  disabled={isRecording || isSendingVoice || isGroup}
+                  onClick={() => {
+                    if (isRecording || isSendingVoice || isGroup) return;
+                    if (isBlocked || isBlockedByFriend) return;
+                    setViewOnceText((prev) => !prev);
+                  }}
+                  title={isGroup ? '1-time text is only available in private chat' : 'Send as one-time text'}
+                >
+                  <i>
+                    <bi.BiLowVision />
+                  </i>
+                </button>
+                <button
+                  type="button"
+                  className={`p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700 ${
+                    showSchedulePanel
+                      ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
+                      : ''
+                  }`}
+                  disabled={isRecording || isSendingVoice}
+                  onClick={() => {
+                    if (isRecording || isSendingVoice) return;
+                    if (isBlocked || isBlockedByFriend) return;
+                    setShowSchedulePanel((prev) => !prev);
+                  }}
+                >
+                  <i>
+                    <bi.BiTimeFive />
                   </i>
                 </button>
               </span>

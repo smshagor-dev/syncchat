@@ -6,7 +6,17 @@ import { setModal } from '../../redux/features/modal';
 function PhotoFull() {
   const dispatch = useDispatch();
   const photo = useSelector((state) => state.modal.photoFull);
-  const isOpen = typeof photo === 'string' && photo.length > 0;
+  const photoUrl =
+    typeof photo === 'string' ? photo : typeof photo?.url === 'string' ? photo.url : '';
+  const kind =
+    typeof photo === 'object' && photo !== null ? photo.kind || 'image' : 'image';
+  const text =
+    typeof photo === 'object' && photo !== null ? String(photo.text || '') : '';
+  const allowDownload =
+    typeof photo === 'object' && photo !== null
+      ? photo.allowDownload !== false
+      : true;
+  const isOpen = kind === 'text' ? text.length > 0 : photoUrl.length > 0;
 
   return (
     <div
@@ -19,9 +29,9 @@ function PhotoFull() {
       onClick={() => dispatch(setModal({ target: 'photoFull', data: false }))}
     >
       <div className="h-16 px-2 flex justify-end items-center bg-spill-black/90">
-        {isOpen && (
+        {isOpen && allowDownload && kind !== 'text' && (
           <a
-            href={photo}
+            href={photoUrl}
             download
             className="p-2 mr-1 rounded-full hover:bg-spill-100 dark:hover:bg-spill-700"
             onClick={(e) => e.stopPropagation()}
@@ -42,13 +52,46 @@ function PhotoFull() {
         </button>
       </div>
       <div className="flex justify-center items-center">
-        <img
-          src={isOpen ? photo : ''}
-          alt=""
-          aria-hidden
-          className={`${isOpen ? 'scale-100' : 'scale-95'} transition max-w-[92vw] max-h-[78vh] object-contain`}
-          onClick={(e) => e.stopPropagation()}
-        />
+        {kind === 'text' ? (
+          <div
+            className="max-w-[92vw] rounded-3xl border border-slate-200 bg-white px-6 py-5 text-lg text-slate-800 shadow-2xl dark:border-spill-700 dark:bg-spill-900 dark:text-spill-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {text}
+          </div>
+        ) : kind === 'video' ? (
+          <video
+            src={isOpen ? photoUrl : ''}
+            controls
+            controlsList={allowDownload ? undefined : 'nodownload noplaybackrate noremoteplayback'}
+            disablePictureInPicture={!allowDownload}
+            className={`${isOpen ? 'scale-100' : 'scale-95'} transition max-w-[92vw] max-h-[78vh] object-contain`}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              if (!allowDownload) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+          >
+            <track kind="captions" />
+          </video>
+        ) : (
+          <img
+            src={isOpen ? photoUrl : ''}
+            alt=""
+            aria-hidden
+            draggable={allowDownload}
+            className={`${isOpen ? 'scale-100' : 'scale-95'} transition max-w-[92vw] max-h-[78vh] object-contain`}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              if (!allowDownload) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+          />
+        )}
       </div>
       <div className="h-16"></div>
     </div>

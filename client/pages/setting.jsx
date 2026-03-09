@@ -7,6 +7,7 @@ import * as bi from 'react-icons/bi';
 import { setSetting } from '../redux/features/user';
 import { setPage } from '../redux/features/page';
 import { setModal } from '../redux/features/modal';
+import { setRefreshInbox } from '../redux/features/chore';
 import { getSetting } from '../api/services/setting.api';
 import {
   WALLPAPER_PRESETS,
@@ -18,6 +19,7 @@ function Setting() {
   const dispatch = useDispatch();
 
   const setting = useSelector((state) => state.user.setting);
+  const master = useSelector((state) => state.user.master);
   const page = useSelector((state) => state.page);
   const [appLockDialog, setAppLockDialog] = React.useState({
     open: false,
@@ -44,6 +46,8 @@ function Setting() {
     saving: '',
     error: '',
     blockedContacts: [],
+    hiddenChats: [],
+    view: 'overview',
   });
   const [accountDialog, setAccountDialog] = React.useState({
     open: false,
@@ -338,6 +342,8 @@ function Setting() {
       saving: '',
       error: '',
       blockedContacts: [],
+      hiddenChats: [],
+      view: 'overview',
     });
   };
 
@@ -414,11 +420,20 @@ function Setting() {
         loading: true,
         error: '',
       }));
-      const { data } = await axios.get('/settings/blocked-contacts');
+      const [blockedResponse, hiddenResponse] = await Promise.all([
+        axios.get('/settings/blocked-contacts'),
+        axios.get('/settings/hidden-chats'),
+      ]);
       setPrivacyDialog((prev) => ({
         ...prev,
         loading: false,
-        blockedContacts: Array.isArray(data?.payload) ? data.payload : [],
+        blockedContacts: Array.isArray(blockedResponse?.data?.payload)
+          ? blockedResponse.data.payload
+          : [],
+        hiddenChats: Array.isArray(hiddenResponse?.data?.payload)
+          ? hiddenResponse.data.payload
+          : [],
+        view: 'overview',
       }));
     } catch (error0) {
       setPrivacyDialog((prev) => ({
@@ -603,6 +618,37 @@ function Setting() {
     }
   };
 
+  const handleUnhideChat = async (roomId) => {
+    try {
+      setPrivacyDialog((prev) => ({
+        ...prev,
+        saving: `unhide-${roomId}`,
+        error: '',
+      }));
+      await axios.patch(`/inboxes/${roomId}/preferences`, {
+        action: 'hide',
+        value: false,
+      });
+      window.dispatchEvent(
+        new CustomEvent('syncchat:inbox-unhide', {
+          detail: { roomId },
+        })
+      );
+      setPrivacyDialog((prev) => ({
+        ...prev,
+        saving: '',
+        hiddenChats: prev.hiddenChats.filter((item) => item.roomId !== roomId),
+      }));
+      dispatch(setRefreshInbox(crypto.randomUUID()));
+    } catch (error0) {
+      setPrivacyDialog((prev) => ({
+        ...prev,
+        saving: '',
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
   const openTwoFactorDialog = async (mode) => {
     try {
       if (mode === 'enable') {
@@ -707,6 +753,20 @@ function Setting() {
       }));
     }
   };
+
+  const getHiddenChatTitle = React.useCallback(
+    (inbox) => {
+      if (inbox?.roomType === 'group') {
+        return inbox?.channel?.name || inbox?.group?.name || 'Group';
+      }
+
+      const friend = (inbox?.owners || []).find(
+        (owner) => owner.userId !== master?._id
+      );
+      return friend?.fullname || friend?.username || 'Private chat';
+    },
+    [master?._id]
+  );
 
   return (
     <div
@@ -1304,62 +1364,197 @@ function Setting() {
                       ))}
                     </div>
 
-                    <div className="rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
-                      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-spill-800">
-                        <div>
-                          <p className="text-lg font-semibold">
+                    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                      <button
+                        type="button"
+                        className="grid w-full grid-cols-[1fr_auto] gap-4 border-b border-slate-100 px-5 py-4 text-left hover:bg-slate-50 dark:border-spill-800 dark:hover:bg-spill-800/70"
+                        onClick={() =>
+                          setPrivacyDialog((prev) => ({
+                            ...prev,
+                            view: 'blocked',
+                          }))
+                        }
+                      >
+                        <span>
+                          <p className="font-medium">
                             Blocked contacts ({privacyDialog.blockedContacts.length})
                           </p>
                           <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
                             Blocked contacts cannot message or call you.
                           </p>
-                        </div>
-                        {privacyDialog.loading && (
-                          <bi.BiLoaderAlt className="animate-spin text-xl opacity-70" />
-                        )}
-                      </div>
-                      <div className="grid">
-                        {!privacyDialog.loading &&
-                          privacyDialog.blockedContacts.length === 0 && (
-                            <p className="px-5 py-5 text-sm text-slate-500 dark:text-white/60">
-                              No blocked contacts.
-                            </p>
+                        </span>
+                        <span className="flex items-center gap-3">
+                          {privacyDialog.loading && (
+                            <bi.BiLoaderAlt className="animate-spin text-xl opacity-70" />
                           )}
-                        {privacyDialog.blockedContacts.map((item) => (
-                          <div
-                            key={item.userId}
-                            className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0 dark:border-spill-800"
+                          <bi.BiChevronRight className="opacity-60" />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="grid w-full grid-cols-[1fr_auto] gap-4 px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-spill-800/70"
+                        onClick={() =>
+                          setPrivacyDialog((prev) => ({
+                            ...prev,
+                            view: 'hidden',
+                          }))
+                        }
+                      >
+                        <span>
+                          <p className="font-medium">
+                            Hidden chats ({privacyDialog.hiddenChats.length})
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
+                            Hidden chats stay out of your main chat list until you unhide them.
+                          </p>
+                        </span>
+                        <bi.BiChevronRight className="self-center opacity-60" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={`${
+                    privacyDialog.view === 'blocked'
+                      ? 'translate-x-0'
+                      : '-translate-x-full'
+                  } absolute inset-0 z-40 flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 transition duration-200 dark:bg-spill-900 dark:text-white/90`}
+                  aria-hidden={privacyDialog.view !== 'blocked'}
+                >
+                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4 dark:border-spill-700 dark:bg-spill-900">
+                    <button
+                      type="button"
+                      className="grid h-10 w-10 place-items-center rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                      onClick={() =>
+                        setPrivacyDialog((prev) => ({ ...prev, view: 'overview' }))
+                      }
+                    >
+                      <bi.BiArrowBack size={20} />
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-semibold">Blocked contacts</h2>
+                      <p className="text-sm text-slate-500 dark:text-white/60">
+                        Manage contacts you blocked from messages and calls.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto bg-slate-100 px-3 py-4 dark:bg-spill-950">
+                    <div className="mx-auto overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                      {!privacyDialog.loading &&
+                        privacyDialog.blockedContacts.length === 0 && (
+                          <p className="px-5 py-5 text-sm text-slate-500 dark:text-white/60">
+                            No blocked contacts.
+                          </p>
+                        )}
+                      {privacyDialog.blockedContacts.map((item) => (
+                        <div
+                          key={item.userId}
+                          className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0 dark:border-spill-800"
+                        >
+                          <img
+                            src={item.avatar || 'assets/images/default-avatar.png'}
+                            alt=""
+                            className="h-12 w-12 rounded-full object-cover"
+                          />
+                          <span className="min-w-0">
+                            <p className="truncate font-medium">
+                              {item.fullname || item.username}
+                            </p>
+                            <p className="truncate text-sm text-slate-500 dark:text-white/60">
+                              @{item.username}
+                            </p>
+                          </span>
+                          <button
+                            type="button"
+                            className="self-center rounded-full border border-sky-500 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-500 dark:text-sky-300 dark:hover:bg-sky-500/10"
+                            onClick={() => handleUnblockContact(item.userId)}
+                            disabled={
+                              privacyDialog.saving === `unblock-${item.userId}`
+                            }
                           >
-                            <img
-                              src={
-                                item.avatar || 'assets/images/default-avatar.png'
-                              }
-                              alt=""
-                              className="h-12 w-12 rounded-full object-cover"
-                            />
-                            <span className="min-w-0">
-                              <p className="truncate font-medium">
-                                {item.fullname || item.username}
-                              </p>
-                              <p className="truncate text-sm text-slate-500 dark:text-white/60">
-                                @{item.username}
-                              </p>
-                            </span>
-                            <button
-                              type="button"
-                              className="self-center rounded-full border border-sky-500 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-500 dark:text-sky-300 dark:hover:bg-sky-500/10"
-                              onClick={() => handleUnblockContact(item.userId)}
-                              disabled={
-                                privacyDialog.saving === `unblock-${item.userId}`
-                              }
-                            >
-                              {privacyDialog.saving === `unblock-${item.userId}`
-                                ? '...'
-                                : 'Unblock'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                            {privacyDialog.saving === `unblock-${item.userId}`
+                              ? '...'
+                              : 'Unblock'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={`${
+                    privacyDialog.view === 'hidden'
+                      ? 'translate-x-0'
+                      : '-translate-x-full'
+                  } absolute inset-0 z-40 flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 transition duration-200 dark:bg-spill-900 dark:text-white/90`}
+                  aria-hidden={privacyDialog.view !== 'hidden'}
+                >
+                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4 dark:border-spill-700 dark:bg-spill-900">
+                    <button
+                      type="button"
+                      className="grid h-10 w-10 place-items-center rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                      onClick={() =>
+                        setPrivacyDialog((prev) => ({ ...prev, view: 'overview' }))
+                      }
+                    >
+                      <bi.BiArrowBack size={20} />
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-semibold">Hidden chats</h2>
+                      <p className="text-sm text-slate-500 dark:text-white/60">
+                        Unhide conversations you want back in the main chat list.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto bg-slate-100 px-3 py-4 dark:bg-spill-950">
+                    <div className="mx-auto overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                      {!privacyDialog.loading &&
+                        privacyDialog.hiddenChats.length === 0 && (
+                          <p className="px-5 py-5 text-sm text-slate-500 dark:text-white/60">
+                            No hidden chats.
+                          </p>
+                        )}
+                      {privacyDialog.hiddenChats.map((item) => (
+                        <div
+                          key={item.roomId}
+                          className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0 dark:border-spill-800"
+                        >
+                          <img
+                            src={
+                              item?.channel?.avatar ||
+                              item?.group?.avatar ||
+                              item?.owners?.find((owner) => owner.userId !== master?._id)?.avatar ||
+                              'assets/images/default-avatar.png'
+                            }
+                            alt=""
+                            className="h-12 w-12 rounded-full object-cover"
+                          />
+                          <span className="min-w-0">
+                            <p className="truncate font-medium">
+                              {getHiddenChatTitle(item)}
+                            </p>
+                            <p className="truncate text-sm text-slate-500 dark:text-white/60">
+                              {item.roomType === 'group'
+                                ? item?.channel
+                                  ? 'Channel chat'
+                                  : 'Group chat'
+                                : 'Private chat'}
+                            </p>
+                          </span>
+                          <button
+                            type="button"
+                            className="self-center rounded-full border border-sky-500 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-500 dark:text-sky-300 dark:hover:bg-sky-500/10"
+                            onClick={() => handleUnhideChat(item.roomId)}
+                            disabled={
+                              privacyDialog.saving === `unhide-${item.roomId}`
+                            }
+                          >
+                            {privacyDialog.saving === `unhide-${item.roomId}`
+                              ? '...'
+                              : 'Unhide'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ const SettingModel = require('../db/models/setting');
 const GroupModel = require('../db/models/group');
 const { toPlain } = require('../db/utils');
 const response = require('../helpers/response');
+const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const {
   buildPrivacyContext,
   sanitizeProfileForViewer,

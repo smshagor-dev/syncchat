@@ -30,6 +30,20 @@ const {
   getSettingMap,
   getContactMap,
 } = require('../../helpers/privacy');
+const {
+  createSecretSession,
+  decryptSecretText,
+  encryptSecretText,
+  getSecretExpiresAt,
+  getSecretPreviewText,
+  getSecretRoomState,
+  isSecretEnabled,
+  cleanupExpiredSecretChats,
+} = require('../../helpers/secretChat');
+const {
+  getViewOnceType,
+  isViewOnceChat,
+} = require('../../helpers/viewOnce');
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
@@ -192,7 +206,7 @@ const resolveArchivedByAfterIncoming = async ({
   return pullFromArray(currentArchivedBy, toUnarchive);
 };
 
-const buildReplyPayload = async (replyTo) => {
+const buildReplyPayload = async (replyTo, secretRoom = null) => {
   if (!replyTo) return null;
   const replyDoc = await ChatModel.findOne({
     where: { _id: replyTo },
@@ -218,7 +232,10 @@ const buildReplyPayload = async (replyTo) => {
     _id: reply._id,
     userId: reply.userId,
     fullname: toPlain(replyProfileDoc)?.fullname || '[inactive]',
-    text: reply.text || toPlain(replyFileDoc)?.originalname || '',
+    text:
+      getResolvedChatText({ chat: reply, secretRoom }) ||
+      toPlain(replyFileDoc)?.originalname ||
+      '',
   };
 };
 
@@ -229,6 +246,29 @@ const getChannelIdentity = (channel) =>
         fullname: channel.name,
         avatar: channel.avatar || null,
         isChannelIdentity: true,
+      }
+    : null;
+
+const getResolvedChatText = ({ chat, secretRoom }) => {
+  if (isSecretEnabled(secretRoom) && chat?.encryptedText) {
+    return decryptSecretText({
+      payload: chat.encryptedText,
+      key: secretRoom.secretSessionKey,
+    });
+  }
+  return chat?.text || '';
+};
+
+const getSecretPayload = (secretRoom, chat) =>
+  isSecretEnabled(secretRoom)
+    ? {
+        enabled: true,
+        expiresAt: chat?.expiresAt || null,
+        saveBlocked: !!secretRoom.secretSaveBlocked,
+        forwardBlocked: !!secretRoom.secretForwardBlocked,
+        exportBlocked: !!secretRoom.secretExportBlocked,
+        screenshotAlerts: !!secretRoom.secretScreenshotAlerts,
+        sessionId: secretRoom.secretSessionId || null,
       }
     : null;
 
@@ -263,6 +303,7 @@ const canAccessGroupRoom = async ({ roomId, userId }) => {
 module.exports = (socket) => {
   socket.on('chat/insert', async (args) => {
     try {
+      await cleanupExpiredSecretChats({ roomId: args?.roomId });
       logger.info('CHAT_INSERT_START', {
         socketId: socket.id,
         roomId: args?.roomId,
@@ -286,6 +327,7 @@ module.exports = (socket) => {
       let hiddenOwners = [];
       let visibleOwners = asArray(args.ownersId);
       let receiverOnline = false;
+      const secretRoom = await getSecretRoomState(args?.roomId);
 
       if (args.roomType === 'group') {
         const groupAccess = await canAccessGroupRoom({
@@ -404,7 +446,28 @@ module.exports = (socket) => {
 
       const chatDoc = await ChatModel.create({
         ...args,
+        text: isSecretEnabled(secretRoom) ? '' : args.text,
+        encryptedText:
+          isSecretEnabled(secretRoom) && String(args?.text || '').length > 0
+            ? encryptSecretText({
+                text: args.text || '',
+                key: secretRoom.secretSessionKey,
+              })
+            : null,
+        encryptionSessionId: isSecretEnabled(secretRoom)
+          ? secretRoom.secretSessionId
+          : null,
+        expiresAt: getSecretExpiresAt(secretRoom),
         fileId,
+        viewOnce: !!args?.viewOnce,
+        viewOnceType: !!args?.viewOnce
+          ? getViewOnceType({
+              text: args?.text,
+              file: toPlain(file),
+              explicitType: args?.viewOnceType,
+            })
+          : 'none',
+        viewOnceOpenedBy: [],
         deletedBy: hiddenOwners,
         delivered: args.roomType === 'private' ? receiverOnline : false,
       });
@@ -428,7 +491,15 @@ module.exports = (socket) => {
       const currentInbox = await InboxModel.findOne({
         where: { roomId: args.roomId },
       });
-      const contentText = getInboxPreviewText(chat.text, file);
+      const contentText = isViewOnceChat(chat)
+        ? chat.viewOnceType === 'image'
+          ? '1-time photo'
+          : chat.viewOnceType === 'video'
+            ? '1-time video'
+            : '1-time message'
+        : isSecretEnabled(secretRoom)
+          ? getSecretPreviewText({ text: args.text, file: toPlain(file) })
+          : getInboxPreviewText(chat.text, file);
 
       const nextDeletedBy =
         hiddenOwners.length > 0
@@ -478,13 +549,30 @@ module.exports = (socket) => {
 
       const inboxes = await Inbox.find({ roomId: args.roomId });
 
+      const resolvedChatText = getResolvedChatText({ chat, secretRoom });
       io.to(args.roomId).emit('chat/insert', {
         ...chat,
+        text: isViewOnceChat(chat) ? '' : resolvedChatText,
         profile: outgoingProfile,
         channel: roomAccess.channel || null,
-        file: toPlain(file),
-        reply: await buildReplyPayload(chat.replyTo),
-        poll: parsePollFromText(chat.text),
+        file: isViewOnceChat(chat) && file ? { ...toPlain(file), url: null } : toPlain(file),
+        viewOnce: isViewOnceChat(chat)
+          ? {
+              enabled: true,
+              type: chat.viewOnceType,
+              opened: false,
+              label: 'Tap to open',
+              previewText:
+                chat.viewOnceType === 'image'
+                  ? 'Photo'
+                  : chat.viewOnceType === 'video'
+                    ? 'Video'
+                    : 'Encrypted message',
+            }
+          : null,
+        reply: await buildReplyPayload(chat.replyTo, secretRoom),
+        poll: parsePollFromText(resolvedChatText),
+        secret: getSecretPayload(secretRoom, chat),
       });
 
       logger.info('CHAT_INSERT_DONE', {
@@ -715,10 +803,12 @@ module.exports = (socket) => {
   socket.on('chat/react', async ({ roomId, chatId, userId, emoji }) => {
     try {
       if (!roomId || !chatId || !userId) return;
+      await cleanupExpiredSecretChats({ roomId });
       const chatDoc = await ChatModel.findOne({
         where: { _id: chatId, roomId },
       });
       if (!chatDoc) return;
+      const secretRoom = await getSecretRoomState(roomId);
 
       const nextReactions = { ...(toPlain(chatDoc)?.reactions || {}) };
       if (!emoji) {
@@ -777,7 +867,17 @@ module.exports = (socket) => {
       const reactionChatDoc = await ChatModel.create({
         userId,
         roomId,
-        text: `Reacted ${emoji}`,
+        text: isSecretEnabled(secretRoom) ? '' : `Reacted ${emoji}`,
+        encryptedText: isSecretEnabled(secretRoom)
+          ? encryptSecretText({
+              text: `Reacted ${emoji}`,
+              key: secretRoom.secretSessionKey,
+            })
+          : null,
+        encryptionSessionId: isSecretEnabled(secretRoom)
+          ? secretRoom.secretSessionId
+          : null,
+        expiresAt: getSecretExpiresAt(secretRoom),
         replyTo: chatId,
         readed: false,
         delivered: ownersId.length === 2 ? receiverOnline : false,
@@ -810,7 +910,9 @@ module.exports = (socket) => {
         content: {
           from: userId,
           senderName: profile?.fullname || '',
-          text: reactionChat.text,
+          text: isSecretEnabled(secretRoom)
+            ? 'Secret reaction'
+            : reactionChat.text,
           time: reactionChat.createdAt,
           delivered: !!reactionChat.delivered,
           readed: false,
@@ -819,10 +921,12 @@ module.exports = (socket) => {
 
       io.to(roomId).emit('chat/insert', {
         ...reactionChat,
+        text: getResolvedChatText({ chat: reactionChat, secretRoom }),
         profile,
         file: null,
-        reply: await buildReplyPayload(reactionChat.replyTo),
+        reply: await buildReplyPayload(reactionChat.replyTo, secretRoom),
         poll: null,
+        secret: getSecretPayload(secretRoom, reactionChat),
       });
 
       const inboxes = await Inbox.find({ roomId });
@@ -910,6 +1014,20 @@ module.exports = (socket) => {
     }) => {
       try {
         if (!userId || !fromRoomId || !toRoomId) return;
+        const [fromSecretRoom, toSecretRoom] = await Promise.all([
+          getSecretRoomState(fromRoomId),
+          getSecretRoomState(toRoomId),
+        ]);
+        if (
+          (isSecretEnabled(fromSecretRoom) && fromSecretRoom.secretForwardBlocked) ||
+          (isSecretEnabled(toSecretRoom) && toSecretRoom.secretForwardBlocked)
+        ) {
+          socket.emit('chat/forward-blocked', {
+            roomId: fromRoomId,
+            message: 'Forward is blocked in secret chat',
+          });
+          return;
+        }
         const ids = asArray(chatsId);
         if (ids.length === 0) return;
 
@@ -1040,4 +1158,89 @@ module.exports = (socket) => {
       }
     }
   );
+
+  const secretAlertCooldown = new Map();
+
+  socket.on('secret/screenshot-alert', async ({ roomId, userId }) => {
+    try {
+      if (!roomId || !userId) return;
+      const secretRoom = await getSecretRoomState(roomId);
+      if (!isSecretEnabled(secretRoom) || !secretRoom.secretScreenshotAlerts) {
+        return;
+      }
+      const cooldownKey = `${roomId}:${userId}`;
+      const lastAt = secretAlertCooldown.get(cooldownKey) || 0;
+      if (Date.now() - lastAt < 15000) return;
+      secretAlertCooldown.set(cooldownKey, Date.now());
+
+      const profile = toPlain(
+        await ProfileModel.findOne({
+          where: { userId },
+          attributes: ['fullname'],
+        })
+      );
+      const alertText = `${
+        profile?.fullname || 'Someone'
+      } triggered a screenshot alert`;
+      const chatDoc = await ChatModel.create({
+        userId,
+        roomId,
+        text: '',
+        encryptedText: encryptSecretText({
+          text: alertText,
+          key: secretRoom.secretSessionKey,
+        }),
+        encryptionSessionId: secretRoom.secretSessionId,
+        expiresAt: getSecretExpiresAt(secretRoom),
+        replyTo: null,
+        readed: false,
+        delivered: false,
+        deletedBy: [],
+        fileId: null,
+        reactions: {},
+        isSecretSystemMessage: true,
+      });
+      const chat = toPlain(chatDoc);
+      const inbox = await InboxModel.findOne({ where: { roomId } });
+      if (inbox) {
+        await inbox.update({
+          unreadMessage: Number(inbox.unreadMessage || 0) + 1,
+          content: {
+            from: userId,
+            senderName: profile?.fullname || '',
+            text: 'Secret screenshot alert',
+            time: chat.createdAt,
+            delivered: false,
+            readed: false,
+          },
+        });
+      }
+
+      io.to(roomId).emit('chat/insert', {
+        ...chat,
+        text: alertText,
+        profile: {
+          userId,
+          fullname: 'Secret chat',
+          avatar: null,
+        },
+        file: null,
+        reply: null,
+        poll: null,
+        secret: getSecretPayload(secretRoom, chat),
+      });
+
+      const inboxes = await Inbox.find({ roomId });
+      if (inboxes[0]) {
+        io.to(asArray(inboxes[0].ownersId)).emit('inbox/find', inboxes[0]);
+      }
+    } catch (error0) {
+      logger.error('SECRET_SCREENSHOT_ALERT_ERROR', {
+        message: error0.message,
+        stack: error0.stack,
+        roomId,
+        userId,
+      });
+    }
+  });
 };

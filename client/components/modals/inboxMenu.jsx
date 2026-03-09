@@ -29,6 +29,7 @@ function InboxMenu() {
     unread: hasForMe(inbox.markUnreadBy),
     favourite: hasForMe(inbox.favouriteBy),
     listed: hasForMe(inbox.listedBy),
+    hidden: hasForMe(inbox.hiddenBy),
     blocked:
       !isGroup &&
       !!friendId &&
@@ -46,6 +47,13 @@ function InboxMenu() {
   const emitLocalInboxDelete = (roomId) => {
     window.dispatchEvent(
       new CustomEvent('syncchat:inbox-delete', {
+        detail: { roomId },
+      })
+    );
+  };
+  const emitLocalInboxVisibility = (roomId, hidden) => {
+    window.dispatchEvent(
+      new CustomEvent(hidden ? 'syncchat:inbox-hide' : 'syncchat:inbox-unhide', {
         detail: { roomId },
       })
     );
@@ -111,6 +119,19 @@ function InboxMenu() {
       label: state.listed ? 'Remove from list' : 'Add to list',
       icon: <bi.BiListUl />,
       onClick: () => preferenceAction('list', !state.listed),
+    },
+    {
+      key: 'hide',
+      label: state.hidden ? 'Unhide chat' : 'Hide chat',
+      icon: state.hidden ? <bi.BiShow /> : <bi.BiHide />,
+      onClick: () =>
+        runAction(async () => {
+          await axios.patch(`/inboxes/${inbox.roomId}/preferences`, {
+            action: 'hide',
+            value: !state.hidden,
+          });
+          emitLocalInboxVisibility(inbox.roomId, !state.hidden);
+        }),
     },
     {
       key: 'block',

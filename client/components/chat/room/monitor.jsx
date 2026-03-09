@@ -72,6 +72,8 @@ function Monitor({
 
   const isGroup = chatRoom.data.roomType === 'group';
   const isChannel = !!chatRoom.data.channel;
+  const isSecretChat =
+    chatRoom.data.roomType === 'private' && !!chatRoom.data.secretChatEnabled;
   const isCurrentUserGroupAdmin =
     isGroup && isGroupAdmin(chatRoom.data?.group, master._id);
   const isScrolled = useRef(false);
@@ -90,6 +92,7 @@ function Monitor({
   const [openVoters, setOpenVoters] = useState({});
   const [pinnedChatId, setPinnedChatId] = useState(null);
   const [manualMediaAccess, setManualMediaAccess] = useState({});
+  const [nowTs, setNowTs] = useState(Date.now());
   const downloadedMediaRef = useRef(new Set());
   const quickEmojis = [
     '\uD83D\uDC4D',
@@ -101,6 +104,7 @@ function Monitor({
   ];
 
   const openForwardFor = (chatId) => {
+    if (isSecretChat) return;
     dispatch(
       setModal({
         target: 'shareContact',
@@ -433,6 +437,27 @@ function Monitor({
   }, [chats ? chats[chats.length - 1] : !!chats]);
 
   useEffect(() => {
+    const hasTimer = (chats || []).some((chat) => !!chat?.expiresAt);
+    if (!hasTimer) return undefined;
+
+    const timer = window.setInterval(() => {
+      const ts = Date.now();
+      setNowTs(ts);
+      setChats((prev) =>
+        (prev || []).filter(
+          (chat) =>
+            !(
+              chat?.expiresAt &&
+              Number.isFinite(new Date(chat.expiresAt).getTime()) &&
+              new Date(chat.expiresAt).getTime() <= ts
+            )
+        )
+      );
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [chats, setChats]);
+
+  useEffect(() => {
     socket.on('chat/read', () => {
       setChats((prev) => {
         prev
@@ -493,14 +518,72 @@ function Monitor({
       }
     });
 
+    socket.on('chat/forward-blocked', ({ message }) => {
+      // eslint-disable-next-line no-alert
+      alert(message || 'Forward is blocked in secret chat');
+    });
+
     return () => {
       socket.off('chat/read');
       socket.off('chat/delivered');
       socket.off('chat/react');
       socket.off('chat/poll-vote');
       socket.off('chat/delete');
+      socket.off('chat/forward-blocked');
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSecretChat) return undefined;
+
+    const emitAlert = () => {
+      socket.emit('secret/screenshot-alert', {
+        roomId: chatRoom.data.roomId,
+        userId: master._id,
+      });
+    };
+
+    const handleKeyDown = (event) => {
+      const key = String(event.key || '');
+      const isPrintScreen =
+        key === 'PrintScreen' ||
+        key === 'Snapshot' ||
+        (event.metaKey &&
+          event.shiftKey &&
+          ['3', '4', '5'].includes(String(event.key || '')));
+      if (isPrintScreen) emitAlert();
+    };
+
+    const handleBlockedSave = (event) => {
+      const isSaveShortcut =
+        (event.ctrlKey || event.metaKey) &&
+        String(event.key || '').toLowerCase() === 's';
+      if (!isSaveShortcut) return;
+      event.preventDefault();
+      event.stopPropagation();
+      emitAlert();
+    };
+
+    const preventSecretExtraction = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keydown', handleBlockedSave, true);
+    window.addEventListener('contextmenu', preventSecretExtraction, true);
+    window.addEventListener('dragstart', preventSecretExtraction, true);
+    window.addEventListener('copy', preventSecretExtraction, true);
+    window.addEventListener('cut', preventSecretExtraction, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keydown', handleBlockedSave, true);
+      window.removeEventListener('contextmenu', preventSecretExtraction, true);
+      window.removeEventListener('dragstart', preventSecretExtraction, true);
+      window.removeEventListener('copy', preventSecretExtraction, true);
+      window.removeEventListener('cut', preventSecretExtraction, true);
+    };
+  }, [chatRoom.data.roomId, isSecretChat, master._id]);
 
   useEffect(() => {
     if (selectedChats && messageMenu) {
@@ -583,12 +666,14 @@ function Monitor({
   };
   const canAutoLoadAttachment = (chat) => {
     if (!chat?.file) return false;
+    if (isSecretChat) return !!manualMediaAccess[chat._id];
     if (chat.userId === master._id) return true;
     if (manualMediaAccess[chat._id]) return true;
     const settingKey = getAutoDownloadSettingKey(chat.file);
     return settingKey ? setting?.[settingKey] !== false : false;
   };
   const triggerBrowserDownload = (file) => {
+    if (isSecretChat) return;
     const resolved = resolveUploadUrl(file?.url);
     if (!resolved) return;
     const link = document.createElement('a');
@@ -704,7 +789,15 @@ function Monitor({
       : false;
   };
   const visibleChats = chats
-    ? chats.filter((elem) => !elem.deletedBy.includes(master._id))
+    ? chats.filter(
+        (elem) =>
+          !elem.deletedBy.includes(master._id) &&
+          !(
+            elem?.expiresAt &&
+            Number.isFinite(new Date(elem.expiresAt).getTime()) &&
+            new Date(elem.expiresAt).getTime() <= nowTs
+          )
+      )
     : [];
   const normalizedSearch = String(searchQuery || '')
     .trim()
@@ -751,10 +844,53 @@ function Monitor({
       dispatch(
         setModal({
           target: 'photoFull',
-          data: resolved,
+          data: {
+            url: resolved,
+            allowDownload: !isSecretChat,
+          },
         })
       );
     });
+  };
+  const openViewOnceMessage = async (chat) => {
+    if (!chat?._id || !chat?.viewOnce?.enabled || chat?.viewOnce?.opened) return;
+
+    try {
+      const { data } = await axios.post(`/chats/${chat._id}/view-once-open`);
+      const payload = data?.payload || null;
+      if (!payload) return;
+
+      setChats((prev) =>
+        (prev || []).map((item) =>
+          item._id === chat._id
+            ? {
+                ...item,
+                viewOnce: {
+                  ...(item.viewOnce || {}),
+                  opened: true,
+                  label: 'Opened',
+                },
+              }
+            : item
+        )
+      );
+
+      dispatch(
+        setModal({
+          target: 'photoFull',
+          data: {
+            kind: payload.viewOnceType,
+            url: payload.file?.url ? resolveUploadUrl(payload.file.url) : '',
+            text: payload.text || '',
+            allowDownload: false,
+            viewOnce: true,
+          },
+        })
+      );
+    } catch (error0) {
+      // eslint-disable-next-line no-alert
+      alert(error0?.response?.data?.message || error0.message);
+    }
   };
   const scrollToBottom = (behavior = 'smooth') => {
     const monitor = monitorRef.current;
@@ -792,6 +928,37 @@ function Monitor({
     setting?.chatWallpaperPreset,
     setting?.chatWallpaperImage,
   ]);
+
+  useEffect(() => {
+    const handleViewOnceOpened = ({ chatId, userId }) => {
+      if (!chatId) return;
+      setChats((prev) =>
+        (prev || []).map((item) =>
+          item._id === chatId
+            ? {
+                ...item,
+                viewOnce: item.viewOnce
+                  ? {
+                      ...item.viewOnce,
+                      opened:
+                        userId === master._id ? true : item.viewOnce.opened,
+                      label:
+                        userId === master._id
+                          ? 'Opened'
+                          : item.viewOnce.label,
+                    }
+                  : item.viewOnce,
+              }
+            : item
+        )
+      );
+    };
+
+    socket.on('chat/view-once', handleViewOnceOpened);
+    return () => {
+      socket.off('chat/view-once', handleViewOnceOpened);
+    };
+  }, [master._id]);
 
   useEffect(() => {
     if (!pinnedChatId || !Array.isArray(chats)) return;
@@ -970,7 +1137,8 @@ function Monitor({
               ? null
               : getGroupActionMeta(lead?.text);
           const systemMeta = callLogMeta || groupActionMeta;
-          const isSystemLine = !!systemMeta;
+          const isSecretSystemLine = !!lead?.profile?.isSecretSystemMessage;
+          const isSystemLine = !!systemMeta || isSecretSystemLine;
           const SystemIcon = systemMeta?.icon || bi.BiInfoCircle;
 
           return (
@@ -993,10 +1161,16 @@ function Monitor({
                   <span
                     id={`chat-msg-${lead._id}`}
                     data-owner-id={lead.userId}
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs shadow-sm ${systemMeta?.toneClass}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs shadow-sm ${
+                      isSecretSystemLine
+                        ? 'border-sky-200 bg-sky-50/95 text-sky-900 dark:border-sky-700/70 dark:bg-sky-900/25 dark:text-sky-100'
+                        : systemMeta?.toneClass
+                    }`}
                   >
-                    <SystemIcon />
-                    <span>{systemMeta?.label || lead.text}</span>
+                    {isSecretSystemLine ? <bi.BiShieldQuarter /> : <SystemIcon />}
+                    <span>
+                      {isSecretSystemLine ? lead.text : systemMeta?.label || lead.text}
+                    </span>
                   </span>
                 </div>
               )}
@@ -1196,14 +1370,38 @@ function Monitor({
                       )}
                       {lead.file && (
                         <div className="mb-2">
-                          {!canAutoLoadAttachment(lead) ? (
+                          {lead.viewOnce?.enabled ? (
+                            <button
+                              type="button"
+                              className="grid w-[220px] sm:w-[280px] gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-3 text-left shadow-sm dark:border-spill-700 dark:bg-spill-900/70"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openViewOnceMessage(lead);
+                              }}
+                            >
+                              <span className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-spill-100">
+                                  <bi.BiShieldQuarter />
+                                  {lead.viewOnce.previewText}
+                                </span>
+                                <span className="text-xs text-slate-500 dark:text-spill-400">
+                                  1-time
+                                </span>
+                              </span>
+                              <div className="rounded-xl bg-slate-200/80 px-3 py-5 text-center text-sm text-slate-600 blur-[2px] dark:bg-spill-700 dark:text-spill-300">
+                                {lead.viewOnce.opened ? 'Opened' : 'Tap to open'}
+                              </div>
+                            </button>
+                          ) : !canAutoLoadAttachment(lead) ? (
                             <button
                               type="button"
                               className="grid w-[220px] sm:w-[280px] grid-cols-[auto_1fr_auto] gap-3 rounded-2xl border border-slate-200 bg-white/80 px-3 py-3 text-left shadow-sm dark:border-spill-700 dark:bg-spill-900/70"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 requestManualAttachmentAccess(lead);
-                                triggerBrowserDownload(lead.file);
+                                if (!isSecretChat) {
+                                  triggerBrowserDownload(lead.file);
+                                }
                               }}
                             >
                               <i className="self-center text-sky-600 dark:text-sky-400">
@@ -1222,11 +1420,17 @@ function Monitor({
                                   {lead.file.originalname || 'Attachment'}
                                 </p>
                                 <p className="mt-1 text-xs opacity-70">
-                                  Auto-download is off. Tap to load.
+                                  {isSecretChat
+                                    ? 'Tap to view inside secret chat.'
+                                    : 'Auto-download is off. Tap to load.'}
                                 </p>
                               </span>
                               <i className="self-center text-slate-500 dark:text-spill-300">
-                                <bi.BiDownload size={20} />
+                                {isSecretChat ? (
+                                  <bi.BiShow size={20} />
+                                ) : (
+                                  <bi.BiDownload size={20} />
+                                )}
                               </i>
                             </button>
                           ) : (
@@ -1277,7 +1481,19 @@ function Monitor({
                                 <video
                                   src={resolveUploadUrl(lead.file.url)}
                                   controls
+                                  controlsList={
+                                    isSecretChat
+                                      ? 'nodownload noplaybackrate noremoteplayback'
+                                      : undefined
+                                  }
+                                  disablePictureInPicture={isSecretChat}
                                   className="w-full rounded-lg"
+                                  onContextMenu={(e) => {
+                                    if (isSecretChat) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }
+                                  }}
                                 >
                                   <track kind="captions" />
                                 </video>
@@ -1351,6 +1567,11 @@ function Monitor({
                                     }}
                                     src={resolveUploadUrl(lead.file.url)}
                                     preload="metadata"
+                                    controlsList={
+                                      isSecretChat
+                                        ? 'nodownload noplaybackrate noremoteplayback'
+                                        : undefined
+                                    }
                                     onLoadedMetadata={(e) => {
                                       const rawDuration = Number(
                                         e.currentTarget?.duration || 0
@@ -1378,6 +1599,12 @@ function Monitor({
                                       );
                                     }}
                                     className="hidden"
+                                    onContextMenu={(e) => {
+                                      if (isSecretChat) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }
+                                    }}
                                   >
                                     <track kind="captions" />
                                   </audio>
@@ -1402,15 +1629,17 @@ function Monitor({
                                     <p className="break-all">
                                       {lead.file.originalname}
                                     </p>
-                                    <a
-                                      href={resolveUploadUrl(lead.file.url)}
-                                      download={lead.file.originalname}
-                                      className="block ml-2 translate-y-0.5"
-                                    >
-                                      <i className="text-slate-700 dark:text-spill-100 hover:text-sky-600 dark:hover:text-sky-400">
-                                        <bi.BiDownload size={20} />
-                                      </i>
-                                    </a>
+                                    {!isSecretChat && (
+                                      <a
+                                        href={resolveUploadUrl(lead.file.url)}
+                                        download={lead.file.originalname}
+                                        className="block ml-2 translate-y-0.5"
+                                      >
+                                        <i className="text-slate-700 dark:text-spill-100 hover:text-sky-600 dark:hover:text-sky-400">
+                                          <bi.BiDownload size={20} />
+                                        </i>
+                                      </a>
+                                    )}
                                   </span>
                                 )}
                             </>
@@ -1444,7 +1673,7 @@ function Monitor({
                             </p>
                           </span>
                         )}
-                        {!isPoll && !isEvent && !isGroupInfo && (
+                        {!isPoll && !isEvent && !isGroupInfo && !lead.viewOnce?.enabled && (
                           <p
                             className="break-all"
                             aria-hidden
@@ -1465,6 +1694,29 @@ function Monitor({
                               {moment(albumLast.createdAt).format('LT')}
                             </span>
                           </p>
+                        )}
+                        {lead.viewOnce?.enabled && !lead.file && (
+                          <button
+                            type="button"
+                            className="w-[220px] sm:w-[280px] rounded-2xl border border-slate-200 bg-white/85 px-3 py-3 text-left shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/60"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openViewOnceMessage(lead);
+                            }}
+                          >
+                            <span className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-spill-100">
+                                <bi.BiLowVision />
+                                Encrypted message
+                              </span>
+                              <span className="text-xs text-slate-500 dark:text-spill-400">
+                                1-time
+                              </span>
+                            </span>
+                            <div className="mt-2 rounded-xl bg-slate-200/80 px-3 py-4 text-sm text-slate-600 blur-[2px] dark:bg-spill-700 dark:text-spill-300">
+                              {lead.viewOnce.opened ? 'Opened' : 'Tap to open'}
+                            </div>
+                          </button>
                         )}
                         {isEvent && (
                           <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/55">
@@ -1754,17 +2006,19 @@ function Monitor({
                 <bi.BiReply size={18} />
                 <span>Reply</span>
               </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"
-                onClick={() => {
-                  openForwardFor(messageMenu.chatId);
-                  setMessageMenu(null);
-                }}
-              >
-                <bi.BiShareAlt size={18} />
-                <span>Forward</span>
-              </button>
+              {!isSecretChat && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"
+                  onClick={() => {
+                    openForwardFor(messageMenu.chatId);
+                    setMessageMenu(null);
+                  }}
+                >
+                  <bi.BiShareAlt size={18} />
+                  <span>Forward</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"

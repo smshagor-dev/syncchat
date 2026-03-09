@@ -26,6 +26,28 @@ const {
   getSettingMap,
   getContactMap,
 } = require('../helpers/privacy');
+const {
+  createSecretSession,
+  decryptSecretText,
+  getSecretExpiresAt,
+  getSecretPreviewText,
+  getSecretRoomState,
+  isSecretEnabled,
+  cleanupExpiredSecretChats,
+  isExpiredSecretChat,
+  encryptSecretText,
+} = require('../helpers/secretChat');
+const {
+  getViewOnceType,
+  openViewOnceChat,
+  isViewOnceChat,
+} = require('../helpers/viewOnce');
+const {
+  createScheduledMessage,
+  findScheduledMessages,
+  cancelScheduledMessage,
+  processScheduledMessages,
+} = require('../helpers/scheduledMessages');
 
 const sanitizeFolderName = (value, fallback = 'unknown') => {
   const safe = String(value || '')
@@ -149,6 +171,16 @@ const getChannelIdentity = (channel) =>
       }
     : null;
 
+const getResolvedChatText = ({ chat, secretRoom }) => {
+  if (isSecretEnabled(secretRoom) && chat?.encryptedText) {
+    return decryptSecretText({
+      payload: chat.encryptedText,
+      key: secretRoom.secretSessionKey,
+    });
+  }
+  return chat?.text || '';
+};
+
 exports.upload = async (req, res) => {
   try {
     logger.info('CHAT_UPLOAD_START', {
@@ -267,9 +299,11 @@ exports.sendFile = async (req, res) => {
       ownersId,
       text = '',
       replyTo = null,
+      viewOnce = false,
     } = req.body;
     const filePayload = req.body?.file || null;
     const senderId = req.user?._id;
+    const secretRoom = await getSecretRoomState(roomId);
 
     logger.info('CHAT_SEND_FILE_START', {
       senderId,
@@ -382,9 +416,26 @@ exports.sendFile = async (req, res) => {
     const chatDoc = await ChatModel.create({
       userId: senderId,
       roomId,
-      text: text || '',
+      text: isSecretEnabled(secretRoom) ? '' : text || '',
+      encryptedText:
+        isSecretEnabled(secretRoom) && String(text || '').length > 0
+          ? encryptSecretText({
+              text: text || '',
+              key: secretRoom.secretSessionKey,
+            })
+          : null,
+      encryptionSessionId: isSecretEnabled(secretRoom)
+        ? secretRoom.secretSessionId
+        : null,
+      expiresAt: getSecretExpiresAt(secretRoom),
       replyTo: replyTo || null,
       fileId,
+      viewOnce: !!viewOnce && ['image', 'video'].includes(file?.type),
+      viewOnceType:
+        !!viewOnce && ['image', 'video'].includes(file?.type)
+          ? getViewOnceType({ file })
+          : 'none',
+      viewOnceOpenedBy: [],
       readed: false,
       delivered: false,
       deletedBy: [],
@@ -402,8 +453,17 @@ exports.sendFile = async (req, res) => {
     const senderName = channel?.name || profile?.fullname || '';
     const senderProfile = getChannelIdentity(channel) || profile;
 
-    const contentText =
-      chat.text && chat.text.length > 0 ? chat.text : file.originalname;
+    const contentText = isViewOnceChat(chat)
+      ? chat.viewOnceType === 'image'
+        ? '1-time photo'
+        : chat.viewOnceType === 'video'
+          ? '1-time video'
+          : '1-time message'
+      : isSecretEnabled(secretRoom)
+        ? getSecretPreviewText({ text, file: toPlain(file) })
+        : chat.text && chat.text.length > 0
+          ? chat.text
+          : file.originalname;
 
     const existingInbox = await InboxModel.findOne({ where: { roomId } });
     if (existingInbox) {
@@ -451,10 +511,37 @@ exports.sendFile = async (req, res) => {
     const inboxes = await Inbox.find({ roomId });
     const payload = {
       ...chat,
+      text:
+        isViewOnceChat(chat) ? '' : getResolvedChatText({ chat, secretRoom }),
       profile: senderProfile,
       channel: channel || null,
-      file: toPlain(file),
+      file: isViewOnceChat(chat) ? { ...toPlain(file), url: null } : toPlain(file),
+      viewOnce: isViewOnceChat(chat)
+        ? {
+            enabled: true,
+            type: chat.viewOnceType,
+            opened: false,
+            label: 'Tap to open',
+            previewText:
+              chat.viewOnceType === 'image'
+                ? 'Photo'
+                : chat.viewOnceType === 'video'
+                  ? 'Video'
+                  : 'Encrypted message',
+          }
+        : null,
       reply: null,
+      secret: isSecretEnabled(secretRoom)
+        ? {
+            enabled: true,
+            expiresAt: chat.expiresAt,
+            saveBlocked: !!secretRoom.secretSaveBlocked,
+            forwardBlocked: !!secretRoom.secretForwardBlocked,
+            exportBlocked: !!secretRoom.secretExportBlocked,
+            screenshotAlerts: !!secretRoom.secretScreenshotAlerts,
+            sessionId: secretRoom.secretSessionId,
+          }
+        : null,
     };
 
     global.io.to(roomId).emit('chat/insert', payload);
@@ -493,6 +580,7 @@ exports.sendFile = async (req, res) => {
 
 exports.findByRoomId = async (req, res) => {
   try {
+    await cleanupExpiredSecretChats({ roomId: req.params.roomId });
     const { skip, limit } = req.query;
     const chats = await Chat.find(req.params.roomId, {
       skip,
@@ -515,6 +603,48 @@ exports.findByRoomId = async (req, res) => {
   }
 };
 
+exports.openViewOnce = async (req, res) => {
+  try {
+    const chat = await ChatModel.findOne({
+      where: { _id: req.params.chatId },
+    });
+    if (!chat) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Message not found',
+      });
+      return;
+    }
+
+    const payload = await openViewOnceChat({
+      chat,
+      userId: req.user._id,
+    });
+
+    if (global.io) {
+      global.io.to(payload.roomId).emit('chat/view-once', {
+        chatId: payload._id,
+        userId: req.user._id,
+      });
+    }
+
+    response({
+      res,
+      message: 'One-time message opened',
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.message?.includes('already been opened') ? 410 : 400,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
 exports.findMedia = async (req, res) => {
   try {
     const requestedRoomId = String(req.query.roomId || '').trim();
@@ -524,6 +654,7 @@ exports.findMedia = async (req, res) => {
         asArray(inbox.ownersId).includes(req.user._id) &&
         !asArray(inbox.deletedBy).includes(req.user._id);
       if (!belongsToUser) return false;
+      if (isSecretEnabled(inbox) && inbox.secretSaveBlocked) return false;
       if (!requestedRoomId) return true;
       return inbox.roomId === requestedRoomId;
     });
@@ -615,7 +746,8 @@ exports.findCalls = async (req, res) => {
     const inboxes = toPlainMany(inboxesRaw).filter(
       (inbox) =>
         asArray(inbox.ownersId).includes(req.user._id) &&
-        !asArray(inbox.deletedBy).includes(req.user._id)
+        !asArray(inbox.deletedBy).includes(req.user._id) &&
+        !(isSecretEnabled(inbox) && inbox.secretExportBlocked)
     );
 
     if (inboxes.length === 0) {
@@ -787,7 +919,8 @@ exports.findStarred = async (req, res) => {
     const inboxes = toPlainMany(inboxesRaw).filter(
       (inbox) =>
         asArray(inbox.ownersId).includes(userId) &&
-        !asArray(inbox.deletedBy).includes(userId)
+        !asArray(inbox.deletedBy).includes(userId) &&
+        !(isSecretEnabled(inbox) && inbox.secretExportBlocked)
     );
 
     if (inboxes.length === 0) {
@@ -1005,6 +1138,199 @@ exports.deleteByRoomId = async (req, res) => {
     response({
       res,
       message: 'Chat deleted successfully',
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.findScheduled = async (req, res) => {
+  try {
+    const roomId = String(req.query.roomId || '').trim();
+    if (!roomId) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'roomId is required',
+      });
+      return;
+    }
+
+    const payload = await findScheduledMessages({
+      senderId: req.user._id,
+      roomId,
+    });
+
+    response({
+      res,
+      message: `${payload.length} scheduled messages found`,
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.createScheduled = async (req, res) => {
+  try {
+    const {
+      roomId,
+      roomType = 'private',
+      ownersId = [],
+      text = '',
+      replyTo = null,
+      mode = 'once',
+      scheduledFor = null,
+      recurringType = 'none',
+      targetUserId = null,
+    } = req.body;
+
+    const safeText = String(text || '').trim();
+    const safeOwners = asArray(ownersId).filter(Boolean);
+
+    if (!roomId || !safeText || safeOwners.length === 0) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'roomId, ownersId, and text are required',
+      });
+      return;
+    }
+
+    if (!['once', 'recurring', 'when-online'].includes(mode)) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid schedule mode',
+      });
+      return;
+    }
+
+    if (mode === 'when-online' && roomType !== 'private') {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Send when online is only available in private chats',
+      });
+      return;
+    }
+
+    if (mode === 'recurring' && !['daily', 'weekly', 'monthly'].includes(recurringType)) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid recurring reminder type',
+      });
+      return;
+    }
+
+    if ((mode === 'once' || mode === 'recurring') && !scheduledFor) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'scheduledFor is required',
+      });
+      return;
+    }
+
+    const nextRunAt =
+      mode === 'when-online' ? new Date() : new Date(scheduledFor);
+    if (Number.isNaN(nextRunAt.getTime())) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid scheduled time',
+      });
+      return;
+    }
+
+    const safeTargetUserId =
+      mode === 'when-online'
+        ? targetUserId ||
+          safeOwners.find((ownerId) => ownerId !== req.user._id) ||
+          null
+        : null;
+
+    if (mode === 'when-online' && !safeTargetUserId) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'A target user is required for send when online',
+      });
+      return;
+    }
+
+    const job = await createScheduledMessage({
+      senderId: req.user._id,
+      roomId,
+      roomType,
+      ownersId: safeOwners,
+      text: safeText,
+      replyTo: replyTo || null,
+      mode,
+      recurringType: mode === 'recurring' ? recurringType : 'none',
+      scheduledFor: mode === 'when-online' ? null : nextRunAt,
+      nextRunAt,
+      targetUserId: safeTargetUserId,
+      status: 'pending',
+    });
+
+    processScheduledMessages({ scheduledMessageId: job._id }).catch(() => {});
+
+    response({
+      res,
+      message: 'Message scheduled successfully',
+      payload: job,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.cancelScheduled = async (req, res) => {
+  try {
+    const payload = await cancelScheduledMessage({
+      senderId: req.user._id,
+      scheduledMessageId: req.params.scheduleId,
+    });
+
+    if (!payload) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Scheduled message not found',
+      });
+      return;
+    }
+
+    response({
+      res,
+      message: 'Scheduled message cancelled',
+      payload,
     });
   } catch (error0) {
     response({

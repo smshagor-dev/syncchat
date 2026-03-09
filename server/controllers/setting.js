@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const UserModel = require('../db/models/user');
 const ProfileModel = require('../db/models/profile');
 const AccountExportModel = require('../db/models/accountExport');
+const Inbox = require('../helpers/models/inbox');
 const {
   buildOtpAuthUrl,
   generateSecret,
@@ -261,6 +262,29 @@ exports.blockedContacts = async (req, res) => {
       ...toPlain(profile),
       avatar: toAbsoluteUploadUrl(profile.avatar),
     }));
+
+    response({ res, payload });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.hiddenChats = async (req, res) => {
+  try {
+    const inboxes = await Inbox.find(
+      { ownersId: req.user._id },
+      '',
+      { includeHidden: true }
+    );
+
+    const payload = inboxes.filter((inbox) =>
+      Array.isArray(inbox.hiddenBy) && inbox.hiddenBy.includes(req.user._id)
+    );
 
     response({ res, payload });
   } catch (error0) {

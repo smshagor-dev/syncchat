@@ -4,6 +4,13 @@ const ProfileModel = require('../../db/models/profile');
 const FileModel = require('../../db/models/file');
 const ChannelModel = require('../../db/models/channel');
 const { asArray, toPlainMany } = require('../../db/utils');
+const InboxModel = require('../../db/models/inbox');
+const {
+  decryptSecretText,
+  isExpiredSecretChat,
+  cleanupExpiredSecretChats,
+} = require('../secretChat');
+const { buildViewOnceDisplay, isViewOnceChat } = require('../viewOnce');
 
 const POLL_PREFIX = '__poll__::';
 
@@ -44,6 +51,8 @@ const parsePollFromText = (text) => {
 };
 
 exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
+  await cleanupExpiredSecretChats({ roomId });
+
   const chatsDesc = await ChatModel.findAll({
     where: { roomId },
     order: [['createdAt', 'DESC']],
@@ -63,6 +72,20 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
     ...new Set(chats.map((chat) => chat.replyTo).filter(Boolean)),
   ];
 
+  const inbox = roomId
+    ? await InboxModel.findOne({
+        where: { roomId },
+        attributes: [
+          'roomId',
+          'roomType',
+          'secretChatEnabled',
+          'secretSessionKey',
+          'secretSessionId',
+        ],
+      })
+    : null;
+  const inboxPlain = inbox ? inbox.get({ plain: true }) : null;
+
   const [profilesRaw, filesRaw, repliesRaw, channelsRaw] = await Promise.all([
     userIds.length
       ? ProfileModel.findAll({
@@ -77,7 +100,7 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
     replyIds.length
       ? ChatModel.findAll({
           where: { _id: { [Op.in]: replyIds } },
-          attributes: ['_id', 'userId', 'text', 'fileId'],
+          attributes: ['_id', 'userId', 'text', 'encryptedText', 'fileId'],
         })
       : [],
     roomId
@@ -118,26 +141,72 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
           isChannelIdentity: true,
         }
       : null;
-  return chats.map((chat) => ({
-    ...chat,
-    poll: parsePollFromText(chat.text),
-    profile: channelIdentity || profiles.get(chat.userId) || null,
-    channel,
-    file: chat.fileId ? files.get(chat.fileId) || null : null,
-    reply: chat.replyTo
-      ? (() => {
-          const reply = repliesMap.get(chat.replyTo);
-          if (!reply) return null;
-          const replyProfile = profiles.get(reply.userId);
-          const replyFile = reply.fileId ? files.get(reply.fileId) : null;
-          return {
-            _id: reply._id,
-            userId: reply.userId,
-            fullname:
-              channelIdentity?.fullname || replyProfile?.fullname || '[inactive]',
-            text: reply.text || replyFile?.originalname || '',
-          };
-        })()
-      : null,
-  }));
+
+  return chats.map((chat) => {
+    const resolvedText =
+      inboxPlain?.secretChatEnabled && chat.encryptedText
+        ? decryptSecretText({
+            payload: chat.encryptedText,
+            key: inboxPlain.secretSessionKey,
+          })
+        : chat.text;
+    const file = chat.fileId ? files.get(chat.fileId) || null : null;
+    const viewOnce = buildViewOnceDisplay({
+      chat,
+      userId,
+      file,
+    });
+    const maskedText =
+      isViewOnceChat(chat) && viewOnce
+        ? ''
+        : resolvedText;
+    const maskedFile =
+      isViewOnceChat(chat) && file
+        ? {
+            ...file,
+            url: null,
+          }
+        : file;
+
+    return {
+      ...chat,
+      text: maskedText,
+      poll: parsePollFromText(maskedText),
+      viewOnce,
+      profile: chat.isSecretSystemMessage
+        ? {
+            userId: chat.userId,
+            fullname: 'Secret chat',
+            avatar: null,
+            isSecretSystemMessage: true,
+          }
+        : channelIdentity || profiles.get(chat.userId) || null,
+      channel,
+      file: maskedFile,
+      reply: chat.replyTo
+        ? (() => {
+            const reply = repliesMap.get(chat.replyTo);
+            if (!reply) return null;
+            const replyProfile = profiles.get(reply.userId);
+            const replyFile = reply.fileId ? files.get(reply.fileId) : null;
+            return {
+              _id: reply._id,
+              userId: reply.userId,
+              fullname:
+                channelIdentity?.fullname ||
+                replyProfile?.fullname ||
+                '[inactive]',
+              text:
+                inboxPlain?.secretChatEnabled && reply.encryptedText
+                  ? decryptSecretText({
+                      payload: reply.encryptedText,
+                      key: inboxPlain.secretSessionKey,
+                    })
+                  : reply.text || replyFile?.originalname || '',
+            };
+          })()
+        : null,
+    };
+  })
+    .filter((chat) => !isExpiredSecretChat(chat));
 };
