@@ -9,6 +9,7 @@ import {
   getPendingUploadFile,
   removePendingUploadFile,
 } from '../../helpers/pendingUploadFile';
+import { replaceTextTokensWithEmoji } from '../../helpers/emojiText';
 
 const IMAGE_MIME_PREFIX = 'image/';
 
@@ -33,7 +34,7 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const compressImageIfNeeded = (file) =>
+const compressImageIfNeeded = (file, mediaQuality = 'standard') =>
   new Promise((resolve) => {
     if (!file?.type?.startsWith(IMAGE_MIME_PREFIX)) {
       resolve(file);
@@ -44,7 +45,8 @@ const compressImageIfNeeded = (file) =>
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const maxSide = 1600;
+        const isHd = String(mediaQuality || '').toLowerCase() === 'hd';
+        const maxSide = isHd ? 2560 : 1600;
         const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
         const width = Math.max(1, Math.round(img.width * scale));
         const height = Math.max(1, Math.round(img.height * scale));
@@ -69,7 +71,7 @@ const compressImageIfNeeded = (file) =>
             resolve(new File([blob], file.name, { type: blob.type }));
           },
           'image/jpeg',
-          0.82
+          isHd ? 0.92 : 0.82
         );
       };
       img.onerror = () => resolve(file);
@@ -154,6 +156,9 @@ function SendFile() {
             Authorization: `Bearer ${token}`,
           }
         : undefined;
+      const processedCaption = setting?.replaceTextWithEmoji
+        ? replaceTextTokensWithEmoji(caption)
+        : caption;
 
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
@@ -169,7 +174,10 @@ function SendFile() {
           throw new Error('Selected file could not be read. Please reselect.');
         }
 
-        const preparedFile = await compressImageIfNeeded(selectedFile);
+        const preparedFile = await compressImageIfNeeded(
+          selectedFile,
+          setting?.mediaQuality
+        );
         const formData = new FormData();
         formData.append('file', preparedFile, selectedName);
         setSendStatus(`Uploading ${index + 1}/${items.length}...`);
@@ -189,7 +197,7 @@ function SendFile() {
             roomId: chatRoom.data.roomId,
             ownersId: chatRoom.data.ownersId,
             roomType: chatRoom.data.roomType,
-            text: index === 0 ? caption : '',
+            text: index === 0 ? processedCaption : '',
             replyTo: replyingChat?._id || null,
             file: {
               ...uploaded,
@@ -207,7 +215,7 @@ function SendFile() {
               '/statuses',
               {
                 type: statusType,
-                text: index === 0 ? caption : '',
+                text: index === 0 ? processedCaption : '',
                 mediaDataUrl,
               },
               { headers }

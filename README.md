@@ -93,7 +93,73 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-05`
+- Last updated: `2026-03-08`
+
+## Recent Changes (2026-03-08)
+
+- Added full channel system with separate `channels` table and Socket.IO-based realtime updates.
+- Added channel create/join/private-password flow:
+  - public and private channels
+  - private channel password verify before open
+  - custom in-app password popup (no browser prompt)
+- Added channel profile/info flow:
+  - channel info panel
+  - channel-specific labels/copy
+  - inline channel name edit from info panel
+- Added channel avatar persistence:
+  - save to local uploads
+  - store URL in DB
+  - realtime avatar update via sockets
+- Added channel chat behavior:
+  - admin-only posting by default
+  - member posting only if admin enables permission
+  - channel messages display using channel identity instead of user identity
+- Improved realtime rename/avatar propagation:
+  - room header updates instantly
+  - inbox/chat list rows update instantly
+  - group and channel info stay in sync through sockets
+- Improved group and channel subscriber/member inbox insertion:
+  - when a user joins or is added/approved, the room now appears in that user's chat list immediately
+  - added local fallback insertion for join timing/state edge cases
+- Added channel unread badge on sidebar.
+- Added settings/features across the app:
+  - Privacy subpage
+  - Account settings subpage
+  - Chats subpage
+  - Notifications subpage
+  - Voice & Video subpage
+  - Keyboard shortcuts subpage
+  - License page
+- Added Google Authenticator style 2FA for users:
+  - enable/disable in settings
+  - login verification when enabled
+- Added privacy controls end-to-end:
+  - last seen / online
+  - profile picture
+  - status visibility
+  - groups
+  - read receipts
+  - blocked contacts
+  - unknown message requests
+  - link preview control
+- Added chat behavior settings:
+  - global wallpaper
+  - media quality
+  - media auto-download toggles
+  - spell check
+  - emoji text replacement
+  - enter to send
+  - keep archived
+- Added notification settings:
+  - banner / popup / push toggles
+  - category-level toggles for message, group, status, call
+  - preview toggle
+  - outgoing sound toggle
+  - mute control
+- Added account tools:
+  - security notifications setting
+  - account info export request flow
+- Fixed delete-chat removal so deleted chats disappear from chat list immediately and after refresh.
 
 ## Recent Changes (2026-03-05)
 

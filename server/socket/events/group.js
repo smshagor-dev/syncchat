@@ -1,4 +1,5 @@
 const { io } = global;
+const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 
 const ProfileModel = require('../../db/models/profile');
@@ -16,11 +17,17 @@ const {
 const Inbox = require('../../helpers/models/inbox');
 const uniqueId = require('../../helpers/uniqueId');
 const encrypt = require('../../helpers/encrypt');
+const { parseDataUri, saveBufferFile } = require('../../helpers/storage');
 const {
   normalizeGroupPermissions,
   canGroupMemberEditInfo,
   canGroupMemberAddOtherMember,
 } = require('../../helpers/groupPermissions');
+const {
+  getSettingMap,
+  getContactMap,
+  canUserAddToGroup,
+} = require('../../helpers/privacy');
 
 const GROUP_INFO_PREFIX = '__group_info__::';
 
@@ -85,6 +92,24 @@ const emitGroupSystemChat = async ({ roomId, userId, text, profile }) => {
   });
 };
 
+const uploadGroupAvatar = async ({ avatar, groupId }) => {
+  if (!avatar || !groupId) return null;
+
+  const { buffer } = parseDataUri(avatar);
+  const processedBuffer = await sharp(buffer)
+    .resize(460, 460, { fit: 'cover' })
+    .webp({ quality: 90 })
+    .toBuffer();
+
+  const uploaded = await saveBufferFile({
+    buffer: processedBuffer,
+    folder: 'avatars',
+    filename: `${groupId}-${Date.now()}.webp`,
+  });
+
+  return uploaded.url;
+};
+
 module.exports = (socket) => {
   socket.on('group/create', async (args, cb) => {
     try {
@@ -94,7 +119,27 @@ module.exports = (socket) => {
         attributes: ['fullname', 'avatar'],
       });
 
-      const participantsId = addToSet(args.participantsId, [args.adminId]);
+      const requestedParticipants = addToSet(args.participantsId, [args.adminId]);
+      const [settingMap, contactMap] = await Promise.all([
+        getSettingMap(requestedParticipants),
+        getContactMap({
+          ownerIds: requestedParticipants,
+          friendIds: [args.adminId],
+        }),
+      ]);
+      const blockedTargets = requestedParticipants.filter(
+        (participantId) =>
+          participantId !== args.adminId &&
+          !canUserAddToGroup({
+            setting: settingMap.get(participantId),
+            isContact: !!contactMap.get(`${participantId}:${args.adminId}`),
+            isSelf: false,
+          })
+      );
+      if (blockedTargets.length > 0) {
+        throw new Error('One or more contacts do not allow group adds');
+      }
+      const participantsId = requestedParticipants;
       const accessType = args.accessType === 'private' ? 'private' : 'public';
       const password = String(args.password || '');
       if (accessType === 'private' && password.length < 4) {
@@ -112,6 +157,17 @@ module.exports = (socket) => {
         roomId,
         link: `/group/+${uniqueId(16)}`,
       });
+
+      let avatarUrl = null;
+      if (args.avatar) {
+        avatarUrl = await uploadGroupAvatar({
+          avatar: args.avatar,
+          groupId: group._id,
+        });
+        if (avatarUrl) {
+          await group.update({ avatar: avatarUrl });
+        }
+      }
 
       const inbox = await InboxModel.create({
         ownersId: participantsId,
@@ -138,10 +194,22 @@ module.exports = (socket) => {
         profile: toPlain(profile),
       });
 
+      const plainGroup = sanitizeGroup(group);
+
       io.to(participantsId).emit('group/create', {
-        group: sanitizeGroup(group),
+        group: plainGroup,
         ...toPlain(inbox),
       });
+
+      if (avatarUrl) {
+        const avatarPayload = {
+          groupId: group._id,
+          roomId,
+          avatar: avatarUrl,
+        };
+        io.to(roomId).emit('group/avatar', avatarPayload);
+        io.to(participantsId).emit('group/avatar', avatarPayload);
+      }
 
       cb({
         success: true,
@@ -169,6 +237,21 @@ module.exports = (socket) => {
       }
       if (!canGroupMemberAddOtherMember({ group, userId: args.userId })) {
         throw new Error('You do not have permission to add members');
+      }
+      const [settingMap, contactMap] = await Promise.all([
+        getSettingMap(args.friendsId),
+        getContactMap({ ownerIds: args.friendsId, friendIds: [args.userId] }),
+      ]);
+      const blockedTargets = args.friendsId.filter(
+        (friendId) =>
+          !canUserAddToGroup({
+            setting: settingMap.get(friendId),
+            isContact: !!contactMap.get(`${friendId}:${args.userId}`),
+            isSelf: friendId === args.userId,
+          })
+      );
+      if (blockedTargets.length > 0) {
+        throw new Error('One or more contacts do not allow group adds');
       }
 
       const nextParticipants = addToSet(group.participantsId, args.friendsId);
@@ -211,7 +294,10 @@ module.exports = (socket) => {
       });
 
       const inboxes = await Inbox.find({ roomId: args.roomId });
-      io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
+      if (inboxes[0]) {
+        io.to(args.friendsId).emit('group/create', inboxes[0]);
+        io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
+      }
     } catch (error0) {
       console.log(error0.message);
     }
@@ -258,7 +344,10 @@ module.exports = (socket) => {
 
       const inboxes = await Inbox.find({ roomId: group.roomId });
 
-      io.to(group.roomId).emit('group/edit', form);
+      io.to(group.roomId).emit('group/edit', {
+        roomId: group.roomId,
+        ...form,
+      });
       io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
 
       cb({ success: true, message: 'Group edited successfully' });

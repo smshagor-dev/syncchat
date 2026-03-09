@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import moment from 'moment';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import * as ri from 'react-icons/ri';
@@ -10,6 +9,7 @@ import { setModal } from '../redux/features/modal';
 import { setChatRoom } from '../redux/features/room';
 
 import { setSetting } from '../redux/features/user';
+import { getPresenceMeta } from '../helpers/presence';
 
 function Contact() {
   const dispatch = useDispatch();
@@ -514,6 +514,10 @@ function Contact() {
                   );
                 }}
               >
+                {(() => {
+                  const presence = getPresenceMeta(elem.profile);
+                  return (
+                    <>
                 {setting && setting.sortContactByName && (
                   <span className="flex justify-center">
                     {charTag(
@@ -531,24 +535,27 @@ function Contact() {
                     )}
                   </span>
                 )}
-                <img
-                  src={
-                    elem.profile?.avatar || 'assets/images/default-avatar.png'
-                  }
-                  alt=""
-                  className="w-14 h-14 rounded-full"
-                />
+                <div className="relative">
+                  <img
+                    src={
+                      elem.profile?.avatar || 'assets/images/default-avatar.png'
+                    }
+                    alt=""
+                    className="w-14 h-14 rounded-full"
+                  />
+                  {presence.showDot && (
+                    <span className="absolute right-0.5 bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-spill-900" />
+                  )}
+                </div>
                 <span className="overflow-hidden">
                   <h1 className="truncate text-lg font-bold">
                     {elem.profile?.fullname ?? '[inactive]'}
                   </h1>
                   {!setting.sortContactByName ? (
                     <p className="truncate opacity-60 mt-0.5">
-                      {elem.profile.online
-                        ? 'online'
-                        : `Last seen ${moment(
-                            elem.profile.updatedAt
-                          ).fromNow()}`}
+                      {presence.text
+                        ? presence.text[0].toUpperCase() + presence.text.slice(1)
+                        : ''}
                     </p>
                   ) : (
                     <p className="truncate opacity-60 mt-0.5">
@@ -556,6 +563,9 @@ function Contact() {
                     </p>
                   )}
                 </span>
+                    </>
+                  );
+                })()}
               </div>
             ))}
         </div>

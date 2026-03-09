@@ -12,19 +12,21 @@ function CallPanel() {
   const dispatch = useDispatch();
   const {
     modal: { callPanel },
-    user: { master },
+    user: { master, setting },
     room: { chat: chatRoom },
   } = useSelector((state) => state);
 
   const [status, setStatus] = useState('');
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCamOff, setIsCamOff] = useState(false);
+  const [isMuted, setIsMuted] = useState(!setting?.microphoneEnabled);
+  const [isCamOff, setIsCamOff] = useState(!setting?.cameraEnabled);
+  const [isSpeakerOff, setIsSpeakerOff] = useState(!setting?.speakerEnabled);
   const [joined, setJoined] = useState(false);
   const [connected, setConnected] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [callSeconds, setCallSeconds] = useState(0);
 
   const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peersRef = useRef({});
   const joinedRef = useRef(false);
@@ -85,6 +87,11 @@ function CallPanel() {
       chatRoom?.data?.profile?.avatar || 'assets/images/default-avatar.png'
     );
   }, [isIncoming, callData, roomType, chatRoom?.data]);
+
+  const remotePrimary = useMemo(
+    () => Object.entries(remoteStreams)[0],
+    [remoteStreams]
+  );
 
   const cleanupPeer = (peerUserId) => {
     const peer = peersRef.current[peerUserId];
@@ -165,10 +172,12 @@ function CallPanel() {
     );
   };
 
-  const bindStreamToVideo = (element, stream) => {
+  const bindStreamToVideo = (element, stream, muted = false) => {
     const videoElement = element;
     if (!videoElement || videoElement.srcObject === stream) return;
     videoElement.srcObject = stream;
+    videoElement.muted = muted;
+    videoElement.volume = muted ? 0 : 1;
   };
 
   const closePanel = () => {
@@ -183,10 +192,16 @@ function CallPanel() {
   const ensureLocalStream = async () => {
     if (localStreamRef.current) return localStreamRef.current;
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: videoMode,
-    });
+    const shouldUseAudio = !!setting?.microphoneEnabled;
+    const shouldUseVideo = !!setting?.cameraEnabled && videoMode;
+
+    const stream =
+      shouldUseAudio || shouldUseVideo
+        ? await navigator.mediaDevices.getUserMedia({
+            audio: shouldUseAudio,
+            video: shouldUseVideo,
+          })
+        : new MediaStream();
 
     localStreamRef.current = stream;
     if (localVideoRef.current) {
@@ -194,6 +209,45 @@ function CallPanel() {
     }
 
     return stream;
+  };
+
+  const enableAudio = async () => {
+    const stream = await ensureLocalStream();
+    const liveAudioTracks = stream
+      .getAudioTracks()
+      .filter((track) => track.readyState === 'live');
+
+    if (liveAudioTracks.length > 0) {
+      liveAudioTracks.forEach((track0) => {
+        const track = track0;
+        track.enabled = true;
+      });
+      setIsMuted(false);
+      return;
+    }
+
+    const audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+    });
+    const [audioTrack] = audioStream.getAudioTracks();
+    if (!audioTrack) throw new Error('Microphone not available');
+
+    stream.addTrack(audioTrack);
+    Object.values(peersRef.current).forEach((peer) => {
+      const existingAudioSender = peer
+        .getSenders()
+        .find((sender) => sender.track && sender.track.kind === 'audio');
+
+      if (existingAudioSender) {
+        existingAudioSender.replaceTrack(audioTrack);
+        return;
+      }
+      peer.addTrack(audioTrack, stream);
+    });
+
+    setIsMuted(false);
+    await renegotiateAllPeers();
   };
 
   const enableVideo = async () => {
@@ -345,10 +399,26 @@ function CallPanel() {
 
   const toggleMute = () => {
     const stream = localStreamRef.current;
-    if (!stream) return;
+    if (!stream) {
+      setStatus('Microphone will stay muted until the call is connected');
+      return;
+    }
+
+    const liveAudioTracks = stream
+      .getAudioTracks()
+      .filter((track) => track.readyState === 'live');
+    if (liveAudioTracks.length === 0) {
+      setStatus('Enabling microphone...');
+      enableAudio()
+        .then(() => setStatus(connected ? 'Connected' : 'Connecting...'))
+        .catch((error0) => {
+          setStatus(error0.message || 'Unable to turn on microphone');
+        });
+      return;
+    }
 
     const next = !isMuted;
-    stream.getAudioTracks().forEach((track0) => {
+    liveAudioTracks.forEach((track0) => {
       const track = track0;
       track.enabled = !next;
     });
@@ -383,11 +453,31 @@ function CallPanel() {
     setIsCamOff(next);
   };
 
+  const toggleSpeaker = () => {
+    setIsSpeakerOff((prev) => !prev);
+  };
+
   useEffect(() => {
     if (!active) return;
-    setVideoMode(isVideo);
-    setIsCamOff(!isVideo);
-  }, [active, isVideo]);
+    const nextVideoMode = isVideo && !!setting?.cameraEnabled;
+    setVideoMode(nextVideoMode);
+    setIsCamOff(!nextVideoMode);
+    setIsMuted(!setting?.microphoneEnabled);
+    setIsSpeakerOff(!setting?.speakerEnabled);
+  }, [
+    active,
+    isVideo,
+    setting?.cameraEnabled,
+    setting?.microphoneEnabled,
+    setting?.speakerEnabled,
+  ]);
+
+  useEffect(() => {
+    const remoteVideo = remoteVideoRef.current;
+    if (!remoteVideo) return;
+    remoteVideo.muted = isSpeakerOff;
+    remoteVideo.volume = isSpeakerOff ? 0 : 1;
+  }, [isSpeakerOff, remotePrimary]);
 
   useEffect(() => {
     if (!active || !connected) {
@@ -565,8 +655,6 @@ function CallPanel() {
   const waitingLabel = isIncoming
     ? `${callKindLabel} incoming...`
     : status || 'Calling...';
-  const remotePrimary = Object.entries(remoteStreams)[0];
-
   return (
     <div
       className="fixed inset-0 z-[80] bg-[#0b141a]"
@@ -696,7 +784,8 @@ function CallPanel() {
               autoPlay
               playsInline
               ref={(node) => {
-                bindStreamToVideo(node, remotePrimary[1]);
+                remoteVideoRef.current = node;
+                bindStreamToVideo(node, remotePrimary[1], isSpeakerOff);
               }}
               className="absolute inset-0 h-full w-full object-cover"
             >
@@ -722,6 +811,18 @@ function CallPanel() {
                     ? `${callKindLabel} • ${callTimeLabel}`
                     : status || 'Connecting...'}
                 </p>
+                {!setting?.cameraEnabled || !setting?.microphoneEnabled ? (
+                  <p className="mt-1 text-xs text-white/65">
+                    {[
+                      !setting?.cameraEnabled ? 'camera off by settings' : null,
+                      !setting?.microphoneEnabled
+                        ? 'microphone muted by settings'
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -780,9 +881,10 @@ function CallPanel() {
               <button
                 type="button"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 hover:bg-white/25"
+                onClick={toggleSpeaker}
                 aria-label="Speaker"
               >
-                <bi.BiVolumeFull />
+                {isSpeakerOff ? <bi.BiVolumeMute /> : <bi.BiVolumeFull />}
               </button>
             </div>
           </div>

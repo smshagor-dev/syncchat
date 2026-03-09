@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
 import axios from 'axios';
@@ -37,15 +38,16 @@ function DeleteAccount() {
     }
   };
 
-  return (
+  const modalView = (
     <div
       className={`
-        ${modal.deleteAcc ? 'delay-75 z-50' : '-z-50 opacity-0 delay-300'}
-        absolute w-full h-full flex justify-center items-center
+        ${modal.deleteAcc ? 'delay-75 z-[980]' : 'pointer-events-none -z-50 opacity-0 delay-300'}
+        fixed inset-0 flex justify-center items-center
         bg-spill-600/40 dark:bg-black/60
       `}
       aria-hidden
       onClick={() => {
+        dispatch(setModal({ target: 'deleteAcc', data: false }));
         setRespond({ success: true, message: null });
         setPassword('');
       }}
@@ -54,7 +56,7 @@ function DeleteAccount() {
         aria-hidden
         className={`${
           !modal.deleteAcc && 'scale-0'
-        } transition w-[460px] m-6 p-4 grid rounded-md bg-white dark:bg-spill-800`}
+        } transition w-[460px] max-w-[calc(100vw-2rem)] m-6 p-4 grid rounded-md bg-white dark:bg-spill-800`}
         onClick={(e) => {
           e.stopPropagation();
         }}
@@ -123,6 +125,8 @@ function DeleteAccount() {
       </div>
     </div>
   );
+
+  return createPortal(modalView, document.body);
 }
 
 export default DeleteAccount;

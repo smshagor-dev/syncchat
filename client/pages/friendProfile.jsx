@@ -15,6 +15,7 @@ import {
   setRefreshInbox,
 } from '../redux/features/chore';
 import { setSetting } from '../redux/features/user';
+import { getPresenceMeta } from '../helpers/presence';
 
 const SOCIAL_LABELS = {
   facebook: 'Facebook',
@@ -118,6 +119,7 @@ function FriendProfile() {
   const profileAvatar =
     resolveUploadUrl(profile?.avatar) || 'assets/images/default-avatar.png';
   const displayName = profile?.fullname || profile?.username || '[inactive]';
+  const presence = getPresenceMeta(profile);
 
   const handleAddContact = async () => {
     if (!profile?.username) return;
@@ -521,11 +523,7 @@ function FriendProfile() {
               <h1 className="text-2xl font-bold break-all mb-1">
                 {displayName}
               </h1>
-              <p className="text-sm opacity-60">
-                {profile.online
-                  ? 'online'
-                  : `last seen ${moment(profile.updatedAt).fromNow()}`}
-              </p>
+              <p className="text-sm opacity-60">{presence.text}</p>
             </div>
           </div>
           <div className="grid">

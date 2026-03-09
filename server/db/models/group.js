@@ -40,6 +40,11 @@ const GroupModel = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    isChannel: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     name: {
       type: DataTypes.STRING(32),
       allowNull: false,

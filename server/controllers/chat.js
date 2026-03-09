@@ -6,6 +6,7 @@ const ChatModel = require('../db/models/chat');
 const FileModel = require('../db/models/file');
 const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
+const ChannelModel = require('../db/models/channel');
 const SettingModel = require('../db/models/setting');
 const { asArray, toPlain, toPlainMany, pullFromArray } = require('../db/utils');
 const { canGroupMemberSendMessage } = require('../helpers/groupPermissions');
@@ -20,6 +21,11 @@ const {
   toAbsoluteUploadUrl,
   uploadRootDir,
 } = require('../helpers/storage');
+const {
+  canReceiveUnknownMessage,
+  getSettingMap,
+  getContactMap,
+} = require('../helpers/privacy');
 
 const sanitizeFolderName = (value, fallback = 'unknown') => {
   const safe = String(value || '')
@@ -99,8 +105,49 @@ const getPrivateChatBlockState = async ({ senderId, ownersId }) => {
   return {
     senderBlockedReceiver: senderBlocked.includes(receiverId),
     receiverBlockedSender: receiverBlocked.includes(senderId),
+    receiverId,
   };
 };
+
+const canPrivateMessageProceed = async ({ senderId, receiverId }) => {
+  const [settingMap, contactMap] = await Promise.all([
+    getSettingMap([receiverId]),
+    getContactMap({ ownerIds: [receiverId], friendIds: [senderId] }),
+  ]);
+  return (
+    !!contactMap.get(`${receiverId}:${senderId}`) ||
+    canReceiveUnknownMessage({
+      setting: settingMap.get(receiverId),
+    })
+  );
+};
+
+const getGroupLikeRoom = async (roomId) => {
+  const [channel, group] = await Promise.all([
+    ChannelModel.findOne({
+      where: { roomId },
+      attributes: { exclude: ['passwordHash'] },
+    }),
+    GroupModel.findOne({
+      where: { roomId },
+      attributes: ['participantsId', 'adminId', 'adminsId', 'permissions', 'name', 'avatar'],
+    }),
+  ]);
+  return {
+    channel: toPlain(channel),
+    group: toPlain(group),
+  };
+};
+
+const getChannelIdentity = (channel) =>
+  channel
+    ? {
+        userId: channel._id,
+        fullname: channel.name,
+        avatar: channel.avatar || null,
+        isChannelIdentity: true,
+      }
+    : null;
 
 exports.upload = async (req, res) => {
   try {
@@ -262,20 +309,18 @@ exports.sendFile = async (req, res) => {
     }
 
     if (roomType === 'group') {
-      const group = await GroupModel.findOne({
-        where: { roomId },
-        attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
-      });
-      if (!group || !asArray(group.participantsId).includes(senderId)) {
+      const { channel, group } = await getGroupLikeRoom(roomId);
+      const roomEntity = channel || group;
+      if (!roomEntity || !asArray(roomEntity.participantsId).includes(senderId)) {
         response({
           res,
           statusCode: 403,
           success: false,
-          message: 'You are not a participant of this group',
+          message: `You are not a participant of this ${channel ? 'channel' : 'group'}`,
         });
         return;
       }
-      if (!canGroupMemberSendMessage({ group, userId: senderId })) {
+      if (!canGroupMemberSendMessage({ group: roomEntity, userId: senderId })) {
         response({
           res,
           statusCode: 403,
@@ -299,6 +344,20 @@ exports.sendFile = async (req, res) => {
           statusCode: 403,
           success: false,
           message: 'You cannot send messages in this chat',
+        });
+        return;
+      }
+      if (
+        !(await canPrivateMessageProceed({
+          senderId,
+          receiverId: privateBlock?.receiverId,
+        }))
+      ) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'This user only accepts messages from contacts',
         });
         return;
       }
@@ -339,6 +398,9 @@ exports.sendFile = async (req, res) => {
         attributes: ['userId', 'avatar', 'fullname'],
       })
     );
+    const { channel } = await getGroupLikeRoom(roomId);
+    const senderName = channel?.name || profile?.fullname || '';
+    const senderProfile = getChannelIdentity(channel) || profile;
 
     const contentText =
       chat.text && chat.text.length > 0 ? chat.text : file.originalname;
@@ -360,7 +422,7 @@ exports.sendFile = async (req, res) => {
         fileId,
         content: {
           from: senderId,
-          senderName: profile?.fullname || '',
+          senderName,
           text: contentText,
           time: chat.createdAt,
           delivered: !!chat.delivered,
@@ -377,7 +439,7 @@ exports.sendFile = async (req, res) => {
         deletedBy: [],
         content: {
           from: senderId,
-          senderName: profile?.fullname || '',
+          senderName,
           text: contentText,
           time: chat.createdAt,
           delivered: !!chat.delivered,
@@ -389,7 +451,8 @@ exports.sendFile = async (req, res) => {
     const inboxes = await Inbox.find({ roomId });
     const payload = {
       ...chat,
-      profile,
+      profile: senderProfile,
+      channel: channel || null,
       file: toPlain(file),
       reply: null,
     };
@@ -594,7 +657,7 @@ exports.findCalls = async (req, res) => {
     const ownersIds = [
       ...new Set(inboxes.flatMap((inbox) => asArray(inbox.ownersId))),
     ];
-    const [profilesRaw, groupsRaw] = await Promise.all([
+    const [profilesRaw, groupsRaw, channelsRaw] = await Promise.all([
       ownersIds.length
         ? ProfileModel.findAll({
             where: { userId: { [Op.in]: ownersIds } },
@@ -603,6 +666,10 @@ exports.findCalls = async (req, res) => {
       GroupModel.findAll({
         where: { roomId: { [Op.in]: roomsId } },
       }),
+      ChannelModel.findAll({
+        where: { roomId: { [Op.in]: roomsId } },
+        attributes: { exclude: ['passwordHash'] },
+      }),
     ]);
 
     const profilesById = new Map(
@@ -610,6 +677,9 @@ exports.findCalls = async (req, res) => {
     );
     const groupsByRoom = new Map(
       toPlainMany(groupsRaw).map((group) => [group.roomId, group])
+    );
+    const channelsByRoom = new Map(
+      toPlainMany(channelsRaw).map((channel) => [channel.roomId, channel])
     );
 
     const payload = chats
@@ -620,6 +690,7 @@ exports.findCalls = async (req, res) => {
           .map((ownerId) => profilesById.get(ownerId))
           .filter(Boolean);
 
+        const channel = channelsByRoom.get(chat.roomId) || null;
         return {
           _id: chat._id,
           roomId: chat.roomId,
@@ -627,6 +698,7 @@ exports.findCalls = async (req, res) => {
           ownersId: asArray(inbox.ownersId),
           owners,
           group: groupsByRoom.get(chat.roomId) || null,
+          channel,
           text: chat.text || '',
           userId: chat.userId,
           createdAt: chat.createdAt,
@@ -759,7 +831,7 @@ exports.findStarred = async (req, res) => {
       ...new Set(inboxes.flatMap((inbox) => asArray(inbox.ownersId))),
     ];
 
-    const [filesRaw, senderProfilesRaw, ownerProfilesRaw, groupsRaw] =
+    const [filesRaw, senderProfilesRaw, ownerProfilesRaw, groupsRaw, channelsRaw] =
       await Promise.all([
         fileIds.length
           ? FileModel.findAll({
@@ -780,6 +852,10 @@ exports.findStarred = async (req, res) => {
           where: { roomId: { [Op.in]: roomsId } },
           attributes: { exclude: ['passwordHash'] },
         }),
+        ChannelModel.findAll({
+          where: { roomId: { [Op.in]: roomsId } },
+          attributes: { exclude: ['passwordHash'] },
+        }),
       ]);
 
     const inboxByRoom = new Map(inboxes.map((inbox) => [inbox.roomId, inbox]));
@@ -795,6 +871,9 @@ exports.findStarred = async (req, res) => {
     const groupByRoom = new Map(
       toPlainMany(groupsRaw).map((group) => [group.roomId, group])
     );
+    const channelByRoom = new Map(
+      toPlainMany(channelsRaw).map((channel) => [channel.roomId, channel])
+    );
 
     const payload = chats.map((chat) => {
       const inbox = inboxByRoom.get(chat.roomId) || null;
@@ -806,6 +885,10 @@ exports.findStarred = async (req, res) => {
         roomType === 'private'
           ? owners.find((owner) => owner.userId !== userId) || null
           : null;
+      const roomGroup =
+        roomType === 'group' ? groupByRoom.get(chat.roomId) || null : null;
+      const roomChannel =
+        roomType === 'group' ? channelByRoom.get(chat.roomId) || null : null;
 
       return {
         _id: chat._id,
@@ -816,21 +899,23 @@ exports.findStarred = async (req, res) => {
         userId: chat.userId,
         starredBy: asArray(chat.starredBy),
         file: chat.fileId ? fileById.get(chat.fileId) || null : null,
-        profile: senderById.get(chat.userId) || null,
+        profile: getChannelIdentity(roomChannel) || senderById.get(chat.userId) || null,
+        channel: roomChannel,
         room: {
           roomId: chat.roomId,
           roomType,
           title:
             roomType === 'group'
-              ? groupByRoom.get(chat.roomId)?.name || 'Group'
+              ? roomChannel?.name || groupByRoom.get(chat.roomId)?.name || 'Group'
               : friendProfile?.fullname || '[inactive]',
           avatar:
             roomType === 'group'
-              ? groupByRoom.get(chat.roomId)?.avatar || null
+              ? roomChannel?.avatar || groupByRoom.get(chat.roomId)?.avatar || null
               : friendProfile?.avatar || null,
           ownersId: asArray(inbox?.ownersId),
           group:
-            roomType === 'group' ? groupByRoom.get(chat.roomId) || null : null,
+            roomGroup,
+          channel: roomChannel,
           friend: friendProfile,
         },
       };
@@ -854,6 +939,7 @@ exports.findStarred = async (req, res) => {
 exports.deleteByRoomId = async (req, res) => {
   try {
     const { roomId } = req.params;
+    const userId = req.user?._id;
     const inbox = await InboxModel.findOne({ where: { roomId } });
     if (!inbox) {
       response({ res, message: 'Chat deleted successfully' });
@@ -862,12 +948,18 @@ exports.deleteByRoomId = async (req, res) => {
 
     const owners = asArray(inbox.ownersId);
     const deletedBy = asArray(inbox.deletedBy);
-    if (!deletedBy.includes(req.user._id)) {
-      deletedBy.push(req.user._id);
-      await inbox.update({ deletedBy });
+    const nextOwners = pullFromArray(owners, [userId]);
+    if (!deletedBy.includes(userId)) {
+      deletedBy.push(userId);
+      await inbox.update({
+        deletedBy,
+        ownersId: nextOwners,
+      });
+    } else if (owners.includes(userId)) {
+      await inbox.update({ ownersId: nextOwners });
     }
 
-    if (deletedBy.length >= owners.length) {
+    if (deletedBy.length >= owners.length || nextOwners.length === 0) {
       await InboxModel.destroy({ where: { roomId } });
       await ChatModel.destroy({ where: { roomId } });
     } else {
@@ -875,8 +967,8 @@ exports.deleteByRoomId = async (req, res) => {
       await Promise.all(
         chats.map(async (chat) => {
           const curr = asArray(chat.deletedBy);
-          if (curr.includes(req.user._id)) return;
-          await chat.update({ deletedBy: [...curr, req.user._id] });
+          if (curr.includes(userId)) return;
+          await chat.update({ deletedBy: [...curr, userId] });
         })
       );
     }
@@ -904,6 +996,10 @@ exports.deleteByRoomId = async (req, res) => {
         await Promise.all(files.map((file) => deleteLocalFileByUrl(file.url)));
         await FileModel.destroy({ where: { fileId: { [Op.in]: filesId } } });
       }
+    }
+
+    if (userId && global?.io) {
+      global.io.to(userId).emit('inbox/delete', [roomId]);
     }
 
     response({

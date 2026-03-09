@@ -12,16 +12,26 @@ function ConfirmDeleteChatAndInbox() {
     (state) => state.modal.confirmDeleteChatAndInbox
   );
   const chatRoom = useSelector((state) => state.room.chat);
+  const emitLocalInboxDelete = (roomId) => {
+    window.dispatchEvent(
+      new CustomEvent('syncchat:inbox-delete', {
+        detail: { roomId },
+      })
+    );
+  };
 
   const handleDeleteChatAndInbox = async () => {
     try {
       await axios.delete(`/chats/${confirmDeleteChatAndInbox.roomId}`);
+      emitLocalInboxDelete(confirmDeleteChatAndInbox.roomId);
 
       dispatch(setRefreshInbox(uuidv4()));
 
       if (
-        confirmDeleteChatAndInbox.inboxId === chatRoom.isOpen &&
-        chatRoom.data._id
+        chatRoom?.isOpen &&
+        chatRoom?.data &&
+        (confirmDeleteChatAndInbox.inboxId === chatRoom.data._id ||
+          confirmDeleteChatAndInbox.roomId === chatRoom.data.roomId)
       ) {
         dispatch(
           setChatRoom({

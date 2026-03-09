@@ -1,6 +1,7 @@
 const sharp = require('sharp');
 const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
+const ChannelModel = require('../db/models/channel');
 const response = require('../helpers/response');
 const {
   parseDataUri,
@@ -10,7 +11,13 @@ const {
 
 exports.upload = async (req, res) => {
   try {
-    const { avatar, crop, targetId = null, isGroup = false } = req.body;
+    const {
+      avatar,
+      crop,
+      targetId = null,
+      isGroup = false,
+      isChannel = false,
+    } = req.body;
     const { buffer } = parseDataUri(avatar);
     const image = sharp(buffer);
     const metadata = await image.metadata();
@@ -56,7 +63,30 @@ exports.upload = async (req, res) => {
       filename: `${targetId || req.user._id}-${Date.now()}.webp`,
     });
 
-    if (isGroup) {
+    if (isChannel) {
+      const channel = await ChannelModel.findOne({
+        where: { _id: targetId },
+        attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
+      });
+      if (channel?.avatar) await deleteLocalFileByUrl(channel.avatar);
+
+      await ChannelModel.update(
+        { avatar: uploaded.url },
+        { where: { _id: targetId } }
+      );
+
+      if (channel?.roomId && global?.io) {
+        const payload = {
+          channelId: channel._id,
+          roomId: channel.roomId,
+          avatar: uploaded.url,
+        };
+        global.io.to(channel.roomId).emit('channel/avatar', payload);
+        if (Array.isArray(channel.participantsId) && channel.participantsId.length) {
+          global.io.to(channel.participantsId).emit('channel/avatar', payload);
+        }
+      }
+    } else if (isGroup) {
       const group = await GroupModel.findOne({
         where: { _id: targetId },
         attributes: ['_id', 'avatar', 'roomId', 'participantsId'],

@@ -5,6 +5,7 @@ const { addToSet, pullFromArray, asArray, toPlain } = require('../db/utils');
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 const response = require('../helpers/response');
+const { getSettingMap, allowsReadReceipts } = require('../helpers/privacy');
 
 exports.find = async (req, res) => {
   try {
@@ -12,10 +13,13 @@ exports.find = async (req, res) => {
       { ownersId: req.user._id },
       req.query.search
     );
+    const visibleInboxes = inboxes.filter(
+      (inbox) => !asArray(inbox.deletedBy).includes(req.user._id)
+    );
 
     response({
       res,
-      payload: inboxes,
+      payload: visibleInboxes,
     });
   } catch (error0) {
     response({
@@ -326,12 +330,19 @@ exports.markAllRead = async (req, res) => {
     await Promise.all(
       visible.map(async (inbox) => {
         const content = inbox.content || {};
+        const settingMap = await getSettingMap([userId]);
+        const canMarkRead = allowsReadReceipts({
+          setting: settingMap.get(userId),
+        });
         await inbox.update({
           unreadMessage: 0,
           markUnreadBy: pullFromArray(inbox.markUnreadBy, [userId]),
           content: {
             ...content,
-            readed: content.from && content.from !== userId ? true : content.readed,
+            readed:
+              content.from && content.from !== userId && canMarkRead
+                ? true
+                : content.readed,
           },
         });
       })

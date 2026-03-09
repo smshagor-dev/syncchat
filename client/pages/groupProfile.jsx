@@ -24,23 +24,36 @@ const NOTIFICATION_TONES = [
   { value: 'soft-chime', label: 'Soft chime' },
 ];
 
-function GroupProfile() {
+function GroupProfile({ mode = 'group' }) {
   const dispatch = useDispatch();
   const {
     chore: { refreshGroupAvatar },
     room: { chat: chatRoom },
-    page: { groupProfile, addParticipant, groupParticipant },
+    page: { groupProfile, channelProfile, addParticipant, groupParticipant },
     user: { master },
     modal,
   } = useSelector((state) => state);
+  const isChannelView = mode === 'channel';
+  const activeProfilePage = isChannelView ? channelProfile : groupProfile;
+  const fallbackProfileId = isChannelView
+    ? chatRoom?.data?.channel?._id || chatRoom?.data?.group?._id || null
+    : chatRoom?.data?.group?._id || null;
+  const requestedProfileId =
+    typeof activeProfilePage === 'object' && activeProfilePage !== null
+      ? activeProfilePage[isChannelView ? 'channelId' : 'groupId'] || null
+      : activeProfilePage === true
+      ? fallbackProfileId
+      : activeProfilePage;
   const groupProfileId =
-    typeof groupProfile === 'object' && groupProfile !== null
-      ? groupProfile.groupId
-      : groupProfile;
+    isChannelView && activeProfilePage
+      ? requestedProfileId || fallbackProfileId
+      : requestedProfileId;
   const groupProfileRoomIdFromPage =
-    typeof groupProfile === 'object' && groupProfile !== null
-      ? groupProfile.roomId || null
-      : null;
+    typeof activeProfilePage === 'object' && activeProfilePage !== null
+      ? activeProfilePage.roomId || chatRoom?.data?.roomId || null
+      : chatRoom?.data?.roomId || null;
+  const entityPath = isChannelView ? 'channels' : 'groups';
+  const entitySocket = isChannelView ? 'channel' : 'group';
 
   const [participants, setParticipants] = useState(null);
   const [group, setGroup] = useState(null);
@@ -89,6 +102,9 @@ function GroupProfile() {
   const [memberModalLoading, setMemberModalLoading] = useState(false);
   const [allParticipants, setAllParticipants] = useState([]);
   const [groupActionMessage, setGroupActionMessage] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [nameForm, setNameForm] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const [reportDialog, setReportDialog] = useState({
     open: false,
     reason: '',
@@ -96,18 +112,32 @@ function GroupProfile() {
     error: '',
   });
 
-  const inviteToken = String(group?.link || '').replace('/group/+', '');
+  const inviteToken = String(group?.link || '').replace(
+    isChannelView ? '/channel/+' : '/group/+',
+    ''
+  );
   const inviteUrl = inviteToken
-    ? `${window.location.origin}/chat?g=${encodeURIComponent(inviteToken)}`
+    ? `${window.location.origin}/chat?${
+        isChannelView ? 'c' : 'g'
+      }=${encodeURIComponent(inviteToken)}`
     : '';
   const isAdmin = !!group && isGroupAdmin(group, master._id);
   const adminIds = getGroupAdmins(group);
   const isMember = !!group && group.participantsId.includes(master._id);
+  const entityLabel = isChannelView ? 'Channel' : 'Group';
+  const entityLabelLower = isChannelView ? 'channel' : 'group';
+  const audienceLabel = isChannelView ? 'subscriber' : 'member';
+  const audienceLabelPlural = isChannelView ? 'subscribers' : 'members';
+  const audienceActionLabel = isChannelView
+    ? 'Add other subscriber'
+    : 'Add other member';
+  const publicEntityLabel = `Public ${entityLabel}`;
+  const privateEntityLabel = `Private ${entityLabel}`;
   const normalizedPermissions = {
     memberCanEditInfo: !!group?.permissions?.memberCanEditInfo,
     memberCanSendMessage:
       group?.permissions?.memberCanSendMessage === undefined
-        ? true
+        ? !isChannelView
         : !!group?.permissions?.memberCanSendMessage,
     memberCanAddMember: !!group?.permissions?.memberCanAddMember,
     memberCanInviteViaLink: !!group?.permissions?.memberCanInviteViaLink,
@@ -124,15 +154,15 @@ function GroupProfile() {
   const memberPermissionItems = [
     {
       key: 'memberCanEditInfo',
-      label: 'Edit Group info',
+      label: `Edit ${entityLabel} info`,
     },
     {
       key: 'memberCanSendMessage',
-      label: 'Send message',
+      label: isChannelView ? 'Post messages' : 'Send message',
     },
     {
       key: 'memberCanAddMember',
-      label: 'Add other member',
+      label: audienceActionLabel,
     },
     {
       key: 'memberCanInviteViaLink',
@@ -142,10 +172,13 @@ function GroupProfile() {
 
   const handleGetGroup = (signal) => {
     if (groupProfileId && !addParticipant && !groupParticipant) {
+      if (isChannelView && chatRoom?.data?.channel?._id === groupProfileId) {
+        setGroup((prev) => prev || chatRoom.data.channel);
+      }
       axios
         .all([
-          axios.get(`/groups/${groupProfileId}`, { signal }),
-          axios.get(`/groups/${groupProfileId}/participants`, {
+          axios.get(`/${entityPath}/${groupProfileId}`, { signal }),
+          axios.get(`/${entityPath}/${groupProfileId}/participants`, {
             params: { skip: 0, limit: 10 },
             signal,
           }),
@@ -156,7 +189,12 @@ function GroupProfile() {
             setParticipants(data2.payload);
           })
         )
-        .catch((error0) => console.error(error0.message));
+        .catch((error0) => {
+          if (isChannelView && chatRoom?.data?.channel?._id === groupProfileId) {
+            setGroup(chatRoom.data.channel);
+          }
+          console.error(error0.message);
+        });
     } else {
       setTimeout(() => {
         setParticipants(null);
@@ -300,7 +338,7 @@ function GroupProfile() {
   ]);
 
   useEffect(() => {
-    socket.on('group/edit', (payload) => {
+    socket.on(`${entitySocket}/edit`, (payload) => {
       if (groupProfileId) {
         setGroup((prev) => ({ ...prev, ...payload }));
       }
@@ -320,12 +358,53 @@ function GroupProfile() {
     });
 
     return () => {
-      socket.off('group/edit');
+      socket.off(`${entitySocket}/edit`);
     };
-  }, [!!groupProfileId]);
+  }, [!!groupProfileId, entitySocket]);
 
   useEffect(() => {
-    socket.on('group/add-admin', ({ adminId, adminsId }) => {
+    const avatarEvent = `${entitySocket}/avatar`;
+
+    socket.on(avatarEvent, (payload) => {
+      if (!payload?.avatar) return;
+
+      const targetRoomId = groupProfileRoomIdFromPage || group?.roomId || null;
+      if (payload.roomId && targetRoomId && payload.roomId !== targetRoomId) {
+        return;
+      }
+
+      setGroup((prev) => (prev ? { ...prev, avatar: payload.avatar } : prev));
+
+      if (chatRoom?.data?.roomType === 'group') {
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              group: {
+                ...(chatRoom.data.group || {}),
+                avatar: payload.avatar,
+              },
+              channel:
+                isChannelView || chatRoom.data.channel
+                  ? {
+                      ...(chatRoom.data.channel || {}),
+                      avatar: payload.avatar,
+                    }
+                  : chatRoom.data.channel,
+            },
+          })
+        );
+      }
+    });
+
+    return () => {
+      socket.off(avatarEvent);
+    };
+  }, [entitySocket, group?.roomId, groupProfileRoomIdFromPage, chatRoom, isChannelView]);
+
+  useEffect(() => {
+    socket.on(`${entitySocket}/add-admin`, ({ adminId, adminsId }) => {
       dispatch(
         setChatRoom({
           ...chatRoom,
@@ -340,7 +419,7 @@ function GroupProfile() {
         })
       );
 
-      if (groupProfile && group) {
+      if (activeProfilePage && group) {
         // update group
         setGroup((prev) => ({ ...prev, adminId, adminsId }));
         return;
@@ -361,7 +440,7 @@ function GroupProfile() {
       }
     });
 
-    socket.on('group/remove-admin', ({ adminId, adminsId }) => {
+    socket.on(`${entitySocket}/remove-admin`, ({ adminId, adminsId }) => {
       dispatch(
         setChatRoom({
           ...chatRoom,
@@ -376,7 +455,7 @@ function GroupProfile() {
         })
       );
 
-      if (groupProfile && group) {
+      if (activeProfilePage && group) {
         setGroup((prev) => ({ ...prev, adminId, adminsId }));
         return;
       }
@@ -395,13 +474,13 @@ function GroupProfile() {
       }
     });
 
-    socket.on('group/remove-participant', ({ participantId, adminsId }) => {
+    socket.on(`${entitySocket}/remove-participant`, ({ participantId, adminsId }) => {
       const { group: chg } = chatRoom.data;
       const participantsId = chg.participantsId.filter(
         (el) => el !== participantId
       );
 
-      if (groupProfile && group) {
+      if (activeProfilePage && group) {
         // update group
         setGroup((prev) => ({
           ...prev,
@@ -431,11 +510,11 @@ function GroupProfile() {
     });
 
     return () => {
-      socket.off('group/add-admin');
-      socket.off('group/remove-admin');
-      socket.off('group/remove-participant');
+      socket.off(`${entitySocket}/add-admin`);
+      socket.off(`${entitySocket}/remove-admin`);
+      socket.off(`${entitySocket}/remove-participant`);
     };
-  }, [!!group]);
+  }, [!!group, entitySocket]);
 
   useEffect(() => {
     if (!group) return;
@@ -446,12 +525,18 @@ function GroupProfile() {
   }, [group?._id, group?.accessType]);
 
   useEffect(() => {
+    setNameForm(group?.name || '');
+    setEditingName(false);
+    setSavingName(false);
+  }, [group?._id, group?.name]);
+
+  useEffect(() => {
     if (!group) return;
     setPermissionForm({
       memberCanEditInfo: !!group?.permissions?.memberCanEditInfo,
       memberCanSendMessage:
         group?.permissions?.memberCanSendMessage === undefined
-          ? true
+          ? !isChannelView
           : !!group?.permissions?.memberCanSendMessage,
       memberCanAddMember: !!group?.permissions?.memberCanAddMember,
       memberCanInviteViaLink: !!group?.permissions?.memberCanInviteViaLink,
@@ -482,7 +567,7 @@ function GroupProfile() {
     }
 
     axios
-      .get(`/groups/${group._id}/pending-members`)
+      .get(`/${entityPath}/${group._id}/pending-members`)
       .then(({ data }) => {
         const pendingPayload = (data?.payload || []).map((item) => ({
           userId: item.userId,
@@ -510,7 +595,7 @@ function GroupProfile() {
         String(privacyForm.password || '').length < 4
       ) {
         setPrivacyRespond(
-          'Private group password must be at least 4 characters'
+          `Private ${entityLabelLower} password must be at least 4 characters`
         );
         return;
       }
@@ -518,7 +603,7 @@ function GroupProfile() {
       setSavingPrivacy(true);
       setPrivacyRespond('');
 
-      const { data } = await axios.patch(`/groups/${group._id}/privacy`, {
+      const { data } = await axios.patch(`/${entityPath}/${group._id}/privacy`, {
         accessType: privacyForm.accessType,
         password: privacyForm.password,
       });
@@ -544,7 +629,7 @@ function GroupProfile() {
       setSavingPassword(true);
       setPasswordRespond('');
 
-      const { data } = await axios.patch(`/groups/${group._id}/password`, {
+      const { data } = await axios.patch(`/${entityPath}/${group._id}/password`, {
         oldPassword: passwordForm.oldPassword,
         newPassword: passwordForm.newPassword,
       });
@@ -563,7 +648,7 @@ function GroupProfile() {
       if (!group || !isAdmin) return;
       setSavingPermissions(true);
       setPermissionRespond('');
-      const { data } = await axios.patch(`/groups/${group._id}/permissions`, {
+      const { data } = await axios.patch(`/${entityPath}/${group._id}/permissions`, {
         permissions: permissionForm,
       });
       setPermissionRespond(data.message || 'Permissions updated');
@@ -584,7 +669,7 @@ function GroupProfile() {
     try {
       if (!group || !isAdmin) return;
       await axios.post(
-        `/groups/${group._id}/pending-members/${memberId}/approve`
+        `/${entityPath}/${group._id}/pending-members/${memberId}/approve`
       );
       setGroup((prev) => ({
         ...prev,
@@ -604,7 +689,7 @@ function GroupProfile() {
     try {
       if (!group || !isAdmin) return;
       await axios.post(
-        `/groups/${group._id}/pending-members/${memberId}/reject`
+        `/${entityPath}/${group._id}/pending-members/${memberId}/reject`
       );
       setGroup((prev) => ({
         ...prev,
@@ -675,7 +760,7 @@ function GroupProfile() {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         // eslint-disable-next-line no-await-in-loop
-        const { data } = await axios.get(`/groups/${group._id}/participants`, {
+        const { data } = await axios.get(`/${entityPath}/${group._id}/participants`, {
           params: { skip, limit },
         });
         const chunk = Array.isArray(data?.payload) ? data.payload : [];
@@ -699,6 +784,46 @@ function GroupProfile() {
         target: 'confirmExitGroup',
         data: { groupId: group._id, name: group.name },
       })
+    );
+  };
+
+  const submitNameUpdate = () => {
+    const nextName = String(nameForm || '').trim();
+
+    if (!group?._id || !canEditGroupInfo) return;
+    if (nextName.length < 1 || nextName.length > 32) {
+      setGroupActionMessage(
+        `${entityLabel} name must be between 1 and 32 characters`
+      );
+      return;
+    }
+
+    setSavingName(true);
+    setGroupActionMessage('');
+
+    socket.emit(
+      `${entitySocket}/edit`,
+      {
+        [isChannelView ? 'channelId' : 'groupId']: group._id,
+        userId: master._id,
+        form: {
+          name: nextName,
+          desc: group.desc || '',
+        },
+      },
+      (res) => {
+        setSavingName(false);
+        if (!res?.success) {
+          setGroupActionMessage(
+            res?.message || `Failed to update ${entityLabelLower} name`
+          );
+          return;
+        }
+
+        setEditingName(false);
+        setGroup((prev) => (prev ? { ...prev, name: nextName } : prev));
+        setGroupActionMessage(`${entityLabel} name updated successfully`);
+      }
     );
   };
 
@@ -732,7 +857,7 @@ function GroupProfile() {
         loading: false,
         error: '',
       });
-      setGroupActionMessage('Group reported successfully');
+      setGroupActionMessage(`${entityLabel} reported successfully`);
     } catch (error0) {
       setReportDialog((prev) => ({
         ...prev,
@@ -773,13 +898,17 @@ function GroupProfile() {
             type="button"
             className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
             onClick={() => {
-              dispatch(setPage({ target: 'groupProfile' }));
+              dispatch(
+                setPage({
+                  target: isChannelView ? 'channelProfile' : 'groupProfile',
+                })
+              );
             }}
           >
             <bi.BiArrowBack className="block md:hidden" />
             <bi.BiX className="hidden md:block" />
           </button>
-          <h1 className="text-2xl font-bold">Group Info</h1>
+          <h1 className="text-2xl font-bold">{entityLabel} Info</h1>
         </div>
         {group && canEditGroupInfo && (
           <button
@@ -826,7 +955,8 @@ function GroupProfile() {
                       target: 'avatarUpload',
                       data: {
                         targetId: group._id,
-                        isGroup: true,
+                        isGroup: !isChannelView,
+                        isChannel: isChannelView,
                       },
                     })
                   );
@@ -851,9 +981,77 @@ function GroupProfile() {
               />
             </button>
             <div className="w-full text-center mt-4 overflow-hidden">
-              <h1 className="text-2xl font-bold break-all mb-1">
-                {group.name}
-              </h1>
+              {!editingName && (
+                <div className="mb-1 flex items-center justify-center gap-2">
+                  <h1 className="text-2xl font-bold break-all">
+                    {group.name}
+                  </h1>
+                  {canEditGroupInfo && (
+                    <button
+                      type="button"
+                      className="rounded-full p-1.5 text-spill-500 hover:bg-spill-100 hover:text-sky-600 dark:text-spill-300 dark:hover:bg-spill-800 dark:hover:text-sky-400"
+                      onClick={() => {
+                        setNameForm(group.name || '');
+                        setEditingName(true);
+                        setGroupActionMessage('');
+                      }}
+                      aria-label={`Edit ${entityLabelLower} name`}
+                    >
+                      <bi.BiEditAlt size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {editingName && (
+                <div className="mb-2 grid gap-2">
+                  <label
+                    htmlFor={`${entityLabelLower}-name-edit`}
+                    className="mx-auto flex w-full max-w-[280px] items-center gap-2 rounded-xl border border-spill-300 bg-white px-3 py-2 dark:border-spill-700 dark:bg-spill-900"
+                  >
+                    <input
+                      id={`${entityLabelLower}-name-edit`}
+                      name={`${entityLabelLower}_name_edit`}
+                      type="text"
+                      value={nameForm}
+                      maxLength={32}
+                      autoFocus
+                      className="w-full bg-transparent text-center text-base font-semibold outline-none"
+                      onChange={(e) => setNameForm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          submitNameUpdate();
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingName(false);
+                          setNameForm(group.name || '');
+                        }
+                      }}
+                    />
+                  </label>
+                  <div className="flex justify-center gap-2">
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg border border-spill-300 px-3 text-sm hover:bg-spill-100 dark:border-spill-700 dark:hover:bg-spill-800"
+                      onClick={() => {
+                        setEditingName(false);
+                        setNameForm(group.name || '');
+                      }}
+                      disabled={savingName}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg bg-sky-600 px-3 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                      onClick={submitNameUpdate}
+                      disabled={savingName}
+                    >
+                      {savingName ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="text-sm opacity-60 flex items-center justify-center gap-1">
                 {group.accessType === 'private' ? (
                   <bi.BiLockAlt className="text-amber-600 dark:text-amber-400" />
@@ -861,8 +1059,8 @@ function GroupProfile() {
                   <bi.BiLockOpenAlt className="text-emerald-600 dark:text-emerald-400" />
                 )}
                 {group.accessType === 'private'
-                  ? 'Private Group'
-                  : 'Public Group'}
+                  ? privateEntityLabel
+                  : publicEntityLabel}
               </p>
             </div>
           </div>
@@ -900,7 +1098,7 @@ function GroupProfile() {
                         target: 'media',
                         data: {
                           roomId: groupProfileRoomIdFromPage || group?.roomId,
-                          title: group?.name || 'Group',
+                          title: group?.name || entityLabel,
                           initialTab: item.tab,
                         },
                       })
@@ -919,7 +1117,9 @@ function GroupProfile() {
                   <p className="text-xs opacity-70">Loading media...</p>
                 )}
                 {roomMedia.loaded && roomMedia.photos.length === 0 && (
-                  <p className="text-xs opacity-70">No photos in this Group</p>
+                  <p className="text-xs opacity-70">
+                    {`No photos in this ${entityLabelLower}`}
+                  </p>
                 )}
                 {roomMedia.photos.map((item) => (
                   <button
@@ -991,6 +1191,8 @@ function GroupProfile() {
                   <label className="h-10 px-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/80 dark:bg-spill-900/60 flex items-center gap-2">
                     <bi.BiMusic />
                     <select
+                      id="group-notification-tone"
+                      name="group_notification_tone"
                       value={inboxPrefs.tone}
                       className="w-full bg-transparent text-sm"
                       onChange={async (e) => {
@@ -1086,6 +1288,7 @@ function GroupProfile() {
               >
                 <select
                   id="privacy-type"
+                  name="privacy_type"
                   value={privacyForm.accessType}
                   onChange={(e) =>
                     setPrivacyForm((prev) => ({
@@ -1095,8 +1298,8 @@ function GroupProfile() {
                   }
                   className="w-full bg-transparent text-sm"
                 >
-                  <option value="public">Public Group</option>
-                  <option value="private">Private Group</option>
+                  <option value="public">{publicEntityLabel}</option>
+                  <option value="private">{privateEntityLabel}</option>
                 </select>
               </label>
               {privacyForm.accessType === 'private' && (
@@ -1106,6 +1309,7 @@ function GroupProfile() {
                 >
                   <input
                     id="privacy-password"
+                    name="privacy_password"
                     type="password"
                     value={privacyForm.password}
                     onChange={(e) =>
@@ -1114,7 +1318,7 @@ function GroupProfile() {
                         password: e.target.value,
                       }))
                     }
-                    placeholder="Set private password (min 4)"
+                    placeholder={`Set private ${entityLabelLower} password (min 4)`}
                     className="w-full bg-transparent text-sm"
                   />
                 </label>
@@ -1143,8 +1347,8 @@ function GroupProfile() {
                         fullname: group.name,
                         bio:
                           group.accessType === 'private'
-                            ? 'Private group invite'
-                            : 'Public group invite',
+                            ? `Private ${entityLabelLower} invite`
+                            : `Public ${entityLabelLower} invite`,
                         avatar:
                           group.avatar ||
                           'assets/images/default-group-avatar.png',
@@ -1166,7 +1370,7 @@ function GroupProfile() {
                 <span className="flex items-center gap-2">
                   <bi.BiLockAlt className="text-sky-600 dark:text-sky-400" />
                   <span className="text-sm font-semibold">
-                    Group Permission Settings
+                    {entityLabel} Permission Settings
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -1187,7 +1391,7 @@ function GroupProfile() {
                   <span className="flex items-center gap-2">
                     <bi.BiUserCheck className="text-amber-600 dark:text-amber-400" />
                     <span className="text-sm font-semibold">
-                      Pending User Requests
+                      Pending {entityLabel} Requests
                     </span>
                   </span>
                   <span className="flex items-center gap-2">
@@ -1200,7 +1404,9 @@ function GroupProfile() {
               )}
               {group.accessType === 'private' && (
                 <div className="pt-2 grid gap-2">
-                  <p className="text-sm font-semibold">Change Password</p>
+                  <p className="text-sm font-semibold">
+                    Change {entityLabel} Password
+                  </p>
                   {passwordRespond && (
                     <p className="text-xs text-sky-600 dark:text-sky-400">
                       {passwordRespond}
@@ -1256,14 +1462,14 @@ function GroupProfile() {
           )}
           <div className="pt-6">
             <div className="px-4 pb-3 grid gap-2 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
-              <p className="opacity-60">{`${group.participantsId.length} participants`}</p>
+              <p className="opacity-60">{`${group.participantsId.length} ${audienceLabelPlural}`}</p>
               <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center gap-2">
                 <bi.BiSearch />
                 <input
                   type="text"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
-                  placeholder="Search member"
+                  placeholder={`Search ${audienceLabel}`}
                   className="w-full bg-transparent text-sm"
                 />
               </label>
@@ -1279,6 +1485,7 @@ function GroupProfile() {
                         data: {
                           participantsId: group.participantsId,
                           groupId: group._id,
+                          channelId: isChannelView ? group._id : null,
                           roomId: group.roomId,
                         },
                       })
@@ -1424,14 +1631,14 @@ function GroupProfile() {
               },
               {
                 key: 'exit',
-                label: 'Exit group',
+                label: `Exit ${entityLabelLower}`,
                 icon: <bi.BiExit />,
                 onClick: handleExitGroup,
                 danger: true,
               },
               {
                 key: 'report',
-                label: 'Report group',
+                label: `Report ${entityLabelLower}`,
                 icon: <bi.BiErrorCircle />,
                 onClick: () =>
                   setReportDialog({
@@ -1576,7 +1783,9 @@ function GroupProfile() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="h-14 px-4 border-b border-spill-200 dark:border-spill-700 flex items-center justify-between">
-              <h2 className="text-base font-bold">Member list</h2>
+              <h2 className="text-base font-bold">
+                {`${entityLabel} members`}
+              </h2>
               <button
                 type="button"
                 className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
@@ -1592,15 +1801,19 @@ function GroupProfile() {
                   type="text"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
-                  placeholder="Search member"
+                  placeholder={`Search ${audienceLabel}`}
                   className="w-full bg-transparent text-sm"
                 />
               </label>
               {memberModalLoading && (
-                <p className="text-sm opacity-70">Loading members...</p>
+                <p className="text-sm opacity-70">
+                  {`Loading ${audienceLabelPlural}...`}
+                </p>
               )}
               {!memberModalLoading && modalParticipants.length === 0 && (
-                <p className="text-sm opacity-70">No member found</p>
+                <p className="text-sm opacity-70">
+                  {`No ${audienceLabel} found`}
+                </p>
               )}
               {!memberModalLoading &&
                 modalParticipants.map((elem) => (
@@ -1655,7 +1868,7 @@ function GroupProfile() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">Report group</h2>
+              <h2 className="text-lg font-bold">{`Report ${entityLabelLower}`}</h2>
               <button
                 type="button"
                 className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
@@ -1731,7 +1944,9 @@ function GroupProfile() {
             aria-hidden
           >
             <div className="h-14 px-4 border-b border-spill-200 dark:border-spill-700 flex items-center justify-between">
-              <h2 className="text-base font-bold">Group Permission Setting</h2>
+              <h2 className="text-base font-bold">
+                {`${entityLabel} Permission Setting`}
+              </h2>
               <button
                 type="button"
                 className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
@@ -1748,7 +1963,9 @@ function GroupProfile() {
               )}
 
               <section className="p-3 rounded-xl border border-spill-200 dark:border-spill-700 grid gap-2 bg-slate-50/70 dark:bg-spill-800/60">
-                <h3 className="text-sm font-semibold">Member can:</h3>
+                <h3 className="text-sm font-semibold">
+                  Member can:
+                </h3>
                 {memberPermissionItems.map((item) => (
                   <div
                     key={item.key}
@@ -1778,7 +1995,9 @@ function GroupProfile() {
                   )}
                 </div>
                 <div className="h-11 px-3 rounded-lg border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-white dark:bg-spill-900">
-                  <span className="text-sm">Approved new Member</span>
+                  <span className="text-sm">
+                    {`Approve new ${audienceLabel}`}
+                  </span>
                   {renderPermissionToggle({
                     checked: !!permissionForm.adminApprovalRequired,
                     id: 'permission-toggle-admin-approval',
@@ -1797,7 +2016,7 @@ function GroupProfile() {
                 onClick={submitPermissions}
                 disabled={savingPermissions}
               >
-                {savingPermissions ? 'Saving...' : 'Update Permission'}
+                {savingPermissions ? 'Saving...' : 'Update Permissions'}
               </button>
             </div>
           </div>
@@ -1818,7 +2037,7 @@ function GroupProfile() {
             >
               <div className="h-14 px-4 border-b border-spill-200 dark:border-spill-700 flex items-center justify-between">
                 <h2 className="text-base font-bold">
-                  Pending User Requests ({pendingRequestCount})
+                  {`Pending ${entityLabel} Requests (${pendingRequestCount})`}
                 </h2>
                 <button
                   type="button"
@@ -1830,7 +2049,9 @@ function GroupProfile() {
               </div>
               <div className="p-4 grid gap-2">
                 {pendingProfiles.length === 0 && (
-                  <p className="text-sm opacity-70">No pending users</p>
+                  <p className="text-sm opacity-70">
+                    {`No pending ${audienceLabelPlural}`}
+                  </p>
                 )}
                 {pendingProfiles.map((pendingUser) => (
                   <div
@@ -1881,6 +2102,7 @@ function GroupProfile() {
                 data: {
                   participantsId: group.participantsId,
                   groupId: group._id,
+                  channelId: isChannelView ? group._id : null,
                   roomId: group.roomId,
                 },
               })

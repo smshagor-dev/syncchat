@@ -19,6 +19,11 @@ const {
   canGroupMemberAddOtherMember,
 } = require('../helpers/groupPermissions');
 const { getGroupAdmins, isGroupAdminUser } = require('../helpers/groupAdmins');
+const {
+  getSettingMap,
+  getContactMap,
+  canUserAddToGroup,
+} = require('../helpers/privacy');
 
 const response = require('../helpers/response');
 
@@ -243,6 +248,22 @@ exports.addParticipants = async (req, res) => {
       throw new Error('You do not have permission to add members');
     }
 
+    const [settingMap, contactMap] = await Promise.all([
+      getSettingMap(friendsId),
+      getContactMap({ ownerIds: friendsId, friendIds: [userId] }),
+    ]);
+    const blockedTargets = friendsId.filter((friendId) => {
+      const targetSetting = settingMap.get(friendId);
+      return !canUserAddToGroup({
+        setting: targetSetting,
+        isContact: !!contactMap.get(`${friendId}:${userId}`),
+        isSelf: friendId === userId,
+      });
+    });
+    if (blockedTargets.length > 0) {
+      throw new Error('One or more contacts do not allow group adds');
+    }
+
     const nextParticipants = addToSet(group.participantsId, friendsId);
     const nextPendingMembers = pullFromArray(group.pendingMembersId, friendsId);
     await group.update({
@@ -309,6 +330,7 @@ exports.addParticipants = async (req, res) => {
 
     const inboxes = await Inbox.find({ roomId: group.roomId });
     if (inboxes[0]) {
+      global.io.to(friendsId).emit('group/create', inboxes[0]);
       global.io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
     }
     global.io.to(group.roomId).emit('group/edit', {
@@ -496,6 +518,7 @@ exports.joinByLink = async (req, res) => {
 
     const inboxes = await Inbox.find({ roomId: group.roomId });
     if (inboxes[0]) {
+      global.io.to(userId).emit('group/create', inboxes[0]);
       global.io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
     }
 
@@ -576,6 +599,7 @@ exports.updatePrivacy = async (req, res) => {
 
     const inboxes = await Inbox.find({ roomId: group.roomId });
     if (inboxes[0]) {
+      global.io.to(memberId).emit('group/create', inboxes[0]);
       global.io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
     }
     global.io.to(group.roomId).emit('group/edit', {

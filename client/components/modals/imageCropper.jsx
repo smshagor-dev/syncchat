@@ -39,12 +39,13 @@ function ImageCropper() {
       setUploading(true);
       setErrorMessage('');
 
-      const { src: avatar, isGroup, targetId } = modal.imageCropper;
+      const { src: avatar, isGroup, isChannel, targetId } = modal.imageCropper;
 
       const { data } = await axios.post('/avatars', {
         avatar,
         targetId,
         isGroup,
+        isChannel,
         crop: croppedArea,
         zoom,
       });
@@ -55,7 +56,7 @@ function ImageCropper() {
       setUploading(false);
       const resolvedAvatarUrl = resolveUploadUrl(data?.payload);
 
-      if (isGroup) {
+      if (isGroup || isChannel) {
         dispatch(setRefreshGroupAvatar(resolvedAvatarUrl));
       } else {
         dispatch(setRefreshAvatar(resolvedAvatarUrl));

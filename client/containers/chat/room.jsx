@@ -10,6 +10,7 @@ import config from '../../config';
 import * as comp from '../../components/chat/room';
 import FriendProfile from '../../pages/friendProfile';
 import GroupProfile from '../../pages/groupProfile';
+import ChannelProfile from '../../pages/channelProfile';
 import GroupParticipant from '../../pages/groupParticipant';
 import AddParticipant from '../../pages/addParticipant';
 
@@ -72,6 +73,7 @@ function Room() {
     dispatch(setReplyingChat(null));
     dispatch(setPage({ target: 'friendProfile', data: false }));
     dispatch(setPage({ target: 'groupProfile', data: false }));
+    dispatch(setPage({ target: 'channelProfile', data: false }));
     dispatch(setPage({ target: 'groupParticipant', data: false }));
     dispatch(setPage({ target: 'addParticipant', data: false }));
 
@@ -120,6 +122,8 @@ function Room() {
             className={`${
               (page.groupProfile || page.friendProfile) &&
               '-translate-x-full sm:translate-x-0 xl:mr-[380px]'
+            } ${
+              page.channelProfile && '-translate-x-full sm:translate-x-0 xl:mr-[380px]'
             } transition-all w-full h-full grid grid-rows-[auto_1fr_auto] overflow-hidden bg-slate-100 dark:bg-spill-900`}
           >
             <comp.header
@@ -143,6 +147,7 @@ function Room() {
             />
           </div>
           <GroupProfile />
+          <ChannelProfile />
           <FriendProfile />
           <GroupParticipant />
           <AddParticipant />

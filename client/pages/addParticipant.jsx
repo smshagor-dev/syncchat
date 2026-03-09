@@ -79,7 +79,10 @@ function AddParticipant() {
 
   const handleAddParticipants = async () => {
     try {
-      if (!page.addParticipant?.groupId) return;
+      const targetId =
+        page.addParticipant?.channelId || page.addParticipant?.groupId;
+      const entityPath = page.addParticipant?.channelId ? 'channels' : 'groups';
+      if (!targetId) return;
       if (selectedParticipants.length === 0) {
         setRespond('Select at least one participant');
         return;
@@ -87,7 +90,7 @@ function AddParticipant() {
 
       setSubmitting(true);
       setRespond('');
-      await axios.post(`/groups/${page.addParticipant.groupId}/participants`, {
+      await axios.post(`/${entityPath}/${targetId}/participants`, {
         userId: master._id,
         roomId: page.addParticipant.roomId,
         friendsId: selectedParticipants.map(

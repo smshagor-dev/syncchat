@@ -2,8 +2,96 @@ const { Op } = require('sequelize');
 const ProfileModel = require('../../db/models/profile');
 const InboxModel = require('../../db/models/inbox');
 const ChatModel = require('../../db/models/chat');
+const ContactModel = require('../../db/models/contact');
+const SettingModel = require('../../db/models/setting');
 const { asArray, toPlain, toPlainMany } = require('../../db/utils');
 const Inbox = require('../../helpers/models/inbox');
+const {
+  normalizePrivacySettingPayload,
+} = require('../../helpers/privacy');
+
+const connectedSocketIdsByUser = new Map();
+const knownDeviceSignaturesByUser = new Map();
+
+const getDeviceSignature = (socket) =>
+  [
+    socket?.handshake?.headers?.['user-agent'] || 'unknown-agent',
+    socket?.handshake?.headers?.['sec-ch-ua-platform'] || 'unknown-platform',
+  ].join('::');
+
+const trackConnectedSocket = (userId, socketId) => {
+  const next = connectedSocketIdsByUser.get(userId) || new Set();
+  next.add(socketId);
+  connectedSocketIdsByUser.set(userId, next);
+};
+
+const untrackConnectedSocket = (userId, socketId) => {
+  const next = connectedSocketIdsByUser.get(userId);
+  if (!next) return false;
+
+  next.delete(socketId);
+  if (next.size === 0) {
+    connectedSocketIdsByUser.delete(userId);
+    return false;
+  }
+
+  connectedSocketIdsByUser.set(userId, next);
+  return true;
+};
+
+const shouldEmitSecurityChange = (userId, socket) => {
+  const signature = getDeviceSignature(socket);
+  const known = knownDeviceSignaturesByUser.get(userId) || new Set();
+  const isNewSignature = !known.has(signature);
+  known.add(signature);
+  knownDeviceSignaturesByUser.set(userId, known);
+  return isNewSignature;
+};
+
+const emitSecurityChangeNotice = async (userId) => {
+  const [profileDoc, contactsDoc] = await Promise.all([
+    ProfileModel.findOne({
+      where: { userId },
+      attributes: ['userId', 'fullname', 'username'],
+    }),
+    ContactModel.findAll({
+      where: { friendId: userId },
+      attributes: ['userId'],
+    }),
+  ]);
+
+  const profile = toPlain(profileDoc);
+  if (!profile) return;
+
+  const contactOwnerIds = [...new Set(toPlainMany(contactsDoc).map((item) => item.userId))];
+  if (contactOwnerIds.length === 0) return;
+
+  const settingsDoc = await SettingModel.findAll({
+    where: { userId: { [Op.in]: contactOwnerIds } },
+    attributes: ['userId', 'securityNotificationsEnabled'],
+  });
+
+  const settingMap = new Map(
+    toPlainMany(settingsDoc).map((item) => [
+      item.userId,
+      normalizePrivacySettingPayload(item),
+    ])
+  );
+
+  const recipients = contactOwnerIds.filter(
+    (contactUserId) =>
+      normalizePrivacySettingPayload(settingMap.get(contactUserId))
+        .securityNotificationsEnabled
+  );
+
+  if (recipients.length === 0) return;
+
+  global.io.to(recipients).emit('system', {
+    type: 'security-notice',
+    userId,
+    text: `Security code changed for ${profile.fullname || profile.username}. They signed in on a new device.`,
+  });
+};
 
 module.exports = (socket) => {
   socket.on('user/connect', async (userId) => {
@@ -13,6 +101,7 @@ module.exports = (socket) => {
     /* eslint-disable */
     socket.userId = userId;
     /* eslint-enable */
+    trackConnectedSocket(userId, socket.id);
 
     await ProfileModel.update({ online: true }, { where: { userId } });
 
@@ -81,12 +170,18 @@ module.exports = (socket) => {
       }
     }
 
+    if (shouldEmitSecurityChange(userId, socket)) {
+      await emitSecurityChangeNotice(userId);
+    }
+
     socket.broadcast.emit('user/connect', userId);
   });
 
   socket.on('disconnect', async () => {
     const { userId } = socket;
     if (!userId) return;
+    const stillConnected = untrackConnectedSocket(userId, socket.id);
+    if (stillConnected) return;
     await ProfileModel.update({ online: false }, { where: { userId } });
     socket.broadcast.emit('user/disconnect', userId);
   });
@@ -94,6 +189,8 @@ module.exports = (socket) => {
   socket.on('user/disconnect', async () => {
     const { userId } = socket;
     if (!userId) return;
+    const stillConnected = untrackConnectedSocket(userId, socket.id);
+    if (stillConnected) return;
     await ProfileModel.update({ online: false }, { where: { userId } });
     socket.broadcast.emit('user/disconnect', userId);
   });

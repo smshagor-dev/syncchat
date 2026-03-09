@@ -103,5 +103,7 @@ module.exports = {
   parseDataUri,
   deleteLocalFileByUrl,
   toAbsoluteUploadUrl,
+  toPublicUrl,
+  resolveLocalUploadPath,
   uploadRootDir,
 };

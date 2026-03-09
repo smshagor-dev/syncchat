@@ -26,7 +26,24 @@ function Sidebar({
       Array.isArray(item?.markUnreadBy) && item.markUnreadBy.includes(master?._id);
     return sum + (hasServerUnread || hasManualUnread ? 1 : 0);
   }, 0);
+  const unreadChannels = (inboxes || []).reduce((sum, item) => {
+    const isChannelRoom =
+      item?.roomType === 'group' &&
+      (!!item?.channel ||
+        String(item?.group?.roomId || item?.roomId || '').startsWith('channel-') ||
+        String(item?.group?.link || '').startsWith('/channel/+'));
+    if (!isChannelRoom) return sum;
+
+    const isIncoming = item?.content?.from && item.content.from !== master?._id;
+    const hasServerUnread = isIncoming && (item?.unreadMessage || 0) > 0;
+    const hasManualUnread =
+      Array.isArray(item?.markUnreadBy) &&
+      item.markUnreadBy.includes(master?._id);
+
+    return sum + (hasServerUnread || hasManualUnread ? 1 : 0);
+  }, 0);
   const unreadCount = unreadChats > 99 ? '99+' : unreadChats;
+  const unreadChannelCount = unreadChannels > 99 ? '99+' : unreadChannels;
 
   const isChatListActive =
     !page.contact &&
@@ -36,8 +53,10 @@ function Sidebar({
     !page.archive &&
     !page.list &&
     !page.communities &&
+    !page.channels &&
     !page.media &&
     !page.policy &&
+    !page.license &&
     !page.starred &&
     !page.profile &&
     !page.selectParticipant;
@@ -49,10 +68,12 @@ function Sidebar({
       'status',
       'calls',
       'communities',
+      'channels',
       'archive',
       'list',
       'media',
       'policy',
+      'license',
       'starred',
       'profile',
       'selectParticipant',
@@ -68,10 +89,12 @@ function Sidebar({
       'status',
       'calls',
       'communities',
+      'channels',
       'archive',
       'list',
       'media',
       'policy',
+      'license',
       'starred',
       'profile',
       'selectParticipant',
@@ -117,6 +140,14 @@ function Sidebar({
       badge: null,
       active: !!page.communities,
       onClick: () => openPagePanel('communities'),
+    },
+    {
+      target: 'channels',
+      icon: <ri.RiBroadcastLine size={21} />,
+      badge: unreadChannels > 0 ? unreadChannelCount : null,
+      badgeTone: 'bg-sky-400 text-sky-950',
+      active: !!page.channels,
+      onClick: () => openPagePanel('channels'),
     },
     {
       target: 'archive',

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import moment from 'moment';
 import * as bi from 'react-icons/bi';
 import axios from 'axios';
 import { setChatRoom } from '../../../redux/features/room';
@@ -9,6 +8,7 @@ import { setSelectedChats } from '../../../redux/features/chore';
 import { setModal } from '../../../redux/features/modal';
 import socket from '../../../helpers/socket';
 import RoomHeaderMenu from '../../modals/roomHeaderMenu';
+import { getPresenceMeta } from '../../../helpers/presence';
 
 function Header({ searchQuery, setSearchQuery }) {
   const dispatch = useDispatch();
@@ -20,6 +20,7 @@ function Header({ searchQuery, setSearchQuery }) {
   } = useSelector((state) => state);
 
   const isGroup = chatRoom.data.roomType === 'group';
+  const isChannel = !!chatRoom.data.channel;
 
   const [subhead, setSubhead] = useState('');
   const [statusTimeout, setStatusTimeout] = useState(null);
@@ -28,8 +29,9 @@ function Header({ searchQuery, setSearchQuery }) {
 
   const handleGetParticipantsName = async (signal) => {
     try {
+      const entityPath = isChannel ? 'channels' : 'groups';
       const { data } = await axios.get(
-        `/groups/${chatRoom.data.group._id}/participants/name`,
+        `/${entityPath}/${chatRoom.data.group._id}/participants/name`,
         { signal }
       );
       setSubhead(data.payload.join(', '));
@@ -41,7 +43,9 @@ function Header({ searchQuery, setSearchQuery }) {
   const handleSubhead = (signal) => {
     setTyping(null);
     setSubhead(
-      isGroup ? 'click here for group info' : 'click here for contact info'
+      isGroup
+        ? `click here for ${isChannel ? 'channel' : 'group'} info`
+        : 'click here for contact info'
     );
 
     clearTimeout(statusTimeout);
@@ -51,10 +55,7 @@ function Header({ searchQuery, setSearchQuery }) {
         if (isGroup) {
           handleGetParticipantsName(signal);
         } else {
-          const lastSeen = moment(chatRoom.data.profile.updatedAt).fromNow();
-          setSubhead(
-            chatRoom.data.profile.online ? 'online' : `last seen ${lastSeen}`
-          );
+          setSubhead(getPresenceMeta(chatRoom.data.profile).text);
         }
       }, 3000)
     );
@@ -90,7 +91,11 @@ function Header({ searchQuery, setSearchQuery }) {
       // user online
       socket.on('user/connect', (userId) => {
         if (userId === chatRoom.data.profile.userId) {
-          setSubhead('online');
+          const nextProfile = {
+            ...chatRoom.data.profile,
+            online: true,
+          };
+          setSubhead(getPresenceMeta(nextProfile).text);
           setOnlineStatus({ online: true });
         }
       });
@@ -99,11 +104,17 @@ function Header({ searchQuery, setSearchQuery }) {
       socket.on('user/disconnect', (userId) => {
         if (userId === chatRoom.data.profile.userId) {
           const updatedAt = new Date().toISOString();
-
-          setSubhead(`last seen ${moment(updatedAt).fromNow()}`);
+          const nextProfile = {
+            ...chatRoom.data.profile,
+            online: false,
+            updatedAt,
+            lastSeenAt: updatedAt,
+          };
+          setSubhead(getPresenceMeta(nextProfile).text);
           setOnlineStatus({
             online: false,
             updatedAt,
+            lastSeenAt: updatedAt,
           });
         }
       });
@@ -168,33 +179,51 @@ function Header({ searchQuery, setSearchQuery }) {
                     return;
                   }
 
-                  if (isGroup && !page.groupProfile) {
+                  if (isGroup) {
                     dispatch(
                       setPage({
-                        target: 'groupProfile',
-                        data: chatRoom.data.group._id,
+                        target: isChannel ? 'channelProfile' : 'groupProfile',
+                        data: isChannel
+                          ? {
+                              channelId:
+                                chatRoom.data.channel?._id ||
+                                chatRoom.data.group?._id ||
+                                null,
+                              roomId: chatRoom.data.roomId || null,
+                              title:
+                                chatRoom.data.channel?.name ||
+                                chatRoom.data.group?.name ||
+                                'Channel',
+                            }
+                          : chatRoom.data.group._id,
                       })
                     );
                   }
                 }}
               >
-                <img
-                  src={
-                    isGroup
+                <div className="relative flex-none">
+                  <img
+                    src={
+                      isGroup
                       ? refreshGroupAvatar ||
-                        chatRoom.data.group.avatar ||
-                        'assets/images/default-group-avatar.png'
-                      : chatRoom.data.profile.avatar ||
-                        'assets/images/default-avatar.png'
-                  }
-                  alt=""
-                  className="w-10 h-10 rounded-full"
-                />
+                          chatRoom.data.channel?.avatar ||
+                          chatRoom.data.group.avatar ||
+                          'assets/images/default-group-avatar.png'
+                        : chatRoom.data.profile.avatar ||
+                          'assets/images/default-avatar.png'
+                    }
+                    alt=""
+                    className="w-10 h-10 rounded-full"
+                  />
+                  {!isGroup && getPresenceMeta(chatRoom.data.profile).showDot && (
+                    <span className="absolute right-0 bottom-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-spill-900" />
+                  )}
+                </div>
                 <span className="overflow-hidden">
                   <p className="font-bold truncate flex items-center">
                     {isGroup && (
                       <i className="mr-1 inline-flex align-middle text-sky-600 dark:text-sky-400">
-                        <bi.BiGroup size={14} />
+                        {isChannel ? <bi.BiBroadcast size={14} /> : <bi.BiGroup size={14} />}
                       </i>
                     )}
                     {isGroup &&
@@ -204,7 +233,7 @@ function Header({ searchQuery, setSearchQuery }) {
                         </i>
                       )}
                     {isGroup
-                      ? chatRoom.data.group.name
+                      ? chatRoom.data.channel?.name || chatRoom.data.group.name
                       : chatRoom.data.profile.fullname}
                   </p>
                   <p className="text-sm opacity-60 truncate">
@@ -254,56 +283,58 @@ function Header({ searchQuery, setSearchQuery }) {
             >
               <i>{searchOpen ? <bi.BiX /> : <bi.BiSearch />}</i>
             </button>
-            <button
-              type="button"
-              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch(
-                  setModal({
-                    target: 'callPanel',
-                    data: {
-                      mode: 'outgoing',
-                      roomId: chatRoom.data.roomId,
-                      roomType: chatRoom.data.roomType,
-                      mediaType: 'audio',
-                      fromUserId: master._id,
-                      fromName: master.fullname,
-                      fromUsername: master.username,
-                    },
-                  })
-                );
-              }}
-            >
-              <i>
-                <bi.BiPhone />
-              </i>
-            </button>
-            <button
-              type="button"
-              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch(
-                  setModal({
-                    target: 'callPanel',
-                    data: {
-                      mode: 'outgoing',
-                      roomId: chatRoom.data.roomId,
-                      roomType: chatRoom.data.roomType,
-                      mediaType: 'video',
-                      fromUserId: master._id,
-                      fromName: master.fullname,
-                      fromUsername: master.username,
-                    },
-                  })
-                );
-              }}
-            >
-              <i>
-                <bi.BiVideo />
-              </i>
-            </button>
+            <>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dispatch(
+                    setModal({
+                      target: 'callPanel',
+                      data: {
+                        mode: 'outgoing',
+                        roomId: chatRoom.data.roomId,
+                        roomType: chatRoom.data.roomType,
+                        mediaType: 'audio',
+                        fromUserId: master._id,
+                        fromName: master.fullname,
+                        fromUsername: master.username,
+                      },
+                    })
+                  );
+                }}
+              >
+                <i>
+                  <bi.BiPhone />
+                </i>
+              </button>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dispatch(
+                    setModal({
+                      target: 'callPanel',
+                      data: {
+                        mode: 'outgoing',
+                        roomId: chatRoom.data.roomId,
+                        roomType: chatRoom.data.roomType,
+                        mediaType: 'video',
+                        fromUserId: master._id,
+                        fromName: master.fullname,
+                        fromUsername: master.username,
+                      },
+                    })
+                  );
+                }}
+              >
+                <i>
+                  <bi.BiVideo />
+                </i>
+              </button>
+            </>
             <button
               type="button"
               className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"

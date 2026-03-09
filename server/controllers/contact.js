@@ -4,6 +4,10 @@ const ProfileModel = require('../db/models/profile');
 const ContactModel = require('../db/models/contact');
 const SettingModel = require('../db/models/setting');
 const { toPlain, toPlainMany } = require('../db/utils');
+const {
+  buildPrivacyContext,
+  sanitizeProfileForViewer,
+} = require('../helpers/privacy');
 
 const response = require('../helpers/response');
 
@@ -152,8 +156,18 @@ exports.search = async (req, res) => {
       toPlainMany(savedRaw).map((contact) => [contact.friendId, contact])
     );
 
+    const privacy = await buildPrivacyContext({
+      viewerId: req.user._id,
+      targetIds: friendIds,
+    });
+
     const payload = profiles.map((profile) => ({
-      ...profile,
+      ...sanitizeProfileForViewer({
+        profile,
+        viewerId: req.user._id,
+        setting: privacy.settingMap.get(profile.userId),
+        isViewerContact: privacy.isViewerContact(profile.userId),
+      }),
       isSaved: savedMap.has(profile.userId),
       roomId: savedMap.get(profile.userId)?.roomId || null,
     }));
@@ -261,10 +275,21 @@ exports.mobileSync = async (req, res) => {
       toPlainMany(savedRaw).map((contact) => [contact.friendId, contact])
     );
 
+    const privacy = await buildPrivacyContext({
+      viewerId: req.user._id,
+      targetIds: matchedIds,
+    });
+
     const registered = matchedIds.map((userId) => {
       const item = matched.get(userId);
       return {
         ...item,
+        profile: sanitizeProfileForViewer({
+          profile: item.profile,
+          viewerId: req.user._id,
+          setting: privacy.settingMap.get(userId),
+          isViewerContact: privacy.isViewerContact(userId),
+        }),
         isSaved: savedMap.has(userId),
         roomId: savedMap.get(userId)?.roomId || null,
       };
@@ -445,10 +470,22 @@ exports.find = async (req, res) => {
       toPlainMany(profiles).map((profile) => [profile.userId, profile])
     );
 
+    const privacy = await buildPrivacyContext({
+      viewerId: req.user._id,
+      targetIds: friendIds,
+    });
+
     const merged = contacts
       .map((contact) => ({
         ...contact,
-        profile: profileMap.get(contact.friendId) || null,
+        profile: profileMap.get(contact.friendId)
+          ? sanitizeProfileForViewer({
+              profile: profileMap.get(contact.friendId),
+              viewerId: req.user._id,
+              setting: privacy.settingMap.get(contact.friendId),
+              isViewerContact: privacy.isViewerContact(contact.friendId),
+            })
+          : null,
       }))
       .filter((contact) => !!contact.profile);
 

@@ -9,13 +9,22 @@ const DEFAULT_GROUP_PERMISSIONS = {
   adminApprovalRequired: false,
 };
 
-const normalizeGroupPermissions = (raw) => {
+const isChannelLike = (source) => {
+  const plain = toPlain(source) || {};
+  return (
+    String(plain?.roomId || '').startsWith('channel-') ||
+    String(plain?.link || '').startsWith('/channel/+')
+  );
+};
+
+const normalizeGroupPermissions = (raw, options = {}) => {
   const source = raw && typeof raw === 'object' ? raw : {};
+  const isChannel = !!options.isChannel;
   return {
     memberCanEditInfo: !!source.memberCanEditInfo,
     memberCanSendMessage:
       source.memberCanSendMessage === undefined
-        ? true
+        ? !isChannel
         : !!source.memberCanSendMessage,
     memberCanAddMember: !!source.memberCanAddMember,
     memberCanInviteViaLink: !!source.memberCanInviteViaLink,
@@ -24,7 +33,9 @@ const normalizeGroupPermissions = (raw) => {
 };
 
 const getGroupPermissions = (group) =>
-  normalizeGroupPermissions(toPlain(group)?.permissions);
+  normalizeGroupPermissions(toPlain(group)?.permissions, {
+    isChannel: isChannelLike(group),
+  });
 
 const canGroupMemberEditInfo = ({ group, userId }) => {
   const plain = toPlain(group) || {};

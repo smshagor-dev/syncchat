@@ -43,6 +43,13 @@ function InboxMenu() {
     dispatch(setModal({ target: 'inboxMenu', data: false }));
 
   const refreshInbox = () => dispatch(setRefreshInbox(uuidv4()));
+  const emitLocalInboxDelete = (roomId) => {
+    window.dispatchEvent(
+      new CustomEvent('syncchat:inbox-delete', {
+        detail: { roomId },
+      })
+    );
+  };
 
   const runAction = async (handler) => {
     try {
@@ -168,7 +175,11 @@ function InboxMenu() {
       label: 'Delete chat',
       icon: <bi.BiTrashAlt />,
       danger: true,
-      onClick: () => runAction(() => axios.delete(`/chats/${inbox.roomId}`)),
+      onClick: () =>
+        runAction(async () => {
+          await axios.delete(`/chats/${inbox.roomId}`);
+          emitLocalInboxDelete(inbox.roomId);
+        }),
     },
   ].filter((item) => !item.hidden);
 

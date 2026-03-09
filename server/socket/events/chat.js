@@ -6,6 +6,7 @@ const FileModel = require('../../db/models/file');
 const ProfileModel = require('../../db/models/profile');
 const SettingModel = require('../../db/models/setting');
 const GroupModel = require('../../db/models/group');
+const ChannelModel = require('../../db/models/channel');
 const {
   asArray,
   toPlain,
@@ -23,6 +24,12 @@ const {
   deleteLocalFileByUrl,
 } = require('../../helpers/storage');
 const { canGroupMemberSendMessage } = require('../../helpers/groupPermissions');
+const {
+  canReceiveUnknownMessage,
+  allowsReadReceipts,
+  getSettingMap,
+  getContactMap,
+} = require('../../helpers/privacy');
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
@@ -142,6 +149,19 @@ const getPrivateChatBlockState = async ({ senderId, ownersId, roomId }) => {
   };
 };
 
+const canPrivateMessageProceed = async ({ senderId, receiverId }) => {
+  const [settingMap, contactMap] = await Promise.all([
+    getSettingMap([receiverId]),
+    getContactMap({ ownerIds: [receiverId], friendIds: [senderId] }),
+  ]);
+  return (
+    !!contactMap.get(`${receiverId}:${senderId}`) ||
+    canReceiveUnknownMessage({
+      setting: settingMap.get(receiverId),
+    })
+  );
+};
+
 const resolveArchivedByAfterIncoming = async ({
   archivedBy,
   ownersId,
@@ -202,20 +222,41 @@ const buildReplyPayload = async (replyTo) => {
   };
 };
 
+const getChannelIdentity = (channel) =>
+  channel
+    ? {
+        userId: channel._id,
+        fullname: channel.name,
+        avatar: channel.avatar || null,
+        isChannelIdentity: true,
+      }
+    : null;
+
 const canAccessGroupRoom = async ({ roomId, userId }) => {
   if (!roomId || !userId) {
-    return { canAccess: false, canSend: false };
+    return { canAccess: false, canSend: false, channel: null, group: null };
   }
-  const groupDoc = await GroupModel.findOne({
-    where: { roomId },
-    attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
-  });
-  if (!groupDoc) return { canAccess: false, canSend: false };
-  const canAccess = asArray(toPlain(groupDoc)?.participantsId).includes(userId);
+  const [channelDoc, groupDoc] = await Promise.all([
+    ChannelModel.findOne({
+      where: { roomId },
+      attributes: { exclude: ['passwordHash'] },
+    }),
+    GroupModel.findOne({
+      where: { roomId },
+      attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
+    }),
+  ]);
+  const roomEntity = channelDoc || groupDoc;
+  if (!roomEntity) {
+    return { canAccess: false, canSend: false, channel: null, group: null };
+  }
+  const canAccess = asArray(toPlain(roomEntity)?.participantsId).includes(userId);
   return {
     canAccess,
     canSend:
-      canAccess && canGroupMemberSendMessage({ group: groupDoc, userId }),
+      canAccess && canGroupMemberSendMessage({ group: roomEntity, userId }),
+    channel: toPlain(channelDoc),
+    group: toPlain(groupDoc),
   };
 };
 
@@ -266,6 +307,14 @@ module.exports = (socket) => {
         const { receiverId, senderBlockedReceiver, receiverBlockedSender } =
           blockState;
         if (senderBlockedReceiver || receiverBlockedSender) return;
+        if (
+          !(await canPrivateMessageProceed({
+            senderId: args.userId,
+            receiverId,
+          }))
+        ) {
+          return;
+        }
 
         hiddenOwners = [];
         visibleOwners = visibleOwners.filter((ownerId) => ownerId !== receiverId);
@@ -366,6 +415,15 @@ module.exports = (socket) => {
         attributes: ['userId', 'avatar', 'fullname'],
       });
       const profile = toPlain(profileDoc);
+      const roomAccess =
+        args.roomType === 'group'
+          ? await canAccessGroupRoom({
+              roomId: args.roomId,
+              userId: args.userId,
+            })
+          : { channel: null };
+      const senderName = roomAccess.channel?.name || profile?.fullname || '';
+      const outgoingProfile = getChannelIdentity(roomAccess.channel) || profile;
 
       const currentInbox = await InboxModel.findOne({
         where: { roomId: args.roomId },
@@ -391,10 +449,10 @@ module.exports = (socket) => {
           fileId,
           deletedBy: nextDeletedBy,
           archivedBy: nextArchivedBy,
-          content: {
-            from: args.userId,
-            senderName: profile?.fullname || '',
-            text: contentText,
+        content: {
+          from: args.userId,
+          senderName,
+          text: contentText,
             time: chat.createdAt,
             delivered: !!chat.delivered,
             readed: false,
@@ -407,10 +465,10 @@ module.exports = (socket) => {
           unreadMessage: 1,
           fileId,
           deletedBy: nextDeletedBy,
-          content: {
-            from: args.userId,
-            senderName: profile?.fullname || '',
-            text: contentText,
+        content: {
+          from: args.userId,
+          senderName,
+          text: contentText,
             time: chat.createdAt,
             delivered: !!chat.delivered,
             readed: false,
@@ -422,7 +480,8 @@ module.exports = (socket) => {
 
       io.to(args.roomId).emit('chat/insert', {
         ...chat,
-        profile,
+        profile: outgoingProfile,
+        channel: roomAccess.channel || null,
         file: toPlain(file),
         reply: await buildReplyPayload(chat.replyTo),
         poll: parsePollFromText(chat.text),
@@ -453,31 +512,48 @@ module.exports = (socket) => {
       const inbox = await InboxModel.findOne({
         where: { roomId: args.roomId },
       });
+      const readerId = args.userId || socket.userId;
       if (inbox) {
         const content = toPlain(inbox)?.content || {};
-        const isReaderReceiver = content.from && content.from !== args.userId;
+        const isReaderReceiver = content.from && content.from !== readerId;
+        const settingMap = readerId ? await getSettingMap([readerId]) : new Map();
+        const canMarkRead = allowsReadReceipts({
+          setting: settingMap.get(readerId),
+        });
         await inbox.update({
           unreadMessage: 0,
-          markUnreadBy: pullFromArray(inbox.markUnreadBy, [args.userId]),
+          markUnreadBy: pullFromArray(inbox.markUnreadBy, [readerId]),
           content: {
             ...content,
             delivered: isReaderReceiver ? true : !!content.delivered,
-            readed: isReaderReceiver ? true : !!content.readed,
+            readed:
+              isReaderReceiver && canMarkRead ? true : !!content.readed,
           },
         });
+        const chats = await ChatModel.findAll({
+          where: { roomId: args.roomId, readed: false },
+        });
+        await Promise.all(
+          chats.map((chat) =>
+            chat.update({
+              delivered: true,
+              readed:
+                chat.userId !== readerId && canMarkRead ? true : chat.readed,
+            })
+          )
+        );
       }
-
-      const chats = await ChatModel.findAll({
-        where: { roomId: args.roomId, readed: false },
-      });
-      await Promise.all(
-        chats.map((chat) => chat.update({ readed: true, delivered: true }))
-      );
 
       const inboxes = await Inbox.find({ ownersId: { $all: args.ownersId } });
 
       io.to(args.ownersId).emit('inbox/read', inboxes[0]);
-      io.to(args.roomId).emit('chat/read', true);
+      if (
+        allowsReadReceipts({
+          setting: (await getSettingMap([readerId])).get(readerId),
+        })
+      ) {
+        io.to(args.roomId).emit('chat/read', true);
+      }
     } catch (error0) {
       console.log(error0.message);
     }
@@ -499,6 +575,14 @@ module.exports = (socket) => {
       ) {
         return;
       }
+      if (
+        !(await canPrivateMessageProceed({
+          senderId: userId,
+          receiverId: blockState.receiverId,
+        }))
+      ) {
+        return;
+      }
     }
 
     if (roomType === 'group') {
@@ -506,13 +590,18 @@ module.exports = (socket) => {
       if (!groupAccess.canAccess || !groupAccess.canSend) return;
     }
 
-    const isGroup = roomType === 'group';
-    const typer = isGroup
-      ? await ProfileModel.findOne({
-          where: { userId },
-          attributes: ['fullname'],
-        })
-      : null;
+      const isGroup = roomType === 'group';
+      const roomAccess = isGroup
+        ? await canAccessGroupRoom({ roomId, userId })
+        : null;
+      const typer = isGroup
+        ? roomAccess?.channel
+          ? { fullname: roomAccess.channel.name }
+          : await ProfileModel.findOne({
+              where: { userId },
+              attributes: ['fullname'],
+            })
+        : null;
 
     socket.broadcast
       .to(roomId)
@@ -665,6 +754,14 @@ module.exports = (socket) => {
         const { receiverId, senderBlockedReceiver, receiverBlockedSender } =
           blockState;
         if (senderBlockedReceiver || receiverBlockedSender) return;
+        if (
+          !(await canPrivateMessageProceed({
+            senderId: userId,
+            receiverId,
+          }))
+        ) {
+          return;
+        }
 
         hiddenOwners = [];
         visibleOwners = visibleOwners.filter((ownerId) => ownerId !== receiverId);
@@ -825,6 +922,14 @@ module.exports = (socket) => {
           });
           if (blockState === true) return;
           if (blockState.senderBlockedReceiver || blockState.receiverBlockedSender) {
+            return;
+          }
+          if (
+            !(await canPrivateMessageProceed({
+              senderId: userId,
+              receiverId: blockState.receiverId,
+            }))
+          ) {
             return;
           }
         }

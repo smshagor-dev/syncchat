@@ -8,6 +8,8 @@ import { setModal } from '../../../redux/features/modal';
 import { setSetting } from '../../../redux/features/user';
 import { setReplyingChat } from '../../../redux/features/chore';
 import { isGroupAdmin } from '../../../helpers/groupAdmins';
+import { replaceTextTokensWithEmoji } from '../../../helpers/emojiText';
+import { playOutgoingMessageSound } from '../../../helpers/sound';
 
 import AttachMenu from '../../modals/attachMenu';
 
@@ -26,9 +28,10 @@ function Send({ setChats, setNewMessage, control }) {
   const isCurrentUserGroupAdmin = !!(
     isGroup && isGroupAdmin(chatRoom.data?.group, master._id)
   );
+  const isChannelRoom = !!chatRoom.data?.channel;
   const memberCanSendMessage =
     chatRoom.data?.group?.permissions?.memberCanSendMessage === undefined
-      ? true
+      ? !isChannelRoom
       : !!chatRoom.data?.group?.permissions?.memberCanSendMessage;
   const showAdminOnlyNotice =
     isGroup &&
@@ -62,7 +65,9 @@ function Send({ setChats, setNewMessage, control }) {
       (isGroup &&
         group?.participantsId?.includes(master._id) &&
         (isGroupAdmin(group, master._id) ||
-          group?.permissions?.memberCanSendMessage !== false)) ||
+          (group?.permissions?.memberCanSendMessage === undefined
+            ? !chatRoom.data?.channel
+            : group?.permissions?.memberCanSendMessage !== false))) ||
       (!isGroup && profile?.active)
     );
   };
@@ -246,9 +251,10 @@ function Send({ setChats, setNewMessage, control }) {
   };
 
   const handleChange = (e) => {
+    const nextValue = e.target.value;
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [e.target.name]: nextValue,
     }));
 
     const { roomId, roomType } = chatRoom.data;
@@ -262,10 +268,15 @@ function Send({ setChats, setNewMessage, control }) {
 
   const handleSubmit = () => {
     if (isBlocked || isBlockedByFriend) return;
-    if (form.text.length > 0 || form.file) {
+    const nextText = setting?.replaceTextWithEmoji
+      ? replaceTextTokensWithEmoji(form.text)
+      : form.text;
+
+    if (nextText.length > 0 || form.file) {
       if (canSendInCurrentRoom()) {
         socket.emit('chat/insert', {
           ...form,
+          text: nextText,
           ownersId: chatRoom.data.ownersId,
           roomType: chatRoom.data.roomType,
           userId: master._id,
@@ -285,6 +296,14 @@ function Send({ setChats, setNewMessage, control }) {
   useEffect(() => {
     socket.on('chat/insert', (payload) => {
       if (payload.deletedBy?.includes(master._id)) return;
+
+      if (
+        payload.userId === master._id &&
+        setting?.mute !== true &&
+        setting?.outgoingMessageSoundEnabled !== false
+      ) {
+        playOutgoingMessageSound();
+      }
 
       if (chatRoom.isOpen) {
         // push new chat to state.chats
@@ -345,7 +364,7 @@ function Send({ setChats, setNewMessage, control }) {
       socket.off('chat/insert');
       socket.off('chat/relay-update');
     };
-  }, []);
+  }, [master._id, setting?.mute, setting?.outgoingMessageSoundEnabled]);
 
   useEffect(() => {
     if (isGroup) {
@@ -568,12 +587,14 @@ function Send({ setChats, setNewMessage, control }) {
                     name="text"
                     id="new-message"
                     autoComplete="off"
+                    spellCheck={setting?.spellCheckEnabled !== false}
                     placeholder="Type a message"
                     className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
                     onChange={handleChange}
                     value={form.text}
-                    onKeyPress={(e) => {
-                      if (setting.enterToSend && e.key === 'Enter') {
+                    onKeyDown={(e) => {
+                      if (setting.enterToSend && e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
                         handleSubmit();
                       }
                     }}

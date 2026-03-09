@@ -33,7 +33,7 @@ const loadExternalScript = ({ id, src }) =>
     document.body.appendChild(script);
   });
 
-function SocialAuth({ setRespond, rememberValue = '' }) {
+function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null }) {
   const googleButtonRef = useRef(null);
   const telegramButtonRef = useRef(null);
 
@@ -93,7 +93,19 @@ function SocialAuth({ setRespond, rememberValue = '' }) {
       setLoadingProvider(provider);
       const { data } = await axios.post('/users/social-auth', { provider, payload });
       setRespond({ success: true, message: data.message });
-      completeAuth(data.payload, payload?.username || payload?.email || '');
+      if (data?.payload?.requiresTwoFactor) {
+        if (onTwoFactorRequired) {
+          onTwoFactorRequired({
+            tempToken: data.payload.tempToken,
+            message: 'Enter your Google Authenticator code to continue.',
+          });
+        }
+        return;
+      }
+      completeAuth(
+        data?.payload?.token || data?.payload,
+        payload?.username || payload?.email || ''
+      );
     } catch (error0) {
       setRespond({
         success: false,

@@ -8,17 +8,24 @@ import * as page from '../../pages';
 import Sidebar from '../../components/chat/foreground/sidebar';
 import MobileNav from '../../components/chat/foreground/mobileNav';
 import { setChatRoom } from '../../redux/features/room';
+import { setSetting } from '../../redux/features/user';
+import { setPage } from '../../redux/features/page';
+import { setModal } from '../../redux/features/modal';
 import {
   setRefreshInbox,
   setSelectedInboxes,
+  setSelectedChats,
 } from '../../redux/features/chore';
 
 function ForeGround() {
   const dispatch = useDispatch();
   const chatRoom = useSelector((state) => state.room.chat);
   const master = useSelector((state) => state.user.master);
+  const setting = useSelector((state) => state.user.setting);
   const refreshInbox = useSelector((state) => state.chore.refreshInbox);
   const selectedInboxes = useSelector((state) => state.chore.selectedInboxes);
+  const modal = useSelector((state) => state.modal);
+  const pageState = useSelector((state) => state.page);
 
   const [inboxes, setInboxes] = useState(null);
   const [search, setSearch] = useState('');
@@ -27,6 +34,7 @@ function ForeGround() {
   const [deepLink, setDeepLink] = useState({
     username: null,
     groupToken: null,
+    channelToken: null,
     started: false,
     completed: false,
   });
@@ -56,10 +64,40 @@ function ForeGround() {
     );
   };
 
+  const pageTargets = [
+    'contact',
+    'setting',
+    'status',
+    'calls',
+    'communities',
+    'channels',
+    'archive',
+    'list',
+    'media',
+    'policy',
+    'license',
+    'starred',
+    'profile',
+    'selectParticipant',
+  ];
+
+  const showChatListArea = () => {
+    pageTargets.forEach((target) => {
+      dispatch(setPage({ target, data: false }));
+    });
+  };
+
+  const openPagePanel = (target, data = true) => {
+    pageTargets.forEach((key) => {
+      dispatch(setPage({ target: key, data: key === target ? data : false }));
+    });
+  };
+
   const clearDeepLinkParam = () => {
     const params = new URLSearchParams(window.location.search);
     params.delete('u');
     params.delete('g');
+    params.delete('c');
     const next = `${window.location.pathname}${
       params.toString() ? `?${params.toString()}` : ''
     }${window.location.hash || ''}`;
@@ -92,6 +130,221 @@ function ForeGround() {
   useEffect(() => {
     setChatFilter('all');
   }, [search]);
+
+  useEffect(() => {
+    const isEditableTarget = (target) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return !!target.closest(
+        'input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]'
+      );
+    };
+
+    const focusElement = (selector) => {
+      const element = document.querySelector(selector);
+      if (element instanceof HTMLElement) {
+        element.focus();
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          element.select();
+        }
+      }
+    };
+
+    const isMatch = (event, { key, shift = false, alt = false, mod = true }) =>
+      event.key.toLowerCase() === key &&
+      !!event.shiftKey === shift &&
+      !!event.altKey === alt &&
+      (!!event.ctrlKey || !!event.metaKey) === mod;
+
+    const toggleMuteNotifications = async () => {
+      const nextValue = !setting?.mute;
+      dispatch(
+        setSetting({
+          ...setting,
+          mute: nextValue,
+        })
+      );
+
+      try {
+        await axios.put('/settings', { mute: nextValue });
+      } catch (error0) {
+        dispatch(setSetting(setting));
+        console.error(error0?.response?.data?.message || error0.message);
+      }
+    };
+
+    const closeCurrentLayer = () => {
+      if (Object.values(modal || {}).some(Boolean)) {
+        dispatch(setModal({ target: '*' }));
+        return true;
+      }
+
+      if (Array.isArray(selectedInboxes)) {
+        dispatch(setSelectedInboxes(null));
+        return true;
+      }
+
+      const openPageTarget = [
+        'license',
+        'policy',
+        'media',
+        'setting',
+        'status',
+        'calls',
+        'contact',
+        'communities',
+        'archive',
+        'list',
+        'starred',
+        'selectParticipant',
+        'profile',
+      ].find((target) => !!pageState[target]);
+
+      if (openPageTarget) {
+        dispatch(setPage({ target: openPageTarget, data: false }));
+        return true;
+      }
+
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+
+      return false;
+    };
+
+    const handleKeyDown = (event) => {
+      const key = event.key.toLowerCase();
+      const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
+      const editableTarget = isEditableTarget(event.target);
+
+      if (key === 'escape') {
+        if (closeCurrentLayer()) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (editableTarget && !hasModifier) {
+        return;
+      }
+
+      if (isMatch(event, { key: '/', shift: false })) {
+        event.preventDefault();
+        dispatch(setPage({ target: 'setting', data: true }));
+        window.dispatchEvent(new Event('syncchat:open-shortcuts'));
+        return;
+      }
+
+      if (isMatch(event, { key: ',', shift: false })) {
+        event.preventDefault();
+        dispatch(setPage({ target: 'setting', data: true }));
+        return;
+      }
+
+      if (isMatch(event, { key: 'k', shift: false })) {
+        event.preventDefault();
+        showChatListArea();
+        setTimeout(() => focusElement('#search'), 40);
+        return;
+      }
+
+      if (isMatch(event, { key: 'm', shift: true })) {
+        event.preventDefault();
+        if (chatRoom?.isOpen) {
+          setTimeout(() => focusElement('#new-message'), 40);
+        }
+        return;
+      }
+
+      if (isMatch(event, { key: 'n', shift: true })) {
+        event.preventDefault();
+        dispatch(setPage({ target: 'selectParticipant', data: false }));
+        dispatch(setModal({ target: 'newGroup', data: true }));
+        return;
+      }
+
+      if (isMatch(event, { key: 'x', shift: true })) {
+        event.preventDefault();
+        dispatch(setSelectedChats(null));
+        dispatch(setSelectedInboxes([]));
+        return;
+      }
+
+      if (isMatch(event, { key: 'u', shift: true })) {
+        event.preventDefault();
+        toggleMuteNotifications();
+        return;
+      }
+
+      if (isMatch(event, { key: 'j', shift: true })) {
+        event.preventDefault();
+        showChatListArea();
+        return;
+      }
+
+      if (isMatch(event, { key: 'l', shift: true })) {
+        event.preventDefault();
+        openPagePanel('calls');
+        return;
+      }
+
+      if (isMatch(event, { key: 's', shift: true })) {
+        event.preventDefault();
+        openPagePanel('status');
+        return;
+      }
+
+      if (isMatch(event, { key: 'c', shift: true })) {
+        event.preventDefault();
+        openPagePanel('contact');
+        return;
+      }
+
+      if (isMatch(event, { key: 'g', shift: true })) {
+        event.preventDefault();
+        openPagePanel('communities');
+        return;
+      }
+
+      if (isMatch(event, { key: 'a', shift: true })) {
+        event.preventDefault();
+        openPagePanel('archive');
+        return;
+      }
+
+      if (isMatch(event, { key: 'i', shift: true })) {
+        event.preventDefault();
+        openPagePanel('list');
+        return;
+      }
+
+      if (isMatch(event, { key: 't', shift: true })) {
+        event.preventDefault();
+        openPagePanel('starred');
+        return;
+      }
+
+      if (isMatch(event, { key: 'p', shift: true }) && master?._id) {
+        event.preventDefault();
+        openPagePanel('profile', master._id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    chatRoom?.isOpen,
+    dispatch,
+    master?._id,
+    modal,
+    pageState,
+    selectedInboxes,
+    setting,
+  ]);
 
   useEffect(() => {
     if (chatRoom?.isOpen) {
@@ -185,11 +438,17 @@ function ForeGround() {
     )
       .trim()
       .toLowerCase();
+    const channelToken = (
+      new URLSearchParams(window.location.search).get('c') || ''
+    )
+      .trim()
+      .toLowerCase();
 
-    if (username || groupToken) {
+    if (username || groupToken || channelToken) {
       setDeepLink({
         username: username || null,
         groupToken: groupToken || null,
+        channelToken: channelToken || null,
         started: false,
         completed: false,
       });
@@ -364,8 +623,10 @@ function ForeGround() {
       <page.status />
       <page.media />
       <page.policy />
+      <page.license />
       <page.contact />
       <page.communities />
+      <page.channels />
       <page.profile />
       <page.newGroup />
 

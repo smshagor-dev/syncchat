@@ -18,6 +18,7 @@ const { toAbsoluteUploadUrl } = require('../helpers/storage');
 
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
+const { verifyToken } = require('../helpers/totp');
 
 const JWT_SECRET = 'shhhhh';
 
@@ -27,6 +28,32 @@ const createError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const signUserToken = (userId) => jwt.sign({ _id: userId }, JWT_SECRET);
+
+const signTwoFactorTempToken = (userId) =>
+  jwt.sign({ _id: userId, purpose: 'user-2fa' }, JWT_SECRET, {
+    expiresIn: '10m',
+  });
+
+const buildLoginPayload = async (user) => {
+  const setting = await SettingModel.findOne({
+    where: { userId: user._id },
+    attributes: ['twoFactorEnabled', 'twoFactorSecret'],
+  });
+
+  if (setting?.twoFactorEnabled && setting?.twoFactorSecret) {
+    return {
+      requiresTwoFactor: true,
+      tempToken: signTwoFactorTempToken(user._id),
+    };
+  }
+
+  return {
+    requiresTwoFactor: false,
+    token: signUserToken(user._id),
+  };
 };
 
 const normalizeUsernameSeed = (value = '') =>
@@ -337,7 +364,7 @@ exports.register = async (req, res) => {
       fullname: req.body.fullname,
     });
 
-    const token = jwt.sign({ _id: userId }, JWT_SECRET);
+    const token = signUserToken(userId);
     const template = fs.readFileSync(
       path.resolve(__dirname, '../helpers/templates/otp.html'),
       'utf8'
@@ -453,13 +480,13 @@ exports.login = async (req, res) => {
       throw createError(401, 'Invalid password');
     }
 
-    const token = jwt.sign({ _id: user._id }, JWT_SECRET);
+    const payload = await buildLoginPayload(user);
 
     response({
       res,
       statusCode: 200,
       message: 'Successfully logged in',
-      payload: token,
+      payload,
     });
   } catch (error0) {
     response({
@@ -492,7 +519,7 @@ exports.socialAuth = async (req, res) => {
     const socialData = await verifySocialPayload({ provider, payload });
     const { user, created } = await upsertSocialUser(socialData);
 
-    const token = jwt.sign({ _id: user._id }, JWT_SECRET);
+    const loginPayload = await buildLoginPayload(user);
 
     response({
       res,
@@ -500,7 +527,50 @@ exports.socialAuth = async (req, res) => {
       message: created
         ? 'Successfully created a new account'
         : 'Successfully logged in',
-      payload: token,
+      payload: loginPayload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.verifyLoginTwoFactor = async (req, res) => {
+  try {
+    const tempToken = String(req.body?.tempToken || '');
+    const code = String(req.body?.code || '');
+
+    if (!tempToken) throw createError(400, 'Temporary login token is required');
+
+    const payload = jwt.verify(tempToken, JWT_SECRET);
+    if (payload?.purpose !== 'user-2fa' || !payload?._id) {
+      throw createError(401, 'Invalid two-factor session');
+    }
+
+    const setting = await SettingModel.findOne({
+      where: { userId: payload._id },
+      attributes: ['twoFactorEnabled', 'twoFactorSecret'],
+    });
+
+    if (!setting?.twoFactorEnabled || !setting?.twoFactorSecret) {
+      throw createError(400, 'Two-factor authentication is not enabled');
+    }
+
+    if (!verifyToken({ secret: setting.twoFactorSecret, token: code })) {
+      throw createError(400, 'Invalid authentication code');
+    }
+
+    response({
+      res,
+      message: 'Two-factor verification successful',
+      payload: {
+        requiresTwoFactor: false,
+        token: signUserToken(payload._id),
+      },
     });
   } catch (error0) {
     response({

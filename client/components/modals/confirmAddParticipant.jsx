@@ -16,13 +16,15 @@ function ConfirmAddParticipant() {
   const [errorMsg, setErrorMsg] = React.useState('');
 
   const handleSubmit = async () => {
-    const { groupId, roomId } = modal.confirmAddParticipant;
+    const { groupId, channelId, roomId } = modal.confirmAddParticipant;
+    const targetId = channelId || groupId;
+    const entityPath = channelId ? 'channels' : 'groups';
 
     try {
       setSubmitting(true);
       setErrorMsg('');
 
-      await axios.post(`/groups/${groupId}/participants`, {
+      await axios.post(`/${entityPath}/${targetId}/participants`, {
         userId: master._id,
         roomId,
         friendsId: selectedParticipants.map(

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
 import { setPage } from '../../redux/features/page';
@@ -230,13 +229,14 @@ function ConfirmNewGroup() {
       {
         name,
         desc,
+        avatar: avatarDataUri || null,
         accessType,
         password,
         adminId: master._id,
         participantsId: selectedUsers.map((item) => item.userId),
       },
-      async (res) => {
-        const { success, message, payload } = res || {};
+      (res) => {
+        const { success, message } = res || {};
 
         if (!success) {
           setIsSubmitting(false);
@@ -245,19 +245,6 @@ function ConfirmNewGroup() {
             message: message || 'Failed to create group',
           });
           return;
-        }
-
-        try {
-          if (avatarDataUri && payload?.groupId) {
-            await axios.post('/avatars', {
-              avatar: avatarDataUri,
-              targetId: payload.groupId,
-              isGroup: true,
-            });
-          }
-        } catch (error0) {
-          // eslint-disable-next-line no-console
-          console.error(error0?.response?.data?.message || error0.message);
         }
 
         setRespond({

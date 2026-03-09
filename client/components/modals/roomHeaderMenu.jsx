@@ -32,6 +32,7 @@ function RoomHeaderMenu() {
   } = useSelector((state) => state.room.chat.data);
 
   const isGroup = roomType === 'group';
+  const isChannel = !!chatData?.channel;
   const hasForMe = (value) =>
     Array.isArray(value) && value.includes(master?._id);
   const isMuted = hasForMe(chatData?.mutedBy);
@@ -198,7 +199,11 @@ function RoomHeaderMenu() {
           {[
           {
             _key: 'k-01',
-            html: isGroup ? 'Group info' : 'Contact info',
+            html: isGroup
+              ? isChannel
+                ? 'Channel info'
+                : 'Group info'
+              : 'Contact info',
             icon: <bi.BiInfoCircle />,
             action() {
               if (!isGroup && !profile.active) {
@@ -206,13 +211,23 @@ function RoomHeaderMenu() {
               }
               dispatch(
                 setPage({
-                  target: isGroup ? 'groupProfile' : 'friendProfile',
+                  target: isGroup
+                    ? isChannel
+                      ? 'channelProfile'
+                      : 'groupProfile'
+                    : 'friendProfile',
                   data: isGroup
-                    ? {
-                        groupId: group._id,
-                        roomId,
-                        title: group?.name || 'Group',
-                      }
+                    ? isChannel
+                      ? {
+                          channelId: chatData.channel._id,
+                          roomId,
+                          title: chatData.channel?.name || 'Channel',
+                        }
+                      : {
+                          groupId: group._id,
+                          roomId,
+                          title: group?.name || 'Group',
+                        }
                     : {
                         userId: profile.userId,
                         roomId,
@@ -405,13 +420,17 @@ function RoomHeaderMenu() {
           },
           {
             _key: 'k-13',
-            html: 'Exit group',
+            html: isChannel ? 'Exit channel' : 'Exit group',
             icon: <bi.BiExit />,
             action() {
               dispatch(
                 setModal({
                   target: 'confirmExitGroup',
-                  data: { groupId: group._id, name: group.name },
+                  data: {
+                    groupId: group._id,
+                    channelId: isChannel ? chatData.channel._id : null,
+                    name: chatData.channel?.name || group.name,
+                  },
                 })
               );
             },

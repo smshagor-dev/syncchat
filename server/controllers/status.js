@@ -15,6 +15,12 @@ const {
   deleteLocalFileByUrl,
   toAbsoluteUploadUrl,
 } = require('../helpers/storage');
+const {
+  getSettingMap,
+  getContactMap,
+  canViewerSeeStatus,
+  sanitizeProfileForViewer,
+} = require('../helpers/privacy');
 
 const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const toHttpError = (statusCode, message) => {
@@ -276,6 +282,23 @@ const getVisibleStatus = async ({ statusId, userId }) => {
     throw toHttpError(404, 'Status not found');
   }
 
+  const ownerId = statusDoc.userId;
+  const [settingMap, contactMap] = await Promise.all([
+    getSettingMap([ownerId]),
+    getContactMap({ ownerIds: [userId], friendIds: [ownerId] }),
+  ]);
+  const ownerSetting = settingMap.get(ownerId);
+  const isContact = contactMap.get(`${userId}:${ownerId}`);
+  if (
+    !canViewerSeeStatus({
+      setting: ownerSetting,
+      isViewerContact: !!isContact,
+      isSelf: ownerId === userId,
+    })
+  ) {
+    throw toHttpError(404, 'Status not found');
+  }
+
   return statusDoc;
 };
 
@@ -301,6 +324,10 @@ exports.find = async (req, res) => {
 
     const friendIds = await getAllowedFriends(req.user._id);
     const visibleUserIds = unique([req.user._id, ...friendIds]);
+    const [settingMap, contactMap] = await Promise.all([
+      getSettingMap(visibleUserIds),
+      getContactMap({ ownerIds: [req.user._id], friendIds: visibleUserIds }),
+    ]);
 
     const statuses = await StatusModel.findAll({
       where: {
@@ -341,13 +368,33 @@ exports.find = async (req, res) => {
       ])
     );
 
-    const payload = list.map((item) =>
-      mapStatusPayload({
-        item,
-        profileMap,
-        currentUserId: req.user._id,
-      })
+    const viewerProfileMap = new Map(
+      [...profileMap.entries()].map(([userId, profile]) => [
+        userId,
+        sanitizeProfileForViewer({
+          profile,
+          viewerId: req.user._id,
+          setting: settingMap.get(userId),
+          isViewerContact: !!contactMap.get(`${req.user._id}:${userId}`),
+        }),
+      ])
     );
+
+    const payload = list
+      .filter((item) =>
+        canViewerSeeStatus({
+          setting: settingMap.get(item.userId),
+          isViewerContact: !!contactMap.get(`${req.user._id}:${item.userId}`),
+          isSelf: item.userId === req.user._id,
+        })
+      )
+      .map((item) =>
+        mapStatusPayload({
+          item,
+          profileMap: viewerProfileMap,
+          currentUserId: req.user._id,
+        })
+      );
 
     response({ res, payload });
   } catch (error0) {

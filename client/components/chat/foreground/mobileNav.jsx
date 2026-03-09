@@ -1,7 +1,6 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
-import * as ri from 'react-icons/ri';
 import { setPage } from '../../../redux/features/page';
 
 function MobileNav() {
@@ -16,8 +15,10 @@ function MobileNav() {
     !page.archive &&
     !page.list &&
     !page.communities &&
+    !page.channels &&
     !page.media &&
     !page.policy &&
+    !page.license &&
     !page.starred &&
     !page.profile &&
     !page.selectParticipant;
@@ -28,10 +29,12 @@ function MobileNav() {
     'status',
     'calls',
     'communities',
+    'channels',
     'archive',
     'list',
     'media',
     'policy',
+    'license',
     'starred',
     'profile',
     'selectParticipant',
@@ -60,16 +63,23 @@ function MobileNav() {
     {
       key: 'status',
       label: 'Status',
-      icon: ri.RiDonutChartLine,
+      icon: bi.BiPulse,
       active: !!page.status,
       onClick: () => openPagePanel('status'),
     },
     {
       key: 'groups',
       label: 'Communities',
-      icon: ri.RiCommunityLine,
+      icon: bi.BiGroup,
       active: !!page.communities,
       onClick: () => openPagePanel('communities'),
+    },
+    {
+      key: 'channels',
+      label: 'Channels',
+      icon: bi.BiBroadcast,
+      active: !!page.channels,
+      onClick: () => openPagePanel('channels'),
     },
     {
       key: 'calls',
@@ -82,7 +92,7 @@ function MobileNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-[110] bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden dark:bg-spill-900/95">
-      <div className="grid grid-cols-4 gap-1.5 rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_14px_36px_-16px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-spill-700/80 dark:bg-spill-900/95 dark:shadow-[0_14px_36px_-16px_rgba(2,6,23,0.7)]">
+      <div className="grid grid-cols-5 gap-1.5 rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_14px_36px_-16px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-spill-700/80 dark:bg-spill-900/95 dark:shadow-[0_14px_36px_-16px_rgba(2,6,23,0.7)]">
         {items.map((item) => (
           <button
             key={item.key}

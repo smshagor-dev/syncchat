@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const ChatModel = require('../../db/models/chat');
 const ProfileModel = require('../../db/models/profile');
 const FileModel = require('../../db/models/file');
+const ChannelModel = require('../../db/models/channel');
 const { asArray, toPlainMany } = require('../../db/utils');
 
 const POLL_PREFIX = '__poll__::';
@@ -62,7 +63,7 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
     ...new Set(chats.map((chat) => chat.replyTo).filter(Boolean)),
   ];
 
-  const [profilesRaw, filesRaw, repliesRaw] = await Promise.all([
+  const [profilesRaw, filesRaw, repliesRaw, channelsRaw] = await Promise.all([
     userIds.length
       ? ProfileModel.findAll({
           where: { userId: { [Op.in]: userIds } },
@@ -77,6 +78,12 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
       ? ChatModel.findAll({
           where: { _id: { [Op.in]: replyIds } },
           attributes: ['_id', 'userId', 'text', 'fileId'],
+        })
+      : [],
+    roomId
+      ? ChannelModel.findAll({
+          where: { roomId },
+          attributes: { exclude: ['passwordHash'] },
         })
       : [],
   ]);
@@ -101,11 +108,21 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
   const repliesMap = new Map(
     toPlainMany(repliesRaw).map((item) => [item._id, item])
   );
-
+  const channel = toPlainMany(channelsRaw)[0] || null;
+  const channelIdentity =
+    channel && channel.name
+      ? {
+          userId: channel._id,
+          fullname: channel.name,
+          avatar: channel.avatar || null,
+          isChannelIdentity: true,
+        }
+      : null;
   return chats.map((chat) => ({
     ...chat,
     poll: parsePollFromText(chat.text),
-    profile: profiles.get(chat.userId) || null,
+    profile: channelIdentity || profiles.get(chat.userId) || null,
+    channel,
     file: chat.fileId ? files.get(chat.fileId) || null : null,
     reply: chat.replyTo
       ? (() => {
@@ -116,7 +133,8 @@ exports.find = async (roomId, { skip = 0, limit = 20, userId = null }) => {
           return {
             _id: reply._id,
             userId: reply.userId,
-            fullname: replyProfile?.fullname || '[inactive]',
+            fullname:
+              channelIdentity?.fullname || replyProfile?.fullname || '[inactive]',
             text: reply.text || replyFile?.originalname || '',
           };
         })()

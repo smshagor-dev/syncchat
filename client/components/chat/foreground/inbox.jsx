@@ -14,6 +14,7 @@ import { setPage } from '../../../redux/features/page';
 import { setRefreshInbox } from '../../../redux/features/chore';
 import { setSelectedInboxes } from '../../../redux/features/chore';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
+import { getPresenceMeta } from '../../../helpers/presence';
 
 import {
   touchAndHoldStart,
@@ -73,6 +74,76 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     replies: [],
   });
   const unlockResolverRef = React.useRef(null);
+  const applyEntityRoomPatch = React.useCallback(
+    (payload, target = 'group') => {
+      if (!payload?.roomId) return;
+
+      setInboxes((prev) =>
+        prev.map((elem) => {
+          if (elem.roomType !== 'group' || elem.roomId !== payload.roomId) {
+            return elem;
+          }
+
+          if (target === 'channel') {
+            return {
+              ...elem,
+              channel: {
+                ...(elem.channel || {}),
+                ...payload,
+              },
+              group: {
+                ...(elem.group || {}),
+                ...payload,
+              },
+            };
+          }
+
+          return {
+            ...elem,
+            group: {
+              ...(elem.group || {}),
+              ...payload,
+            },
+          };
+        })
+      );
+
+      if (
+        chatRoom?.data?.roomType === 'group' &&
+        chatRoom?.data?.roomId === payload.roomId
+      ) {
+        dispatch(
+          setChatRoom({
+            ...chatRoom,
+            data: {
+              ...chatRoom.data,
+              group: {
+                ...(chatRoom.data.group || {}),
+                ...payload,
+              },
+              channel:
+                target === 'channel' || chatRoom.data.channel
+                  ? {
+                      ...(chatRoom.data.channel || {}),
+                      ...payload,
+                    }
+                  : chatRoom.data.channel,
+            },
+          })
+        );
+      }
+    },
+    [chatRoom, dispatch, setInboxes]
+  );
+  const getInboxDisplayTitle = (inbox) => {
+    if (inbox?.roomType === 'group') {
+      return inbox?.channel?.name || inbox?.group?.name || 'Group';
+    }
+    return (
+      inbox?.owners?.find((owner) => owner.userId !== master?._id)?.fullname ||
+      '[inactive]'
+    );
+  };
 
   const openMenuForInbox = ({ elem, x, y }) => {
     const inbox = document.querySelector('#inbox');
@@ -606,7 +677,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       setChatRoom({
         isOpen: true,
         refreshId: elem.roomId,
-        data: elem,
+        data: {
+          ...elem,
+          group: elem.channel || elem.group || elem.group,
+          channel: elem.channel || null,
+        },
       })
     );
 
@@ -644,8 +719,13 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     inbox?.roomType === 'private' &&
     Array.isArray(inbox?.chatLockBy) &&
     inbox.chatLockBy.includes(master?._id);
-  const isPrivateLockedGroup = (inbox) =>
-    inbox?.roomType === 'group' && inbox?.group?.accessType === 'private';
+  const isPrivateLockedGroup = (inbox) => {
+    if (inbox?.roomType !== 'group') return false;
+    const accessType = inbox?.channel?.accessType || inbox?.group?.accessType;
+    const requiresPassword =
+      inbox?.channel?.requiresPassword || inbox?.group?.requiresPassword;
+    return accessType === 'private' || !!requiresPassword;
+  };
 
   const playTone = (toneKey) => {
     if (toneKey === 'default-ringtone') {
@@ -786,6 +866,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         await axios.post(`/inboxes/${targetInbox.roomId}/verify-lock`, {
           password: unlockDialog.password,
         });
+      } else if (unlockDialog.mode === 'channel') {
+        if (!targetInbox?.channel?._id) return;
+        await axios.post(`/channels/${targetInbox.channel._id}/verify-password`, {
+          password: unlockDialog.password,
+        });
       } else {
         if (!targetInbox?.group?._id) return;
         await axios.post(`/groups/${targetInbox.group._id}/verify-password`, {
@@ -805,7 +890,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
 
   const verifyPrivateGroupAccess = async (inbox) => {
     if (!isPrivateLockedGroup(inbox)) return true;
-    return requestUnlockDialog(inbox, 'group');
+    return requestUnlockDialog(inbox, inbox?.channel ? 'channel' : 'group');
   };
 
   const verifyPrivateChatLockAccess = async (inbox) => {
@@ -898,7 +983,23 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     });
 
     socket.on('group/create', (payload) =>
-      setInboxes((prev) => [payload, ...prev])
+      setInboxes((prev) => [payload, ...((prev || []).filter((elem) => elem._id !== payload?._id))])
+    );
+    socket.on('channel/create', (payload) =>
+      setInboxes((prev) => [payload, ...((prev || []).filter((elem) => elem._id !== payload?._id))])
+    );
+    const handleLocalChannelCreate = (event) => {
+      const payload = event?.detail?.inbox;
+      if (!payload?._id) return;
+      setInboxes((prev) => {
+        const olds = (prev || []).filter((elem) => elem._id !== payload._id);
+        return [payload, ...olds];
+      });
+    };
+    window.addEventListener('syncchat:channel-create', handleLocalChannelCreate);
+    socket.on('group/edit', (payload) => applyEntityRoomPatch(payload, 'group'));
+    socket.on('channel/edit', (payload) =>
+      applyEntityRoomPatch(payload, 'channel')
     );
 
     socket.on('inbox/delete', (roomsId) => {
@@ -906,6 +1007,12 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         prev.filter((elem) => !roomsId.includes(elem.roomId))
       );
     });
+    const handleLocalInboxDelete = (event) => {
+      const roomId = event?.detail?.roomId;
+      if (!roomId) return;
+      setInboxes((prev) => prev.filter((elem) => elem.roomId !== roomId));
+    };
+    window.addEventListener('syncchat:inbox-delete', handleLocalInboxDelete);
 
     socket.on('group/exit', (payload) => {
       setInboxes((prev) => [
@@ -950,14 +1057,48 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       }
     });
 
+    socket.on('channel/avatar', (payload) => {
+      if (!payload?.roomId || !payload?.avatar) return;
+
+      setInboxes((prev) =>
+        prev.map((elem) =>
+          elem.roomType === 'group' && elem.roomId === payload.roomId
+            ? {
+                ...elem,
+                channel: {
+                  ...(elem.channel || {}),
+                  avatar: payload.avatar,
+                },
+                group: {
+                  ...(elem.group || {}),
+                  avatar: payload.avatar,
+                },
+              }
+            : elem
+        )
+      );
+    });
+
     return () => {
       socket.off('group/create');
+      socket.off('channel/create');
+      window.removeEventListener(
+        'syncchat:channel-create',
+        handleLocalChannelCreate
+      );
+      socket.off('group/edit');
+      socket.off('channel/edit');
       socket.off('group/exit');
       socket.off('inbox/read');
       socket.off('inbox/delete');
       socket.off('group/avatar');
+      socket.off('channel/avatar');
+      window.removeEventListener(
+        'syncchat:inbox-delete',
+        handleLocalInboxDelete
+      );
     };
-  }, [setting, chatRoom]);
+  }, [setting, chatRoom, applyEntityRoomPatch]);
 
   useEffect(() => {
     if (!page.calls) return undefined;
@@ -1019,7 +1160,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     socket.on('inbox/find', async (payload) => {
       // concat old inboxes data with new data
       setInboxes((prev) => {
-        const olds = prev.filter((elem) => elem._id !== payload._id);
+        const olds = (prev || []).filter((elem) => elem._id !== payload._id);
         return [payload, ...olds];
       });
 
@@ -1032,7 +1173,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         const isGroup = payload.roomType === 'group';
         const sender = payload.owners.find(
           (elem) => elem.userId === payload.content.from
-        );
+        ) || { fullname: 'Unknown sender', username: 'unknown', avatar: '' };
         const notificationBody = (() => {
           if (isPrivateLockedGroup(payload) || isPrivateChatLocked(payload)) {
             return 'Locked content';
@@ -1044,12 +1185,14 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
 
         // browser notification
         notification({
-          title: `${isGroup ? payload.group.name : sender.fullname} (@${
-            sender.username
-          })`,
+          title: isGroup
+            ? payload.channel?.name || payload.group?.name || 'Group'
+            : `${sender.fullname} (@${sender.username})`,
           body: notificationBody,
           icon: resolveUploadUrl(
-            isGroup ? payload.group.avatar : sender.avatar
+            isGroup
+              ? payload.channel?.avatar || payload.group?.avatar
+              : sender.avatar
           ),
         });
       }
@@ -1136,12 +1279,16 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
               <h3 className="text-base font-semibold">
                 {unlockDialog.mode === 'private-chat'
                   ? 'Enter Chat Password'
+                  : unlockDialog.mode === 'channel'
+                  ? 'Enter Channel Password'
                   : 'Enter Group Password'}
               </h3>
             </div>
             <p className="text-sm opacity-75 mb-3">
               {unlockDialog.mode === 'private-chat'
                 ? 'This chat is locked for your account.'
+                : unlockDialog.mode === 'channel'
+                ? `${unlockDialog.inbox?.channel?.name || 'Private channel'} is locked.`
                 : `${unlockDialog.inbox?.group?.name || 'Private group'} is locked.`}
             </p>
             <label
@@ -1150,6 +1297,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
             >
               <input
                 id="group-unlock-password"
+                name="unlock_password"
                 type="password"
                 value={unlockDialog.password}
                 onChange={(e) =>
@@ -1162,6 +1310,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                 placeholder={
                   unlockDialog.mode === 'private-chat'
                     ? 'Chat password'
+                    : unlockDialog.mode === 'channel'
+                    ? 'Channel password'
                     : 'Group password'
                 }
                 className="w-full bg-transparent text-sm"
@@ -1225,6 +1375,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                 {modal.lockChat?.type === 'lock' && (
                   <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
                     <input
+                      id="lock-chat-password"
+                      name="lock_chat_password"
                       type="password"
                       value={lockChatDialog.password}
                       onChange={(e) =>
@@ -1243,6 +1395,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                   <>
                     <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
                       <input
+                        id="lock-chat-old-password"
+                        name="lock_chat_old_password"
                         type="password"
                         value={lockChatDialog.oldPassword}
                         onChange={(e) =>
@@ -1258,6 +1412,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                     </label>
                     <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
                       <input
+                        id="lock-chat-new-password"
+                        name="lock_chat_new_password"
                         type="password"
                         value={lockChatDialog.newPassword}
                         onChange={(e) =>
@@ -1436,6 +1592,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         callLogs.map((elem) => {
           const meta = getCallListMeta(elem.text, elem.userId);
           if (!meta) return null;
+          const privateProfile =
+            elem.roomType === 'private'
+              ? elem.owners.find((x) => x.userId !== master._id)
+              : null;
+          const presence = getPresenceMeta(privateProfile);
 
           const friendOrName =
             elem.roomType === 'private'
@@ -1453,16 +1614,21 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
               key={`call-row-${elem._id}`}
               className="px-3 py-3 grid grid-cols-[auto_1fr] gap-3 border-0 border-b border-solid border-slate-200 hover:bg-slate-100 dark:border-spill-700 dark:hover:bg-spill-800/70"
             >
-              <img
-                src={
-                  avatarUrl ||
-                  (elem.roomType === 'private'
-                    ? 'assets/images/default-avatar.png'
-                    : 'assets/images/default-group-avatar.png')
-                }
-                alt=""
-                className="w-12 h-12 rounded-full object-cover border border-slate-200 dark:border-spill-700"
-              />
+              <div className="relative">
+                <img
+                  src={
+                    avatarUrl ||
+                    (elem.roomType === 'private'
+                      ? 'assets/images/default-avatar.png'
+                      : 'assets/images/default-group-avatar.png')
+                  }
+                  alt=""
+                  className="w-12 h-12 rounded-full object-cover border border-slate-200 dark:border-spill-700"
+                />
+                {elem.roomType === 'private' && presence.showDot && (
+                  <span className="absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-spill-950" />
+                )}
+              </div>
               <div className="min-w-0 grid gap-1">
                 <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
                   <p className="truncate font-medium text-slate-800 dark:text-spill-100">
@@ -1649,6 +1815,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
         !page.starred &&
         filteredInboxes &&
         filteredInboxes.map((elem) => {
+          const privateProfile =
+            elem.roomType === 'private'
+              ? elem.owners.find((x) => x.userId !== master._id)
+              : null;
+          const presence = getPresenceMeta(privateProfile);
           const selectModeActive = Array.isArray(selectedInboxes);
           const inboxSelected =
             selectModeActive && selectedInboxes.includes(elem.roomId);
@@ -1763,20 +1934,25 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
               onTouchMove={() => touchAndHoldEnd()}
               onTouchEnd={() => touchAndHoldEnd()}
             >
-              <img
-                src={
-                  resolveUploadUrl(
-                    elem.roomType === 'private'
-                      ? elem.owners.find((x) => x.userId !== master._id)?.avatar
-                      : elem.group.avatar
-                  ) ||
-                  (elem.roomType === 'private'
-                    ? 'assets/images/default-avatar.png'
-                    : 'assets/images/default-group-avatar.png')
-                }
-                alt=""
-                className="w-14 h-14 rounded-full object-cover flex-none border border-slate-200 dark:border-spill-700"
-              />
+              <div className="relative flex-none">
+                <img
+                  src={
+                    resolveUploadUrl(
+                      elem.roomType === 'private'
+                        ? privateProfile?.avatar
+                        : elem.channel?.avatar || elem.group?.avatar
+                    ) ||
+                    (elem.roomType === 'private'
+                      ? 'assets/images/default-avatar.png'
+                      : 'assets/images/default-group-avatar.png')
+                  }
+                  alt=""
+                  className="w-14 h-14 rounded-full object-cover border border-slate-200 dark:border-spill-700"
+                />
+                {elem.roomType === 'private' && presence.showDot && (
+                  <span className="absolute right-0 bottom-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-spill-950" />
+                )}
+              </div>
               <div className="overflow-hidden grid gap-0.5">
                 <div className="grid grid-cols-[1fr_auto] gap-3">
                   <p
@@ -1784,8 +1960,14 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                       hasUnreadForMe ? 'font-semibold' : 'font-medium'
                     }`}
                   >
+                    {elem?.channel?._id && (
+                      <i className="mr-1 inline-flex align-middle text-sky-600 dark:text-sky-400">
+                        <ri.RiBroadcastLine size={14} />
+                      </i>
+                    )}
                     {elem.roomType === 'group' &&
-                      elem?.group?.accessType === 'private' && (
+                      (elem?.channel?.accessType === 'private' ||
+                        elem?.group?.accessType === 'private') && (
                         <i className="mr-1 inline-flex align-middle text-amber-600 dark:text-amber-400">
                           <bi.BiLockAlt size={14} />
                         </i>
@@ -1795,10 +1977,7 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                         <bi.BiLockAlt size={14} />
                       </i>
                     )}
-                    {elem.roomType === 'private'
-                      ? elem.owners.find((x) => x.userId !== master._id)
-                          ?.fullname || '[inactive]'
-                      : elem.group.name}
+                    {getInboxDisplayTitle(elem)}
                   </p>
                   <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-spill-400">
                     {callStatus && (
@@ -1856,6 +2035,11 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                 </div>
                 <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
                   <span className="flex gap-1 items-center overflow-hidden">
+                    {elem?.channel?._id && !isLockedPreview && (
+                      <span className="flex-none text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-400">
+                        Channel
+                      </span>
+                    )}
                     {elem.content.from === master._id && (
                       <i>
                         {(() => {
@@ -1889,7 +2073,8 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
                         <p>{`${elem.content.senderName}: `}</p>
                       )}
                       {elem.roomType === 'group' &&
-                        elem?.group?.accessType === 'private' && (
+                        (elem?.channel?.accessType === 'private' ||
+                          elem?.group?.accessType === 'private') && (
                           <i className="text-amber-600 dark:text-amber-400">
                             <bi.BiLockAlt size={14} />
                           </i>

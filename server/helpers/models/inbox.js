@@ -2,8 +2,13 @@ const { Op } = require('sequelize');
 const InboxModel = require('../../db/models/inbox');
 const ProfileModel = require('../../db/models/profile');
 const GroupModel = require('../../db/models/group');
+const ChannelModel = require('../../db/models/channel');
 const FileModel = require('../../db/models/file');
 const { asArray, toPlainMany } = require('../../db/utils');
+const {
+  buildPrivacyContext,
+  sanitizeProfileForViewer,
+} = require('../privacy');
 
 const hasAll = (source, values) =>
   asArray(values).every((value) => asArray(source).includes(value));
@@ -49,12 +54,18 @@ exports.find = async (queries, search = '') => {
     ...new Set(inboxes.map((inbox) => inbox.fileId).filter(Boolean)),
   ];
 
-  const [ownersRaw, groupsRaw, filesRaw] = await Promise.all([
+  const [ownersRaw, groupsRaw, channelsRaw, filesRaw] = await Promise.all([
     ownersIds.length
       ? ProfileModel.findAll({ where: { userId: { [Op.in]: ownersIds } } })
       : [],
     roomIds.length
       ? GroupModel.findAll({
+          where: { roomId: { [Op.in]: roomIds } },
+          attributes: { exclude: ['passwordHash'] },
+        })
+      : [],
+    roomIds.length
+      ? ChannelModel.findAll({
           where: { roomId: { [Op.in]: roomIds } },
           attributes: { exclude: ['passwordHash'] },
         })
@@ -70,11 +81,18 @@ exports.find = async (queries, search = '') => {
   const groupsByRoom = new Map(
     toPlainMany(groupsRaw).map((group) => [group.roomId, group])
   );
+  const channelsByRoom = new Map(
+    toPlainMany(channelsRaw).map((channel) => [channel.roomId, channel])
+  );
   const filesById = new Map(
     toPlainMany(filesRaw).map((file) => [file.fileId, file])
   );
 
   const regex = new RegExp(search || '', 'i');
+  const privacy = await buildPrivacyContext({
+    viewerId,
+    targetIds: ownersIds,
+  });
 
   return inboxes
     .map((inbox) => {
@@ -84,17 +102,30 @@ exports.find = async (queries, search = '') => {
       return {
       ...sanitized,
       owners: asArray(inbox.ownersId)
-        .map((ownerId) => ownersById.get(ownerId))
+        .map((ownerId) =>
+          ownersById.get(ownerId)
+            ? sanitizeProfileForViewer({
+                profile: ownersById.get(ownerId),
+                viewerId,
+                setting: privacy.settingMap.get(ownerId),
+                isViewerContact: privacy.isViewerContact(ownerId),
+              })
+            : null
+        )
         .filter(Boolean),
       group: groupsByRoom.get(inbox.roomId) || null,
+      channel: channelsByRoom.get(inbox.roomId) || null,
       file: inbox.fileId ? filesById.get(inbox.fileId) || null : null,
     }})
     .filter((inbox) => {
+      if (viewerId && asArray(inbox.deletedBy).includes(viewerId)) {
+        return false;
+      }
       if (!search) return true;
       if (inbox.roomType === 'private') {
         return inbox.owners.some((owner) => regex.test(owner.fullname || ''));
       }
-      return regex.test(inbox.group?.name || '');
+      return regex.test(inbox.channel?.name || inbox.group?.name || '');
     })
     .sort((a, b) => {
       if (viewerId) {

@@ -4,7 +4,10 @@ const SettingModel = require('../db/models/setting');
 const GroupModel = require('../db/models/group');
 const { toPlain } = require('../db/utils');
 const response = require('../helpers/response');
-const { toAbsoluteUploadUrl } = require('../helpers/storage');
+const {
+  buildPrivacyContext,
+  sanitizeProfileForViewer,
+} = require('../helpers/privacy');
 
 exports.findById = async (req, res) => {
   try {
@@ -25,12 +28,21 @@ exports.findById = async (req, res) => {
       attributes: ['blockedUserIds'],
     });
 
-    const payload = toPlain(profile);
+    const payload = sanitizeProfileForViewer({
+      profile,
+      viewerId: req.user._id,
+      setting: (
+        await buildPrivacyContext({
+          viewerId: req.user._id,
+          targetIds: [targetId],
+        })
+      ).settingMap.get(targetId),
+      isViewerContact: !!contact,
+    });
     response({
       res,
       payload: {
         ...payload,
-        avatar: toAbsoluteUploadUrl(payload?.avatar),
         saved: !!contact,
         blocked: !!toPlain(setting)?.blockedUserIds?.includes(targetId),
       },

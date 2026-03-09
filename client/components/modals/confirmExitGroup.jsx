@@ -9,12 +9,14 @@ function ConfirmExitGroup() {
 
   const master = useSelector((state) => state.user.master);
   const confirmExitGroup = useSelector((state) => state.modal.confirmExitGroup);
+  const isChannel = !!confirmExitGroup?.channelId;
 
   const handleExitGroup = () => {
     socket.emit(
-      'group/exit',
+      isChannel ? 'channel/exit' : 'group/exit',
       {
         groupId: confirmExitGroup.groupId,
+        channelId: confirmExitGroup.channelId,
         userId: master._id,
       },
       () => {
@@ -52,11 +54,13 @@ function ConfirmExitGroup() {
           e.stopPropagation();
         }}
       >
-        <h1 className="text-2xl font-bold mb-1">Exit Group</h1>
+        <h1 className="text-2xl font-bold mb-1">
+          {isChannel ? 'Exit Channel' : 'Exit Group'}
+        </h1>
         <p>
           {'Are you sure you want to exit '}
           <strong>{`"${confirmExitGroup.name}"`}</strong>
-          {' group?'}
+          {` ${isChannel ? 'channel' : 'group'}?`}
         </p>
         <span className="mt-4 flex gap-2 justify-end">
           {[
@@ -67,7 +71,7 @@ function ConfirmExitGroup() {
                 dispatch(setModal({ target: 'confirmExitGroup', data: false })),
             },
             {
-              label: 'Exit group',
+              label: isChannel ? 'Exit channel' : 'Exit group',
               style: 'font-bold text-white bg-rose-600 hover:bg-rose-700',
               action: () => handleExitGroup(),
             },

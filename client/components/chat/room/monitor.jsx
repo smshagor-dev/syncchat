@@ -21,6 +21,7 @@ import {
   DEFAULT_ROOM_APPEARANCE,
   ROOM_APPEARANCE_EVENT,
   getRoomAppearance,
+  getWallpaperStyle,
 } from '../../../helpers/roomAppearance';
 import { isGroupAdmin } from '../../../helpers/groupAdmins';
 
@@ -65,11 +66,12 @@ function Monitor({
   const {
     chore: { selectedChats },
     room: { chat: chatRoom },
-    user: { master },
+    user: { master, setting },
     page,
   } = useSelector((state) => state);
 
   const isGroup = chatRoom.data.roomType === 'group';
+  const isChannel = !!chatRoom.data.channel;
   const isCurrentUserGroupAdmin =
     isGroup && isGroupAdmin(chatRoom.data?.group, master._id);
   const isScrolled = useRef(false);
@@ -87,6 +89,8 @@ function Monitor({
   const [appearance, setAppearance] = useState(DEFAULT_ROOM_APPEARANCE);
   const [openVoters, setOpenVoters] = useState({});
   const [pinnedChatId, setPinnedChatId] = useState(null);
+  const [manualMediaAccess, setManualMediaAccess] = useState({});
+  const downloadedMediaRef = useRef(new Set());
   const quickEmojis = [
     '\uD83D\uDC4D',
     '\u2764\uFE0F',
@@ -283,7 +287,7 @@ function Monitor({
     if (!rawGroup?._id) {
       dispatch(
         setPage({
-          target: 'groupProfile',
+          target: isChannel ? 'channelProfile' : 'groupProfile',
           data: false,
         })
       );
@@ -301,14 +305,16 @@ function Monitor({
     // Keep group profile visible as fallback edit surface.
     dispatch(
       setPage({
-        target: 'groupProfile',
-        data: rawGroup._id,
+        target: isChannel ? 'channelProfile' : 'groupProfile',
+        data: isChannel
+          ? { channelId: rawGroup._id, roomId: rawGroup.roomId }
+          : rawGroup._id,
       })
     );
 
     // Refresh modal payload with latest server state (best-effort).
     axios
-      .get(`/groups/${rawGroup._id}`)
+      .get(`/${isChannel ? 'channels' : 'groups'}/${rawGroup._id}`)
       .then(({ data }) => {
         if (!data?.payload) return;
         dispatch(
@@ -334,6 +340,7 @@ function Monitor({
         data: {
           participantsId: chatRoom.data.group.participantsId || [],
           groupId: chatRoom.data.group._id,
+          channelId: isChannel ? chatRoom.data.group._id : null,
           roomId: chatRoom.data.group.roomId,
         },
       })
@@ -343,23 +350,25 @@ function Monitor({
   const openGroupInviteQr = () => {
     if (!chatRoom.data?.group) return;
     const token = String(chatRoom.data.group.link || '').replace(
-      '/group/+',
+      isChannel ? '/channel/+' : '/group/+',
       ''
     );
     dispatch(
       setModal({
         target: 'qr',
         data: {
-          type: 'group',
-          fullname: chatRoom.data.group.name || 'Group',
+          type: isChannel ? 'channel' : 'group',
+          fullname: chatRoom.data.group.name || (isChannel ? 'Channel' : 'Group'),
           bio:
             chatRoom.data.group.accessType === 'private'
-              ? 'Private group invite'
-              : 'Public group invite',
+              ? `Private ${isChannel ? 'channel' : 'group'} invite`
+              : `Public ${isChannel ? 'channel' : 'group'} invite`,
           avatar:
             chatRoom.data.group.avatar ||
             'assets/images/default-group-avatar.png',
-          shareUrl: `${window.location.origin}/chat?g=${encodeURIComponent(
+          shareUrl: `${window.location.origin}/chat?${
+            isChannel ? 'c' : 'g'
+          }=${encodeURIComponent(
             token
           )}`,
         },
@@ -565,6 +574,38 @@ function Monitor({
     return ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm'].includes(ext);
   };
   const isImageChat = (chat) => chat?.file?.type === 'image';
+  const getAutoDownloadSettingKey = (file) => {
+    if (!file) return null;
+    if (file.type === 'image') return 'autoDownloadPhotos';
+    if (file.type === 'video') return 'autoDownloadVideos';
+    if (isAudioAttachment(file)) return 'autoDownloadAudio';
+    return 'autoDownloadDocuments';
+  };
+  const canAutoLoadAttachment = (chat) => {
+    if (!chat?.file) return false;
+    if (chat.userId === master._id) return true;
+    if (manualMediaAccess[chat._id]) return true;
+    const settingKey = getAutoDownloadSettingKey(chat.file);
+    return settingKey ? setting?.[settingKey] !== false : false;
+  };
+  const triggerBrowserDownload = (file) => {
+    const resolved = resolveUploadUrl(file?.url);
+    if (!resolved) return;
+    const link = document.createElement('a');
+    link.href = resolved;
+    link.download = file?.originalname || 'download';
+    link.rel = 'noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  const requestManualAttachmentAccess = (chat) => {
+    if (!chat?._id) return;
+    setManualMediaAccess((prev) => ({
+      ...prev,
+      [chat._id]: true,
+    }));
+  };
   const getCallLogMeta = (text) => {
     if (typeof text !== 'string') return null;
     const raw = text.trim();
@@ -735,8 +776,22 @@ function Monitor({
     setPinnedChatId(
       currentRoomId ? getPinnedStore()[currentRoomId] || null : null
     );
-    setAppearance(getRoomAppearance(currentRoomId));
-  }, [chatRoom?.data?.roomId]);
+    setManualMediaAccess({});
+    const roomAppearance = getRoomAppearance(currentRoomId);
+    setAppearance({
+      ...roomAppearance,
+      wallpaperPreset:
+        setting?.chatWallpaperPreset || roomAppearance.wallpaperPreset,
+      wallpaperImage:
+        setting?.chatWallpaperPreset === 'custom-image'
+          ? setting?.chatWallpaperImage || ''
+          : roomAppearance.wallpaperImage,
+    });
+  }, [
+    chatRoom?.data?.roomId,
+    setting?.chatWallpaperPreset,
+    setting?.chatWallpaperImage,
+  ]);
 
   useEffect(() => {
     if (!pinnedChatId || !Array.isArray(chats)) return;
@@ -750,7 +805,16 @@ function Monitor({
       const targetRoomId = event?.detail?.roomId;
       const currentRoomId = chatRoom?.data?.roomId;
       if (!currentRoomId || targetRoomId !== currentRoomId) return;
-      setAppearance(getRoomAppearance(currentRoomId));
+      const roomAppearance = getRoomAppearance(currentRoomId);
+      setAppearance({
+        ...roomAppearance,
+        wallpaperPreset:
+          setting?.chatWallpaperPreset || roomAppearance.wallpaperPreset,
+        wallpaperImage:
+          setting?.chatWallpaperPreset === 'custom-image'
+            ? setting?.chatWallpaperImage || ''
+            : roomAppearance.wallpaperImage,
+      });
     };
     window.addEventListener(ROOM_APPEARANCE_EVENT, onAppearanceUpdate);
     return () => {
@@ -758,43 +822,19 @@ function Monitor({
     };
   }, [chatRoom?.data?.roomId]);
 
-  const wallpaperStyle = (() => {
-    if (
-      appearance.wallpaperPreset === 'custom-image' &&
-      appearance.wallpaperImage
-    ) {
-      return {
-        backgroundImage: `url(${appearance.wallpaperImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      };
-    }
-    if (appearance.wallpaperPreset === 'sunset') {
-      return {
-        backgroundImage:
-          'linear-gradient(135deg, rgba(255,203,112,0.22), rgba(255,126,95,0.25), rgba(198,93,201,0.2))',
-      };
-    }
-    if (appearance.wallpaperPreset === 'ocean') {
-      return {
-        backgroundImage:
-          'linear-gradient(135deg, rgba(14,165,233,0.2), rgba(6,182,212,0.2), rgba(45,212,191,0.22))',
-      };
-    }
-    if (appearance.wallpaperPreset === 'forest') {
-      return {
-        backgroundImage:
-          'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.2), rgba(132,204,22,0.18))',
-      };
-    }
-    if (appearance.wallpaperPreset === 'plain') {
-      return {
-        backgroundImage: 'none',
-        backgroundColor: '#e2e8f0',
-      };
-    }
-    return {};
-  })();
+  const wallpaperStyle = getWallpaperStyle(appearance);
+
+  useEffect(() => {
+    displayedChats.forEach((chat) => {
+      if (!chat?.file || chat.userId === master?._id) return;
+      const settingKey = getAutoDownloadSettingKey(chat.file);
+      if (!settingKey || setting?.[settingKey] === false) return;
+      const downloadKey = `${chat._id}:${chat.file.url}`;
+      if (downloadedMediaRef.current.has(downloadKey)) return;
+      downloadedMediaRef.current.add(downloadKey);
+      triggerBrowserDownload(chat.file);
+    });
+  }, [displayedChats, master?._id, setting]);
 
   useEffect(() => {
     if (!loaded || !displayedChats.length || normalizedSearch) return;
@@ -1088,7 +1128,8 @@ function Monitor({
                             isGroup
                               ? lead.profile?.avatar
                               : chatRoom.data.profile?.avatar
-                          ) || 'assets/images/default-avatar.png'
+                          ) ||
+                          'assets/images/default-avatar.png'
                         }
                         alt=""
                         className="w-8 h-8 rounded-full object-cover flex-none border border-slate-200 dark:border-spill-700"
@@ -1155,188 +1196,225 @@ function Monitor({
                       )}
                       {lead.file && (
                         <div className="mb-2">
-                          {hasAlbum && (
-                            <div className="grid grid-cols-2 gap-1 w-[220px] sm:w-[260px]">
-                              {albumItems.slice(0, 4).map((imageChat, idx) => (
-                                <button
-                                  key={imageChat._id}
-                                  type="button"
-                                  className={`relative overflow-hidden rounded-lg ${
-                                    albumItems.length === 3 && idx === 0
-                                      ? 'col-span-2'
-                                      : ''
-                                  }`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openPhotoPreview(imageChat.file.url);
-                                  }}
-                                >
-                                  <img
-                                    src={resolveUploadUrl(imageChat.file.url)}
-                                    alt=""
-                                    className="h-[120px] w-full object-cover"
-                                  />
-                                  {idx === 3 && albumItems.length > 4 && (
-                                    <span className="absolute inset-0 bg-black/45 text-white text-xl font-semibold grid place-items-center">
-                                      +{albumItems.length - 4}
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {!hasAlbum && lead.file.type === 'image' && (
-                            <img
-                              src={resolveUploadUrl(lead.file.url)}
-                              alt=""
-                              className="w-full max-w-[240px] sm:max-w-[280px] max-h-[340px] object-cover rounded-lg cursor-pointer hover:brightness-90"
-                              aria-hidden
+                          {!canAutoLoadAttachment(lead) ? (
+                            <button
+                              type="button"
+                              className="grid w-[220px] sm:w-[280px] grid-cols-[auto_1fr_auto] gap-3 rounded-2xl border border-slate-200 bg-white/80 px-3 py-3 text-left shadow-sm dark:border-spill-700 dark:bg-spill-900/70"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                openPhotoPreview(lead.file.url);
+                                requestManualAttachmentAccess(lead);
+                                triggerBrowserDownload(lead.file);
                               }}
-                            />
-                          )}
-                          {lead.file.type === 'video' && (
-                            <video
-                              src={resolveUploadUrl(lead.file.url)}
-                              controls
-                              className="w-full rounded-lg"
                             >
-                              <track kind="captions" />
-                            </video>
-                          )}
-                          {isAudioAttachment(lead.file) && (
-                            <div
-                              className={`${
-                                lead.userId === master._id
-                                  ? 'bg-cyan-100/80 dark:bg-cyan-900/30'
-                                  : 'bg-slate-100 dark:bg-spill-700'
-                              } w-[220px] sm:w-[260px] rounded-lg px-2 py-2 grid grid-cols-[auto_1fr_auto] gap-2 items-center`}
-                              aria-hidden
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                className="w-9 h-9 rounded-full bg-sky-500 text-white grid place-items-center hover:bg-sky-600"
-                                onClick={() => toggleAudio(lead._id)}
-                              >
-                                {playingAudioId === lead._id ? (
-                                  <bi.BiPause />
+                              <i className="self-center text-sky-600 dark:text-sky-400">
+                                {lead.file.type === 'image' ? (
+                                  <bi.BiImage size={22} />
+                                ) : lead.file.type === 'video' ? (
+                                  <bi.BiVideo size={22} />
+                                ) : isAudioAttachment(lead.file) ? (
+                                  <bi.BiMicrophone size={22} />
                                 ) : (
-                                  <bi.BiPlay />
+                                  <ri.RiFileTextFill size={22} />
                                 )}
-                              </button>
-                              <span className="w-full">
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={Math.max(
-                                    1,
-                                    Math.floor(audioDuration[lead._id] || 0)
-                                  )}
-                                  value={Math.floor(
-                                    audioProgress[lead._id] || 0
-                                  )}
-                                  className="w-full accent-sky-500"
-                                  onChange={(e) => {
-                                    const seekTo = Number(e.target.value || 0);
-                                    const audio = audioRefs.current[lead._id];
-                                    if (audio) audio.currentTime = seekTo;
-                                    setAudioProgress((prev) => ({
-                                      ...prev,
-                                      [lead._id]: seekTo,
-                                    }));
-                                  }}
-                                />
-                                <p className="text-[11px] opacity-70">
-                                  {formatSeconds(audioProgress[lead._id] || 0)}{' '}
-                                  /{' '}
-                                  {formatSeconds(audioDuration[lead._id] || 0)}
-                                  {Number.isFinite(audioDuration[lead._id]) &&
-                                  audioDuration[lead._id] > 0
-                                    ? ` (${Math.max(
-                                        1,
-                                        Math.round(audioDuration[lead._id])
-                                      )} sec)`
-                                    : ''}
+                              </i>
+                              <span className="min-w-0">
+                                <p className="truncate text-sm font-medium">
+                                  {lead.file.originalname || 'Attachment'}
+                                </p>
+                                <p className="mt-1 text-xs opacity-70">
+                                  Auto-download is off. Tap to load.
                                 </p>
                               </span>
-                              <i className="opacity-70">
-                                <bi.BiMicrophone />
+                              <i className="self-center text-slate-500 dark:text-spill-300">
+                                <bi.BiDownload size={20} />
                               </i>
-                              <audio
-                                ref={(el) => {
-                                  if (el) {
-                                    audioRefs.current[lead._id] = el;
-                                  } else {
-                                    delete audioRefs.current[lead._id];
-                                  }
-                                }}
-                                src={resolveUploadUrl(lead.file.url)}
-                                preload="metadata"
-                                onLoadedMetadata={(e) => {
-                                  const rawDuration = Number(
-                                    e.currentTarget?.duration || 0
-                                  );
-                                  const duration = Number.isFinite(rawDuration)
-                                    ? rawDuration
-                                    : 0;
-                                  setAudioDuration((prev) => ({
-                                    ...prev,
-                                    [lead._id]: duration,
-                                  }));
-                                }}
-                                onTimeUpdate={(e) => {
-                                  const current = Number(
-                                    e.currentTarget?.currentTime || 0
-                                  );
-                                  setAudioProgress((prev) => ({
-                                    ...prev,
-                                    [lead._id]: current,
-                                  }));
-                                }}
-                                onEnded={() => {
-                                  setPlayingAudioId((prev) =>
-                                    prev === lead._id ? null : prev
-                                  );
-                                }}
-                                className="hidden"
-                              >
-                                <track kind="captions" />
-                              </audio>
-                            </div>
-                          )}
-                          {lead.file.type !== 'image' &&
-                            lead.file.type !== 'video' &&
-                            !isAudioAttachment(lead.file) && (
-                              <span
-                                className={`
-                                  ${
+                            </button>
+                          ) : (
+                            <>
+                              {hasAlbum && (
+                                <div className="grid grid-cols-2 gap-1 w-[220px] sm:w-[260px]">
+                                  {albumItems.slice(0, 4).map((imageChat, idx) => (
+                                    <button
+                                      key={imageChat._id}
+                                      type="button"
+                                      className={`relative overflow-hidden rounded-lg ${
+                                        albumItems.length === 3 && idx === 0
+                                          ? 'col-span-2'
+                                          : ''
+                                      }`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openPhotoPreview(imageChat.file.url);
+                                      }}
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(imageChat.file.url)}
+                                        alt=""
+                                        className="h-[120px] w-full object-cover"
+                                      />
+                                      {idx === 3 && albumItems.length > 4 && (
+                                        <span className="absolute inset-0 bg-black/45 text-white text-xl font-semibold grid place-items-center">
+                                          +{albumItems.length - 4}
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {!hasAlbum && lead.file.type === 'image' && (
+                                <img
+                                  src={resolveUploadUrl(lead.file.url)}
+                                  alt=""
+                                  className="w-full max-w-[240px] sm:max-w-[280px] max-h-[340px] object-cover rounded-lg cursor-pointer hover:brightness-90"
+                                  aria-hidden
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPhotoPreview(lead.file.url);
+                                  }}
+                                />
+                              )}
+                              {lead.file.type === 'video' && (
+                                <video
+                                  src={resolveUploadUrl(lead.file.url)}
+                                  controls
+                                  className="w-full rounded-lg"
+                                >
+                                  <track kind="captions" />
+                                </video>
+                              )}
+                              {isAudioAttachment(lead.file) && (
+                                <div
+                                  className={`${
                                     lead.userId === master._id
                                       ? 'bg-cyan-100/80 dark:bg-cyan-900/30'
                                       : 'bg-slate-100 dark:bg-spill-700'
-                                  }
-                                  p-2 grid grid-cols-[auto_1fr_auto] gap-2 rounded-lg
-                                `}
-                              >
-                                <i className="translate-y-0.5">
-                                  <ri.RiFileTextFill size={20} />
-                                </i>
-                                <p className="break-all">
-                                  {lead.file.originalname}
-                                </p>
-                                <a
-                                  href={resolveUploadUrl(lead.file.url)}
-                                  download={lead.file.originalname}
-                                  className="block ml-2 translate-y-0.5"
+                                  } w-[220px] sm:w-[260px] rounded-lg px-2 py-2 grid grid-cols-[auto_1fr_auto] gap-2 items-center`}
+                                  aria-hidden
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <i className="text-slate-700 dark:text-spill-100 hover:text-sky-600 dark:hover:text-sky-400">
-                                    <bi.BiDownload size={20} />
+                                  <button
+                                    type="button"
+                                    className="w-9 h-9 rounded-full bg-sky-500 text-white grid place-items-center hover:bg-sky-600"
+                                    onClick={() => toggleAudio(lead._id)}
+                                  >
+                                    {playingAudioId === lead._id ? (
+                                      <bi.BiPause />
+                                    ) : (
+                                      <bi.BiPlay />
+                                    )}
+                                  </button>
+                                  <span className="w-full">
+                                    <input
+                                      type="range"
+                                      min={0}
+                                      max={Math.max(
+                                        1,
+                                        Math.floor(audioDuration[lead._id] || 0)
+                                      )}
+                                      value={Math.floor(
+                                        audioProgress[lead._id] || 0
+                                      )}
+                                      className="w-full accent-sky-500"
+                                      onChange={(e) => {
+                                        const seekTo = Number(e.target.value || 0);
+                                        const audio = audioRefs.current[lead._id];
+                                        if (audio) audio.currentTime = seekTo;
+                                        setAudioProgress((prev) => ({
+                                          ...prev,
+                                          [lead._id]: seekTo,
+                                        }));
+                                      }}
+                                    />
+                                    <p className="text-[11px] opacity-70">
+                                      {formatSeconds(audioProgress[lead._id] || 0)}{' '}
+                                      /{' '}
+                                      {formatSeconds(audioDuration[lead._id] || 0)}
+                                      {Number.isFinite(audioDuration[lead._id]) &&
+                                      audioDuration[lead._id] > 0
+                                        ? ` (${Math.max(
+                                            1,
+                                            Math.round(audioDuration[lead._id])
+                                          )} sec)`
+                                        : ''}
+                                    </p>
+                                  </span>
+                                  <i className="opacity-70">
+                                    <bi.BiMicrophone />
                                   </i>
-                                </a>
-                              </span>
-                            )}
+                                  <audio
+                                    ref={(el) => {
+                                      if (el) {
+                                        audioRefs.current[lead._id] = el;
+                                      } else {
+                                        delete audioRefs.current[lead._id];
+                                      }
+                                    }}
+                                    src={resolveUploadUrl(lead.file.url)}
+                                    preload="metadata"
+                                    onLoadedMetadata={(e) => {
+                                      const rawDuration = Number(
+                                        e.currentTarget?.duration || 0
+                                      );
+                                      const duration = Number.isFinite(rawDuration)
+                                        ? rawDuration
+                                        : 0;
+                                      setAudioDuration((prev) => ({
+                                        ...prev,
+                                        [lead._id]: duration,
+                                      }));
+                                    }}
+                                    onTimeUpdate={(e) => {
+                                      const current = Number(
+                                        e.currentTarget?.currentTime || 0
+                                      );
+                                      setAudioProgress((prev) => ({
+                                        ...prev,
+                                        [lead._id]: current,
+                                      }));
+                                    }}
+                                    onEnded={() => {
+                                      setPlayingAudioId((prev) =>
+                                        prev === lead._id ? null : prev
+                                      );
+                                    }}
+                                    className="hidden"
+                                  >
+                                    <track kind="captions" />
+                                  </audio>
+                                </div>
+                              )}
+                              {lead.file.type !== 'image' &&
+                                lead.file.type !== 'video' &&
+                                !isAudioAttachment(lead.file) && (
+                                  <span
+                                    className={`
+                                      ${
+                                        lead.userId === master._id
+                                          ? 'bg-cyan-100/80 dark:bg-cyan-900/30'
+                                          : 'bg-slate-100 dark:bg-spill-700'
+                                      }
+                                      p-2 grid grid-cols-[auto_1fr_auto] gap-2 rounded-lg
+                                    `}
+                                  >
+                                    <i className="translate-y-0.5">
+                                      <ri.RiFileTextFill size={20} />
+                                    </i>
+                                    <p className="break-all">
+                                      {lead.file.originalname}
+                                    </p>
+                                    <a
+                                      href={resolveUploadUrl(lead.file.url)}
+                                      download={lead.file.originalname}
+                                      className="block ml-2 translate-y-0.5"
+                                    >
+                                      <i className="text-slate-700 dark:text-spill-100 hover:text-sky-600 dark:hover:text-sky-400">
+                                        <bi.BiDownload size={20} />
+                                      </i>
+                                    </a>
+                                  </span>
+                                )}
+                            </>
+                          )}
                         </div>
                       )}
                       {/* chat body message */}
@@ -1374,7 +1452,11 @@ function Monitor({
                               if (e.ctrlKey) e.preventDefault();
                             }}
                           >
-                            <Linkify as="span">{lead.text}</Linkify>
+                            {setting?.disableLinkPreviews ? (
+                              <span>{lead.text}</span>
+                            ) : (
+                              <Linkify as="span">{lead.text}</Linkify>
+                            )}
                             <span
                               className={`${
                                 lead.userId === master._id && 'mr-5'

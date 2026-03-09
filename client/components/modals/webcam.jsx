@@ -80,6 +80,7 @@ function WebCam() {
           backData: modal.webcam.backData || null,
           targetId: modal.webcam.targetId || null,
           isGroup: modal.webcam.isGroup || false,
+          isChannel: modal.webcam.isChannel || false,
         },
       })
     );

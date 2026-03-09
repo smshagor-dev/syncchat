@@ -11,7 +11,7 @@ function AvatarUpload() {
   const uploadData =
     modal.avatarUpload && typeof modal.avatarUpload === 'object'
       ? modal.avatarUpload
-      : { targetId: null, isGroup: false };
+      : { targetId: null, isGroup: false, isChannel: false };
 
   const [respond, setRespond] = useState({ success: true, message: null });
   const galleryInputRef = useRef(null);
@@ -40,6 +40,7 @@ function AvatarUpload() {
           data: {
             targetId: uploadData.targetId,
             isGroup: uploadData.isGroup,
+            isChannel: uploadData.isChannel,
             src: base64,
             back: 'avatarUpload',
             backData: uploadData,
@@ -139,6 +140,7 @@ function AvatarUpload() {
                     backData: uploadData,
                     targetId: uploadData.targetId,
                     isGroup: uploadData.isGroup,
+                    isChannel: uploadData.isChannel,
                   },
                 })
               );

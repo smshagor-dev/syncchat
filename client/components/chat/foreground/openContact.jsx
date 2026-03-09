@@ -18,6 +18,7 @@ function OpenContact() {
         ![
           'friendProfile',
           'groupProfile',
+          'channelProfile',
           'groupParticipant',
           'addParticipant',
         ].includes(e[0])
@@ -49,6 +50,12 @@ function OpenContact() {
       label: 'Create chat',
       icon: bi.BiMessageSquareAdd,
       onClick: () => dispatch(setPage({ target: 'contact' })),
+    },
+    {
+      key: 'create-channel',
+      label: 'Create channel',
+      icon: bi.BiBroadcast,
+      onClick: () => dispatch(setPage({ target: 'channels', data: true })),
     },
     {
       key: 'create-group',
