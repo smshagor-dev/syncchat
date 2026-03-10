@@ -3,7 +3,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as md from 'react-icons/md';
 
-import { setReplyingChat, setSelectedChats } from '../../redux/features/chore';
+import {
+  setEditingChat,
+  setReplyingChat,
+  setSelectedChats,
+} from '../../redux/features/chore';
 import socket from '../../helpers/socket';
 import config from '../../config';
 
@@ -30,6 +34,20 @@ function Room() {
   const [newMessage, setNewMessage] = useState(0);
   const [control, setControl] = useState({ skip: 0, limit: 20 });
   const [searchQuery, setSearchQuery] = useState('');
+  const [pinsData, setPinsData] = useState({ roomId: null, pinned: [], history: [] });
+
+  const refreshPins = async (roomId, signal) => {
+    if (!roomId) {
+      setPinsData({ roomId: null, pinned: [], history: [] });
+      return;
+    }
+    try {
+      const { data } = await axios.get(`/chats/${roomId}/pins`, { signal });
+      setPinsData(data?.payload || { roomId, pinned: [], history: [] });
+    } catch (error0) {
+      setPinsData({ roomId, pinned: [], history: [] });
+    }
+  };
 
   const handleGetChats = async (signal) => {
     try {
@@ -71,6 +89,7 @@ function Room() {
     setSearchQuery('');
     dispatch(setSelectedChats(null));
     dispatch(setReplyingChat(null));
+    dispatch(setEditingChat(null));
     dispatch(setPage({ target: 'friendProfile', data: false }));
     dispatch(setPage({ target: 'groupProfile', data: false }));
     dispatch(setPage({ target: 'channelProfile', data: false }));
@@ -85,8 +104,10 @@ function Room() {
         socket.emit('room/open', { prevRoom, newRoom: roomId });
         // get messages
         await handleGetChats(signal);
+        await refreshPins(roomId, signal);
       } else {
         await handleGetChats(signal);
+        await refreshPins(roomId, signal);
       }
     }
   };
@@ -101,12 +122,19 @@ function Room() {
   }, [chatRoom.isOpen, chatRoom.refreshId]);
 
   useEffect(() => {
+    const onPinsUpdate = ({ roomId }) => {
+      if (!roomId || roomId !== chatRoom?.data?.roomId) return;
+      refreshPins(roomId);
+    };
+
     socket.on('room/open', (args) => setPrevRoom(args));
+    socket.on('chat/pins', onPinsUpdate);
 
     return () => {
       socket.off('room/open');
+      socket.off('chat/pins', onPinsUpdate);
     };
-  }, []);
+  }, [chatRoom?.data?.roomId]);
 
   useEffect(() => {
     const handleRefreshChats = async (event) => {
@@ -159,6 +187,8 @@ function Room() {
             <comp.header
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
+              pinsData={pinsData}
+              onPinsRefresh={() => refreshPins(chatRoom?.data?.roomId)}
             />
             <comp.monitor
               newMessage={newMessage}
@@ -169,6 +199,8 @@ function Room() {
               setControl={setControl}
               loaded={loaded}
               searchQuery={searchQuery}
+              pinsData={pinsData}
+              onPinsRefresh={() => refreshPins(chatRoom?.data?.roomId)}
             />
             <comp.send
               setChats={setChats}

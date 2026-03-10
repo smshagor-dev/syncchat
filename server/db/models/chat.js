@@ -92,6 +92,21 @@ const ChatModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    isEdited: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    editedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    editHistory: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
   },
   {
     timestamps: true,

@@ -25,7 +25,12 @@ import notification from '../../../helpers/notification';
 const EVENT_PREFIX = '__event__::';
 const POLL_PREFIX = '__poll__::';
 
-function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
+function Inbox({
+  inboxes,
+  setInboxes,
+  chatFilter = 'all',
+  searchState = null,
+}) {
   const dispatch = useDispatch();
   const {
     user: { master, setting },
@@ -301,6 +306,15 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     }
     return /^poll\s*:/i.test(text.trim()) || /^poll$/i.test(text.trim());
   };
+  const hasLink = (text) =>
+    typeof text === 'string' &&
+    /(https?:\/\/[^\s]+)|(www\.[^\s]+)/i.test(String(text));
+  const normalizedSearch = {
+    query: String(searchState?.query || '')
+      .trim()
+      .toLowerCase(),
+  };
+  const hasActiveSearch = !!normalizedSearch.query;
 
   const showStatusRail =
     !page.calls &&
@@ -383,6 +397,72 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
     setStatusActivity((prev) => ({ ...prev, open: false }));
     setStatusViewer({ open: true, userId, index });
   };
+
+  const patchPrivatePresence = React.useCallback(
+    (userId, online) => {
+      if (!userId) return;
+      const updatedAt = new Date().toISOString();
+
+      const patchOwner = (owner) => {
+        if (!owner || owner.userId !== userId) return owner;
+        return {
+          ...owner,
+          online: !!online,
+          ...(online
+            ? {}
+            : {
+                updatedAt,
+                lastSeenAt: updatedAt,
+              }),
+        };
+      };
+
+      setInboxes((prev) =>
+        (prev || []).map((elem) => {
+          if (elem?.roomType !== 'private' || !Array.isArray(elem?.owners)) {
+            return elem;
+          }
+
+          let touched = false;
+          const nextOwners = elem.owners.map((owner) => {
+            const nextOwner = patchOwner(owner);
+            if (nextOwner !== owner) touched = true;
+            return nextOwner;
+          });
+
+          return touched
+            ? {
+                ...elem,
+                owners: nextOwners,
+              }
+            : elem;
+        })
+      );
+
+      setCallLogs((prev) =>
+        (prev || []).map((elem) => {
+          if (elem?.roomType !== 'private' || !Array.isArray(elem?.owners)) {
+            return elem;
+          }
+
+          let touched = false;
+          const nextOwners = elem.owners.map((owner) => {
+            const nextOwner = patchOwner(owner);
+            if (nextOwner !== owner) touched = true;
+            return nextOwner;
+          });
+
+          return touched
+            ? {
+                ...elem,
+                owners: nextOwners,
+              }
+            : elem;
+        })
+      );
+    },
+    [setInboxes]
+  );
 
   const closeStatusViewer = () => {
     setStatusReplyText('');
@@ -977,6 +1057,36 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       if (chatFilter === 'favourite') return isFavouriteInbox(elem);
       if (chatFilter === 'group') return elem.roomType === 'group';
       return true;
+    })
+    .filter((elem) => {
+      if (!hasActiveSearch) return true;
+
+      const title = getInboxDisplayTitle(elem);
+      const ownerText = (elem.owners || [])
+        .map((owner) =>
+          [owner?.fullname, owner?.username, owner?.userId]
+            .filter(Boolean)
+            .join(' ')
+        )
+        .join(' ');
+      const contentText = String(elem?.content?.text || '');
+      const fileName = String(elem?.file?.originalname || '');
+      const senderName = String(elem?.content?.senderName || '');
+      const searchBlob = [
+        title,
+        ownerText,
+        senderName,
+        contentText,
+        fileName,
+        elem?.roomId || '',
+        elem?.roomType || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      const query = normalizedSearch.query;
+      if (!query) return true;
+      return searchBlob.includes(query);
     });
   const filteredInboxes = [...baseInboxes].sort((left, right) => {
     const leftPinned = isPinnedInbox(left);
@@ -1333,6 +1443,24 @@ function Inbox({ inboxes, setInboxes, chatFilter = 'all' }) {
       );
     };
   }, [mergeActiveRoomFromInbox, setting.mute, master?._id]);
+
+  useEffect(() => {
+    const handleUserConnect = (userId) => {
+      patchPrivatePresence(userId, true);
+    };
+
+    const handleUserDisconnect = (userId) => {
+      patchPrivatePresence(userId, false);
+    };
+
+    socket.on('user/connect', handleUserConnect);
+    socket.on('user/disconnect', handleUserDisconnect);
+
+    return () => {
+      socket.off('user/connect', handleUserConnect);
+      socket.off('user/disconnect', handleUserDisconnect);
+    };
+  }, [patchPrivatePresence]);
 
   useEffect(() => {
     if (!chatRoom?.isOpen || !chatRoom?.data) {

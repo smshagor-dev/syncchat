@@ -93,7 +93,81 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-09`
+- Last updated: `2026-03-10`
+
+## Core System Features
+
+- Authentication and account lifecycle:
+  - register/login with token-based auth
+  - email/account verification flow
+  - forgot-password request/verify/reset
+- Profile and identity:
+  - profile edit (name/bio/contact fields)
+  - avatar upload and update
+- Contacts and relationship controls:
+  - add/list/search contacts
+  - contact delete
+  - block/unblock with block-state checks
+- Realtime private and group messaging:
+  - Socket.IO-based message delivery and room updates
+  - text messaging with read/delivered state
+  - reply, forward, react, edit, and delete message actions
+  - unread counters and inbox synchronization
+- Media and file messaging:
+  - chat file upload support
+  - image/video/file/audio attachments in chat
+  - media/call/starred retrieval endpoints
+- Group collaboration foundation:
+  - group create/open/join by invite link
+  - participant listing and participant management flows
+  - group privacy/public-private controls
+- Status/story system foundation:
+  - status post, view tracking, reaction, and reply APIs
+  - status activity feed and status delete
+- Calling foundation:
+  - in-chat audio/video call initiation UI
+  - call log retrieval and call-type preview in inbox
+- Settings foundation:
+  - user settings read/update pipeline
+  - privacy/notification/chat-preference persistence at account level
+
+## Recent Changes (2026-03-10)
+
+- Added end-to-end pinned message system:
+  - multiple pinned messages per room (not single local pin)
+  - backend persistence for pinned items + pin history
+  - new APIs:
+    - `GET /chats/:roomId/pins`
+    - `POST /chats/:chatId/pin`
+    - `DELETE /chats/:chatId/pin`
+  - realtime pin updates via Socket.IO event `chat/pins`
+  - room header pinned message panel with:
+    - row-based pinned message list
+    - pinned-by user info + avatar
+    - quick unpin action
+    - jump-to-message support
+    - history access from 3-dot menu
+- Replaced previous localStorage-based pinned flow in room monitor with server-backed pin/unpin.
+- Improved room-header pinned UI responsiveness:
+  - full-width layout aligned to room header width
+  - fixed avatar alignment in header when pinned list expands/collapses
+  - collapsed-by-default pinned summary with expand-on-click behavior
+  - wider history dropdown for better readability
+- Added advanced poll/quiz support end-to-end:
+  - poll mode + quiz mode
+  - anonymous/non-anonymous voting
+  - multi-select voting support
+  - close poll action
+  - correct-answer support for quizzes
+  - closed-state enforcement (no further voting after close)
+  - live results updates over sockets for vote and close events
+- Updated poll creation modal:
+  - mode switcher (`Poll` / `Quiz`)
+  - anonymous toggle
+  - multi-select toggle
+  - correct-option selection for quizzes
+  - payload upgraded to poll schema `version: 2`
+- Updated poll parsing/serialization across server and client helpers to support new poll fields (`mode`, `anonymous`, `multiSelect`, `correctOptionIds`, `closedAt`, `closedBy`).
 
 ## Recent Changes (2026-03-09)
 

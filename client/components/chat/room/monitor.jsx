@@ -11,6 +11,7 @@ import {
   touchAndHoldEnd,
 } from '../../../helpers/touchAndHold';
 import {
+  setEditingChat,
   setReplyingChat,
   setSelectedChats,
 } from '../../../redux/features/chore';
@@ -28,29 +29,6 @@ import { isGroupAdmin } from '../../../helpers/groupAdmins';
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
 const GROUP_INFO_PREFIX = '__group_info__::';
-const PINNED_MESSAGE_STORE_KEY = 'syncchat-room-pinned-message-v1';
-
-const getPinnedStore = () => {
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(PINNED_MESSAGE_STORE_KEY) || '{}'
-    );
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (error0) {
-    return {};
-  }
-};
-
-const setPinnedStore = (next) => {
-  try {
-    window.localStorage.setItem(
-      PINNED_MESSAGE_STORE_KEY,
-      JSON.stringify(next || {})
-    );
-  } catch (error0) {
-    // ignore storage failure
-  }
-};
 
 function Monitor({
   newMessage,
@@ -61,6 +39,8 @@ function Monitor({
   setControl,
   loaded,
   searchQuery,
+  pinsData,
+  onPinsRefresh,
 }) {
   const dispatch = useDispatch();
   const {
@@ -81,7 +61,6 @@ function Monitor({
   const audioRefs = useRef({});
   const monitorRef = useRef(null);
   const initialBottomPinRef = useRef(false);
-  const roomIdRef = useRef(null);
   const [loadingScroll, setLoadingScroll] = useState(false);
   const [messageMenu, setMessageMenu] = useState(null);
   const [playingAudioId, setPlayingAudioId] = useState(null);
@@ -90,7 +69,6 @@ function Monitor({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [appearance, setAppearance] = useState(DEFAULT_ROOM_APPEARANCE);
   const [openVoters, setOpenVoters] = useState({});
-  const [pinnedChatId, setPinnedChatId] = useState(null);
   const [manualMediaAccess, setManualMediaAccess] = useState({});
   const [nowTs, setNowTs] = useState(Date.now());
   const downloadedMediaRef = useRef(new Set());
@@ -120,6 +98,19 @@ function Monitor({
   const openDeleteFor = (chatId) => {
     dispatch(setSelectedChats([chatId]));
     dispatch(setModal({ target: 'confirmDeleteChat', data: true }));
+  };
+
+  const getEditHistoryList = (chat) =>
+    Array.isArray(chat?.editHistory) ? chat.editHistory : [];
+
+  const canEditChat = (chat) => {
+    if (!chat || chat.userId !== master._id) return false;
+    if (chat?.viewOnce?.enabled) return false;
+    if (chat?.profile?.isSecretSystemMessage) return false;
+    if (getPollFromChat(chat) || getEventFromChat(chat) || getGroupInfoFromChat(chat)) {
+      return false;
+    }
+    return true;
   };
 
   const isStarredByMe = (chat) =>
@@ -172,6 +163,7 @@ function Monitor({
                     .map((vote) => ({
                       userId: vote?.userId || '',
                       fullname: vote?.fullname || '[unknown]',
+                      at: vote?.at || null,
                     }))
                     .filter((vote) => vote.userId)
                 : [],
@@ -184,8 +176,19 @@ function Monitor({
       }
 
       return {
+        version: Number(parsed?.version || 1),
+        mode: parsed?.mode === 'quiz' ? 'quiz' : 'poll',
         question: String(parsed.question).trim(),
         options,
+        anonymous: !!parsed?.anonymous,
+        multiSelect: !!parsed?.multiSelect,
+        correctOptionIds: Array.isArray(parsed?.correctOptionIds)
+          ? parsed.correctOptionIds
+              .map((id) => String(id || '').trim())
+              .filter((id) => options.some((option) => option.id === id))
+          : [],
+        closedAt: parsed?.closedAt || null,
+        closedBy: parsed?.closedBy || null,
         createdBy: parsed?.createdBy || null,
       };
     } catch (error0) {
@@ -268,22 +271,38 @@ function Monitor({
     });
   };
 
-  const pinMessage = (chatId) => {
-    const roomId = chatRoom?.data?.roomId;
-    if (!roomId || !chatId) return;
-    const store = getPinnedStore();
-    store[roomId] = chatId;
-    setPinnedStore(store);
-    setPinnedChatId(chatId);
+  const closePoll = (chatId) => {
+    socket.emit('chat/poll-close', {
+      roomId: chatRoom.data.roomId,
+      chatId,
+      userId: master._id,
+    });
   };
 
-  const unpinMessage = () => {
+  const pinMessage = async (chatId) => {
     const roomId = chatRoom?.data?.roomId;
-    if (!roomId) return;
-    const store = getPinnedStore();
-    delete store[roomId];
-    setPinnedStore(store);
-    setPinnedChatId(null);
+    if (!roomId || !chatId) return;
+    try {
+      await axios.post(`/chats/${chatId}/pin`, { roomId });
+      if (onPinsRefresh) await onPinsRefresh();
+    } catch (error0) {
+      // eslint-disable-next-line no-console
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const unpinMessage = async (chatId) => {
+    const roomId = chatRoom?.data?.roomId;
+    if (!roomId || !chatId) return;
+    try {
+      await axios.delete(`/chats/${chatId}/pin`, {
+        data: { roomId },
+      });
+      if (onPinsRefresh) await onPinsRefresh();
+    } catch (error0) {
+      // eslint-disable-next-line no-console
+      console.error(error0?.response?.data?.message || error0.message);
+    }
   };
 
   const openGroupEditSettings = () => {
@@ -497,6 +516,16 @@ function Monitor({
       );
     });
 
+    socket.on('chat/poll-close', ({ chatId, text, poll }) => {
+      setChats((prev) =>
+        prev.map((elem) =>
+          elem._id === chatId
+            ? { ...elem, text: text || elem.text, poll: poll || null }
+            : elem
+        )
+      );
+    });
+
     socket.on('chat/delete', ({ userId, chatsId }) => {
       if (chatRoom.isOpen) {
         if (userId === master._id) {
@@ -528,6 +557,7 @@ function Monitor({
       socket.off('chat/delivered');
       socket.off('chat/react');
       socket.off('chat/poll-vote');
+      socket.off('chat/poll-close');
       socket.off('chat/delete');
       socket.off('chat/forward-blocked');
     };
@@ -788,6 +818,32 @@ function Monitor({
       ? rightTs - leftTs <= 120000
       : false;
   };
+  const highlightText = (value, query) => {
+    const text = String(value || '');
+    const normalized = String(query || '').trim();
+    if (!normalized) return text;
+
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!escaped) return text;
+    const regex = new RegExp(`(${escaped})`, 'ig');
+    const parts = text.split(regex);
+
+    return parts.map((part, index) =>
+      part.toLowerCase() === normalized.toLowerCase() ? (
+        <mark
+          key={`${part}-${index}`}
+          className="rounded bg-amber-200 px-[1px] text-inherit dark:bg-amber-500/40"
+        >
+          {part}
+        </mark>
+      ) : (
+        <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+      )
+    );
+  };
+  const normalizedSearch = String(searchQuery || '')
+    .trim()
+    .toLowerCase();
   const visibleChats = chats
     ? chats.filter(
         (elem) =>
@@ -799,9 +855,6 @@ function Monitor({
           )
       )
     : [];
-  const normalizedSearch = String(searchQuery || '')
-    .trim()
-    .toLowerCase();
   const displayedChats = normalizedSearch
     ? visibleChats.filter((chat) => {
         const poll = getPollFromChat(chat);
@@ -836,6 +889,7 @@ function Monitor({
         return haystack.includes(normalizedSearch);
       })
     : visibleChats;
+  const pinnedIds = new Set((pinsData?.pinned || []).map((item) => item.chatId));
   const openPhotoPreview = (url) => {
     const resolved = resolveUploadUrl(url);
     if (!resolved) return;
@@ -903,16 +957,11 @@ function Monitor({
   };
 
   useEffect(() => {
-    const currentRoomId = chatRoom?.data?.roomId || null;
-    if (roomIdRef.current === currentRoomId) return;
-    roomIdRef.current = currentRoomId;
     initialBottomPinRef.current = false;
     setShowScrollBottom(false);
     setOpenVoters({});
-    setPinnedChatId(
-      currentRoomId ? getPinnedStore()[currentRoomId] || null : null
-    );
     setManualMediaAccess({});
+    const currentRoomId = chatRoom?.data?.roomId || null;
     const roomAppearance = getRoomAppearance(currentRoomId);
     setAppearance({
       ...roomAppearance,
@@ -961,13 +1010,6 @@ function Monitor({
   }, [master._id]);
 
   useEffect(() => {
-    if (!pinnedChatId || !Array.isArray(chats)) return;
-    const exists = chats.some((chat) => chat._id === pinnedChatId);
-    if (exists) return;
-    unpinMessage();
-  }, [pinnedChatId, chats]);
-
-  useEffect(() => {
     const onAppearanceUpdate = (event) => {
       const targetRoomId = event?.detail?.roomId;
       const currentRoomId = chatRoom?.data?.roomId;
@@ -988,6 +1030,18 @@ function Monitor({
       window.removeEventListener(ROOM_APPEARANCE_EVENT, onAppearanceUpdate);
     };
   }, [chatRoom?.data?.roomId]);
+
+  useEffect(() => {
+    const onJump = (event) => {
+      const targetChatId = event?.detail?.chatId;
+      if (!targetChatId) return;
+      jumpToReferencedMessage(targetChatId);
+    };
+    window.addEventListener('syncchat:jump-to-chat', onJump);
+    return () => {
+      window.removeEventListener('syncchat:jump-to-chat', onJump);
+    };
+  }, [selectedChats]);
 
   const wallpaperStyle = getWallpaperStyle(appearance);
 
@@ -1043,60 +1097,6 @@ function Monitor({
         </div>
       )}
       <div id="monitor-content" className="relative py-4 pb-0 flex flex-col">
-        {pinnedChatId && (
-          <div className="sticky top-2 z-[8] mx-3 mb-2">
-            <div className="w-full rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-left shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-800/95">
-              <span className="flex items-center justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                    <ri.RiPushpin2Line />
-                    Pinned Message
-                  </span>
-                  <p className="truncate text-sm opacity-85">
-                    {(() => {
-                      const pinned = displayedChats.find(
-                        (item) => item._id === pinnedChatId
-                      );
-                      if (!pinned) return 'Tap to jump';
-                      const poll = getPollFromChat(pinned);
-                      if (poll) return `Poll: ${poll.question}`;
-                      const eventData = getEventFromChat(pinned);
-                      if (eventData) return `Event: ${eventData.title}`;
-                      const groupInfo = getGroupInfoFromChat(pinned);
-                      if (groupInfo) return `Group: ${groupInfo.groupName}`;
-                      return (
-                        pinned.text ||
-                        pinned.file?.originalname ||
-                        '[attachment]'
-                      );
-                    })()}
-                  </p>
-                </span>
-                <span className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs hover:bg-slate-100 dark:hover:bg-spill-700"
-                    onClick={() => jumpToReferencedMessage(pinnedChatId)}
-                  >
-                    <span>Open</span>
-                    <bi.BiChevronRight />
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full p-1.5 hover:bg-slate-100 dark:hover:bg-spill-700"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      unpinMessage();
-                    }}
-                    title="Unpin"
-                  >
-                    <bi.BiX />
-                  </button>
-                </span>
-              </span>
-            </div>
-          </div>
-        )}
         {loadingScroll && (
           <div className="mb-2 flex justify-center">
             <i className="animate-spin">
@@ -1140,6 +1140,7 @@ function Monitor({
           const isSecretSystemLine = !!lead?.profile?.isSecretSystemMessage;
           const isSystemLine = !!systemMeta || isSecretSystemLine;
           const SystemIcon = systemMeta?.icon || bi.BiInfoCircle;
+          const leadEdited = !!lead.isEdited || getEditHistoryList(lead).length > 0;
 
           return (
             <React.Fragment key={elem._id}>
@@ -1363,7 +1364,9 @@ function Monitor({
                               {lead.reply?.fullname || '[inactive]'}
                             </span>
                             <p className="text-sm opacity-60">
-                              {lead.reply?.text || '[message unavailable]'}
+                              {lead.reply?.text
+                                ? highlightText(lead.reply.text, normalizedSearch)
+                                : '[message unavailable]'}
                             </p>
                           </span>
                         </div>
@@ -1417,7 +1420,12 @@ function Monitor({
                               </i>
                               <span className="min-w-0">
                                 <p className="truncate text-sm font-medium">
-                                  {lead.file.originalname || 'Attachment'}
+                                  {lead.file.originalname
+                                    ? highlightText(
+                                        lead.file.originalname,
+                                        normalizedSearch
+                                      )
+                                    : 'Attachment'}
                                 </p>
                                 <p className="mt-1 text-xs opacity-70">
                                   {isSecretChat
@@ -1627,7 +1635,10 @@ function Monitor({
                                       <ri.RiFileTextFill size={20} />
                                     </i>
                                     <p className="break-all">
-                                      {lead.file.originalname}
+                                      {highlightText(
+                                        lead.file.originalname,
+                                        normalizedSearch
+                                      )}
                                     </p>
                                     {!isSecretChat && (
                                       <a
@@ -1669,7 +1680,10 @@ function Monitor({
                             }}
                           >
                             <p className="font-bold truncate text-cyan-700 dark:text-cyan-300">
-                              {lead.profile?.fullname ?? '[inactive]'}
+                              {highlightText(
+                                lead.profile?.fullname ?? '[inactive]',
+                                normalizedSearch
+                              )}
                             </p>
                           </span>
                         )}
@@ -1682,17 +1696,16 @@ function Monitor({
                             }}
                           >
                             {setting?.disableLinkPreviews ? (
-                              <span>{lead.text}</span>
+                              <span>{highlightText(lead.text, normalizedSearch)}</span>
                             ) : (
-                              <Linkify as="span">{lead.text}</Linkify>
+                              <span>
+                                {normalizedSearch ? (
+                                  highlightText(lead.text, normalizedSearch)
+                                ) : (
+                                  <Linkify as="span">{lead.text}</Linkify>
+                                )}
+                              </span>
                             )}
-                            <span
-                              className={`${
-                                lead.userId === master._id && 'mr-5'
-                              } invisible text-xs ml-1`}
-                            >
-                              {moment(albumLast.createdAt).format('LT')}
-                            </span>
                           </p>
                         )}
                         {lead.viewOnce?.enabled && !lead.file && (
@@ -1774,28 +1787,74 @@ function Monitor({
                         )}
                         {isPoll && (
                           <div className="w-[248px] sm:w-[300px] rounded-2xl border border-slate-200/80 bg-white/75 p-2.5 shadow-sm backdrop-blur-sm dark:border-spill-700 dark:bg-spill-900/40">
+                            {(() => {
+                              const totalVotes = pollData.options.reduce(
+                                (sum, item) => sum + item.votes.length,
+                                0
+                              );
+                              const isClosed = !!pollData.closedAt;
+                              const canClose =
+                                !isClosed &&
+                                (pollData.createdBy === master._id ||
+                                  lead.userId === master._id ||
+                                  isCurrentUserGroupAdmin);
+                              const showVoters = !pollData.anonymous;
+                              const modeLabel =
+                                pollData.mode === 'quiz' ? 'Quiz' : 'Poll';
+                              return (
+                                <>
                             <div className="mb-2 flex items-center justify-between">
                               <span className="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                                 <bi.BiBarChartAlt2 />
-                                Poll
+                                      {modeLabel}
                               </span>
-                              <span className="text-[11px] opacity-75">
-                                Tap to vote
+                                    <span className="flex items-center gap-1">
+                                      {canClose && (
+                                        <button
+                                          type="button"
+                                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            closePoll(lead._id);
+                                          }}
+                                        >
+                                          Close
+                                        </button>
+                                      )}
+                                      <span className="text-[11px] opacity-75">
+                                        {isClosed ? 'Closed' : 'Tap to vote'}
                               </span>
+                                    </span>
                             </div>
+                                  <div className="mb-1 flex flex-wrap gap-1">
+                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:bg-spill-700/70">
+                                      {pollData.anonymous
+                                        ? 'Anonymous'
+                                        : 'Public votes'}
+                                    </span>
+                                    {pollData.multiSelect && (
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:bg-spill-700/70">
+                                        Multi select
+                                      </span>
+                                    )}
+                                    {isClosed && (
+                                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                                        Closed
+                                      </span>
+                                    )}
+                                  </div>
                             <p className="mb-2 text-sm font-semibold leading-5">
                               {pollData.question}
                             </p>
                             <div className="grid gap-2">
                               {pollData.options.map((option) => {
                                 const voteCount = option.votes.length;
-                                const totalVotes = pollData.options.reduce(
-                                  (sum, item) => sum + item.votes.length,
-                                  0
-                                );
                                 const votedByMe = option.votes.some(
                                   (vote) => vote.userId === master._id
                                 );
+                                const isCorrect =
+                                  pollData.mode === 'quiz' &&
+                                  pollData.correctOptionIds.includes(option.id);
                                 const progress =
                                   totalVotes > 0
                                     ? (voteCount / totalVotes) * 100
@@ -1816,6 +1875,7 @@ function Monitor({
                                     }`}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (isClosed) return;
                                       voteOnPoll(lead._id, option.id);
                                     }}
                                   >
@@ -1830,6 +1890,12 @@ function Monitor({
                                       <span className="flex items-center gap-1 text-[11px] opacity-80">
                                         <span>{voteCount}</span>
                                         <span>({percent}%)</span>
+                                        {isCorrect && isClosed && (
+                                          <ri.RiShieldCheckLine
+                                            className="text-emerald-600 dark:text-emerald-400"
+                                            size={14}
+                                          />
+                                        )}
                                         {votedByMe && (
                                           <ri.RiCheckLine
                                             className="text-emerald-600 dark:text-emerald-400"
@@ -1844,27 +1910,26 @@ function Monitor({
                             </div>
                             <p className="mt-2 text-[11px] opacity-70">
                               Total votes:{' '}
-                              {pollData.options.reduce(
-                                (sum, item) => sum + item.votes.length,
-                                0
-                              )}
+                                    {totalVotes}
                             </p>
-                            <button
-                              type="button"
-                              className="mt-1 w-fit text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenVoters((prev) => ({
-                                  ...prev,
-                                  [lead._id]: !prev[lead._id],
-                                }));
-                              }}
-                            >
-                              {openVoters[lead._id]
-                                ? 'Hide voters'
-                                : 'Show voters'}
-                            </button>
-                            {openVoters[lead._id] && (
+                                  {showVoters && (
+                                    <button
+                                      type="button"
+                                      className="mt-1 w-fit text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenVoters((prev) => ({
+                                          ...prev,
+                                          [lead._id]: !prev[lead._id],
+                                        }));
+                                      }}
+                                    >
+                                      {openVoters[lead._id]
+                                        ? 'Hide voters'
+                                        : 'Show voters'}
+                                    </button>
+                                  )}
+                                  {showVoters && openVoters[lead._id] && (
                               <div className="mt-1 max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white/90 p-2 text-xs dark:border-spill-700 dark:bg-spill-900/70">
                                 {pollData.options.map((option) => (
                                   <div
@@ -1884,7 +1949,10 @@ function Monitor({
                                   </div>
                                 ))}
                               </div>
-                            )}
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
                         {lead.reactions &&
@@ -1906,7 +1974,15 @@ function Monitor({
                               )}
                             </div>
                           )}
-                        <span className="p-2 absolute bottom-0 right-0 flex gap-0.5 items-center">
+                        <span className="mt-1 px-1 pb-0.5 flex justify-end gap-1 items-center">
+                          {leadEdited && (
+                            <span
+                              className="rounded-full bg-slate-100 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-spill-700 dark:text-spill-200"
+                              title="Message edited"
+                            >
+                              edited
+                            </span>
+                          )}
                           <p className="text-xs opacity-80">
                             {moment(albumLast.createdAt).format('LT')}
                           </p>
@@ -2000,12 +2076,32 @@ function Monitor({
                       })(),
                     })
                   );
+                  dispatch(setEditingChat(null));
                   setMessageMenu(null);
                 }}
               >
                 <bi.BiReply size={18} />
                 <span>Reply</span>
               </button>
+              {canEditChat(menuTarget) && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"
+                  onClick={() => {
+                    dispatch(
+                      setEditingChat({
+                        _id: messageMenu.chatId,
+                        text: menuTarget.text || '',
+                        replyTo: menuTarget.replyTo || null,
+                      })
+                    );
+                    setMessageMenu(null);
+                  }}
+                >
+                  <bi.BiEditAlt size={18} />
+                  <span>Edit</span>
+                </button>
+              )}
               {!isSecretChat && (
                 <button
                   type="button"
@@ -2053,18 +2149,18 @@ function Monitor({
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-spill-700"
-                onClick={() => {
-                  if (pinnedChatId === messageMenu.chatId) {
-                    unpinMessage();
+                onClick={async () => {
+                  if (pinnedIds.has(messageMenu.chatId)) {
+                    await unpinMessage(messageMenu.chatId);
                   } else {
-                    pinMessage(messageMenu.chatId);
+                    await pinMessage(messageMenu.chatId);
                   }
                   setMessageMenu(null);
                 }}
               >
                 <ri.RiPushpin2Line size={18} />
                 <span>
-                  {pinnedChatId === messageMenu.chatId
+                  {pinnedIds.has(messageMenu.chatId)
                     ? 'Unpin Message'
                     : 'Pin Message'}
                 </span>

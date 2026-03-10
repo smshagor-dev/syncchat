@@ -13,6 +13,9 @@ router.get('/chats/media', authenticate, ctrl.findMedia);
 router.get('/chats/calls', authenticate, ctrl.findCalls);
 router.get('/chats/starred', authenticate, ctrl.findStarred);
 router.patch('/chats/:chatId/star', authenticate, ctrl.toggleStar);
+router.get('/chats/:roomId/pins', authenticate, ctrl.findPinned);
+router.post('/chats/:chatId/pin', authenticate, ctrl.pinMessage);
+router.delete('/chats/:chatId/pin', authenticate, ctrl.unpinMessage);
 router.get('/chats/:roomId', authenticate, ctrl.findByRoomId);
 router.delete('/chats/:roomId', authenticate, ctrl.deleteByRoomId);
 

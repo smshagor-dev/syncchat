@@ -7,6 +7,7 @@ const ChoreSlice = createSlice({
     selectedChats: null,
     selectedInboxes: null,
     replyingChat: null,
+    editingChat: null,
     refreshFriendProfile: null,
     refreshAvatar: null,
     refreshGroupAvatar: null,
@@ -46,6 +47,9 @@ const ChoreSlice = createSlice({
     setReplyingChat(state, action) {
       state.replyingChat = action.payload;
     },
+    setEditingChat(state, action) {
+      state.editingChat = action.payload;
+    },
     setRefreshFriendProfile(state, action) {
       state.refreshFriendProfile = action.payload;
     },
@@ -70,6 +74,7 @@ export const {
   setSelectedChats,
   setSelectedInboxes,
   setReplyingChat,
+  setEditingChat,
   setRefreshFriendProfile,
   setRefreshAvatar,
   setRefreshGroupAvatar,

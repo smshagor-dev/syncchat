@@ -2,10 +2,12 @@ const Inbox = require('../helpers/models/inbox');
 const InboxModel = require('../db/models/inbox');
 const ChatModel = require('../db/models/chat');
 const ProfileModel = require('../db/models/profile');
+const ChannelModel = require('../db/models/channel');
 const { addToSet, pullFromArray, asArray, toPlain } = require('../db/utils');
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 const response = require('../helpers/response');
+const { trackChannelEvent } = require('../helpers/channelAnalytics');
 const { getSettingMap, allowsReadReceipts } = require('../helpers/privacy');
 const {
   createSecretSession,
@@ -487,6 +489,22 @@ exports.updatePreferences = async (req, res) => {
     }
 
     await inbox.update(updates);
+
+    if (action === 'mute') {
+      const channel = await ChannelModel.findOne({
+        where: { roomId },
+        attributes: ['_id'],
+      });
+      if (channel?._id) {
+        const isMutedNow = asArray(updates.mutedBy).includes(userId);
+        await trackChannelEvent({
+          channelId: channel._id,
+          userId,
+          eventType: isMutedNow ? 'subscriber_mute' : 'subscriber_unmute',
+          meta: { source: 'inbox-preference' },
+        });
+      }
+    }
 
     let payloadInbox = null;
     const refreshedInbox = await InboxModel.findOne({ where: { roomId } });

@@ -47,14 +47,34 @@ const {
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
+const GROUP_INFO_PREFIX = '__group_info__::';
+
+const sanitizeEditHistory = (history) =>
+  asArray(history)
+    .map((entry) => ({
+      text: String(entry?.text || ''),
+      replyTo: entry?.replyTo || null,
+      editedAt: entry?.editedAt || null,
+      editedBy: entry?.editedBy || null,
+    }))
+    .filter((entry) => entry.text.length > 0 || entry.replyTo);
 
 const normalizePollVotes = (votes) =>
   asArray(votes)
     .map((vote) => ({
       userId: vote?.userId || '',
       fullname: vote?.fullname || '[unknown]',
+      at: vote?.at || null,
     }))
     .filter((vote) => vote.userId);
+
+const normalizePollCorrectOptionIds = (poll, options) => {
+  const validIds = new Set(options.map((option) => option.id));
+  const raw = asArray(poll?.correctOptionIds)
+    .map((id) => String(id || '').trim())
+    .filter((id) => validIds.has(id));
+  return [...new Set(raw)];
+};
 
 const normalizePollPayload = (poll) => {
   const options = asArray(poll?.options)
@@ -69,10 +89,24 @@ const normalizePollPayload = (poll) => {
     return null;
   }
 
+  const anonymous = !!poll?.anonymous;
+  const multiSelect = !!poll?.multiSelect;
+  const mode = poll?.mode === 'quiz' ? 'quiz' : 'poll';
+  const closedAt = poll?.closedAt || null;
+  const closedBy = poll?.closedBy || null;
+  const correctOptionIds =
+    mode === 'quiz' ? normalizePollCorrectOptionIds(poll, options) : [];
+
   return {
-    version: 1,
+    version: 2,
+    mode,
     question: String(poll.question).trim(),
     options,
+    anonymous,
+    multiSelect,
+    correctOptionIds,
+    closedAt,
+    closedBy,
     createdBy: poll?.createdBy || null,
     createdAt: poll?.createdAt || new Date().toISOString(),
   };
@@ -101,6 +135,12 @@ const parseEventFromText = (text) => {
     return null;
   }
 };
+
+const isStructuredMessage = (text) =>
+  typeof text === 'string' &&
+  (text.startsWith(POLL_PREFIX) ||
+    text.startsWith(EVENT_PREFIX) ||
+    text.startsWith(GROUP_INFO_PREFIX));
 
 const getInboxPreviewText = (chatText, file) => {
   const poll = parsePollFromText(chatText);
@@ -272,6 +312,13 @@ const getSecretPayload = (secretRoom, chat) =>
       }
     : null;
 
+const buildHistoryEntry = ({ text, replyTo, userId, editedAt }) => ({
+  text: String(text || ''),
+  replyTo: replyTo || null,
+  editedAt: editedAt || new Date().toISOString(),
+  editedBy: userId || null,
+});
+
 const canAccessGroupRoom = async ({ roomId, userId }) => {
   if (!roomId || !userId) {
     return { canAccess: false, canSend: false, channel: null, group: null };
@@ -298,6 +345,20 @@ const canAccessGroupRoom = async ({ roomId, userId }) => {
     channel: toPlain(channelDoc),
     group: toPlain(groupDoc),
   };
+};
+
+const canManagePoll = ({ poll, chat, userId, roomType, groupAccess }) => {
+  if (!poll || !chat || !userId) return false;
+  if (poll.createdBy && poll.createdBy === userId) return true;
+  if (chat.userId === userId) return true;
+  if (roomType !== 'group') return false;
+  const group = groupAccess?.group || null;
+  if (!group) return false;
+  const adminIds = [
+    group.adminId,
+    ...asArray(group.adminsId),
+  ].filter(Boolean);
+  return adminIds.includes(userId);
 };
 
 module.exports = (socket) => {
@@ -938,6 +999,117 @@ module.exports = (socket) => {
     }
   });
 
+  socket.on('chat/edit', async ({ roomId, chatId, userId, text, replyTo }) => {
+    try {
+      if (!roomId || !chatId || !userId) return;
+
+      const chatDoc = await ChatModel.findOne({
+        where: { _id: chatId, roomId },
+      });
+      if (!chatDoc) return;
+
+      const chat = toPlain(chatDoc);
+      if (chat.userId !== userId) return;
+      if (chat.isSecretSystemMessage || isViewOnceChat(chat)) return;
+
+      const secretRoom = await getSecretRoomState(roomId);
+      const currentText = getResolvedChatText({ chat, secretRoom });
+      if (isStructuredMessage(currentText)) return;
+
+      const nextText = String(text || '').trim();
+      if (!nextText) return;
+      const nextReplyTo = replyTo || null;
+
+      if (currentText === nextText && (chat.replyTo || null) === nextReplyTo) {
+        return;
+      }
+
+      const editedAt = new Date().toISOString();
+      const nextHistory = [
+        ...sanitizeEditHistory(chat.editHistory),
+        buildHistoryEntry({
+          text: currentText,
+          replyTo: chat.replyTo || null,
+          userId,
+          editedAt,
+        }),
+      ];
+
+      const encryptedText =
+        isSecretEnabled(secretRoom) && nextText.length > 0
+          ? encryptSecretText({
+              text: nextText,
+              key: secretRoom.secretSessionKey,
+            })
+          : null;
+
+      await chatDoc.update({
+        text: isSecretEnabled(secretRoom) ? '' : nextText,
+        encryptedText,
+        replyTo: nextReplyTo,
+        isEdited: true,
+        editedAt,
+        editHistory: nextHistory,
+      });
+
+      const updatedChat = toPlain(chatDoc);
+      const resolvedText = getResolvedChatText({ chat: updatedChat, secretRoom });
+
+      io.to(roomId).emit('chat/edit', {
+        chatId,
+        text: resolvedText,
+        replyTo: nextReplyTo,
+        editedAt,
+        isEdited: true,
+        editHistory: nextHistory,
+        poll: parsePollFromText(resolvedText),
+      });
+
+      const latestChatDoc = await ChatModel.findOne({
+        where: { roomId },
+        order: [['createdAt', 'DESC']],
+      });
+
+      if (latestChatDoc && toPlain(latestChatDoc)?._id === chatId) {
+        const currentInbox = await InboxModel.findOne({ where: { roomId } });
+        if (currentInbox) {
+          const currentContent = toPlain(currentInbox)?.content || {};
+          const attachment =
+            chat.fileId && !chat.file
+              ? toPlain(
+                  await FileModel.findOne({
+                    where: { fileId: chat.fileId },
+                  })
+                )
+              : null;
+          const previewText = isSecretEnabled(secretRoom)
+            ? getSecretPreviewText({ text: resolvedText, file: attachment })
+            : getInboxPreviewText(resolvedText, attachment);
+
+          await currentInbox.update({
+            content: {
+              ...currentContent,
+              text: previewText,
+            },
+          });
+
+          const inboxes = await Inbox.find({ roomId });
+          if (inboxes[0]) {
+            io.to(asArray(inboxes[0].ownersId)).emit('inbox/find', inboxes[0]);
+          }
+        }
+      }
+    } catch (error0) {
+      logger.error('CHAT_EDIT_ERROR', {
+        message: error0.message,
+        stack: error0.stack,
+        roomId,
+        chatId,
+        userId,
+      });
+    }
+  });
+
   socket.on('chat/poll-vote', async ({ roomId, chatId, userId, optionId }) => {
     try {
       if (!roomId || !chatId || !userId || !optionId) return;
@@ -949,6 +1121,9 @@ module.exports = (socket) => {
 
       const poll = parsePollFromText(chatDoc.text);
       if (!poll) return;
+      if (poll.closedAt) return;
+      const optionExists = poll.options.some((option) => option.id === optionId);
+      if (!optionExists) return;
 
       const voterProfile = toPlain(
         await ProfileModel.findOne({
@@ -957,25 +1132,57 @@ module.exports = (socket) => {
         })
       );
       const voterName = voterProfile?.fullname || '[unknown]';
+      const nowIso = new Date().toISOString();
+      let nextOptions = poll.options;
 
-      let alreadySelectedOptionId = null;
-      const cleanedOptions = poll.options.map((option) => {
-        const hasVote = option.votes.some((vote) => vote.userId === userId);
-        if (hasVote) alreadySelectedOptionId = option.id;
-        return {
-          ...option,
-          votes: option.votes.filter((vote) => vote.userId !== userId),
-        };
-      });
-
-      const shouldAddVote = alreadySelectedOptionId !== optionId;
-      const nextOptions = cleanedOptions.map((option) => {
-        if (option.id !== optionId || !shouldAddVote) return option;
-        return {
-          ...option,
-          votes: [...option.votes, { userId, fullname: voterName }],
-        };
-      });
+      if (poll.multiSelect) {
+        nextOptions = poll.options.map((option) => {
+          if (option.id !== optionId) return option;
+          const hasVote = option.votes.some((vote) => vote.userId === userId);
+          if (hasVote) {
+            return {
+              ...option,
+              votes: option.votes.filter((vote) => vote.userId !== userId),
+            };
+          }
+          return {
+            ...option,
+            votes: [
+              ...option.votes,
+              {
+                userId,
+                fullname: voterName,
+                at: nowIso,
+              },
+            ],
+          };
+        });
+      } else {
+        let alreadySelectedOptionId = null;
+        const cleanedOptions = poll.options.map((option) => {
+          const hasVote = option.votes.some((vote) => vote.userId === userId);
+          if (hasVote) alreadySelectedOptionId = option.id;
+          return {
+            ...option,
+            votes: option.votes.filter((vote) => vote.userId !== userId),
+          };
+        });
+        const shouldAddVote = alreadySelectedOptionId !== optionId;
+        nextOptions = cleanedOptions.map((option) => {
+          if (option.id !== optionId || !shouldAddVote) return option;
+          return {
+            ...option,
+            votes: [
+              ...option.votes,
+              {
+                userId,
+                fullname: voterName,
+                at: nowIso,
+              },
+            ],
+          };
+        });
+      }
 
       const nextPoll = normalizePollPayload({
         ...poll,
@@ -993,6 +1200,68 @@ module.exports = (socket) => {
       });
     } catch (error0) {
       logger.error('CHAT_POLL_VOTE_ERROR', {
+        message: error0.message,
+        stack: error0.stack,
+        roomId,
+        chatId,
+        userId,
+      });
+    }
+  });
+
+  socket.on('chat/poll-close', async ({ roomId, chatId, userId }) => {
+    try {
+      if (!roomId || !chatId || !userId) return;
+
+      const chatDoc = await ChatModel.findOne({
+        where: { _id: chatId, roomId },
+      });
+      if (!chatDoc) return;
+
+      const poll = parsePollFromText(chatDoc.text);
+      if (!poll || poll.closedAt) return;
+
+      let groupAccess = null;
+      const inbox = toPlain(
+        await InboxModel.findOne({
+          where: { roomId },
+          attributes: ['roomType'],
+        })
+      );
+      const roomType = inbox?.roomType === 'group' ? 'group' : 'private';
+      if (roomType === 'group') {
+        groupAccess = await canAccessGroupRoom({ roomId, userId });
+      }
+
+      if (
+        !canManagePoll({
+          poll,
+          chat: toPlain(chatDoc),
+          userId,
+          roomType,
+          groupAccess,
+        })
+      ) {
+        return;
+      }
+
+      const nextPoll = normalizePollPayload({
+        ...poll,
+        closedAt: new Date().toISOString(),
+        closedBy: userId,
+      });
+      if (!nextPoll) return;
+
+      const nextText = serializePollToText(nextPoll);
+      await chatDoc.update({ text: nextText });
+
+      io.to(roomId).emit('chat/poll-close', {
+        chatId,
+        text: nextText,
+        poll: nextPoll,
+      });
+    } catch (error0) {
+      logger.error('CHAT_POLL_CLOSE_ERROR', {
         message: error0.message,
         stack: error0.stack,
         roomId,

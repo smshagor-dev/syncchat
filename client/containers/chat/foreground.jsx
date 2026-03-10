@@ -17,6 +17,10 @@ import {
   setSelectedChats,
 } from '../../redux/features/chore';
 
+const getDefaultChatListSearch = () => ({
+  query: '',
+});
+
 function ForeGround() {
   const dispatch = useDispatch();
   const chatRoom = useSelector((state) => state.room.chat);
@@ -28,7 +32,7 @@ function ForeGround() {
   const pageState = useSelector((state) => state.page);
 
   const [inboxes, setInboxes] = useState(null);
-  const [search, setSearch] = useState('');
+  const [searchState, setSearchState] = useState(getDefaultChatListSearch);
   const [chatFilter, setChatFilter] = useState('all');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [deepLink, setDeepLink] = useState({
@@ -108,10 +112,7 @@ function ForeGround() {
     try {
       setInboxes(null);
 
-      const { data } = await axios.get('/inboxes', {
-        params: { search },
-        signal,
-      });
+      const { data } = await axios.get('/inboxes', { signal });
       setInboxes(data.payload);
     } catch (error0) {
       console.error(error0.response.data.message);
@@ -125,11 +126,11 @@ function ForeGround() {
     return () => {
       abortCtrl.abort();
     };
-  }, [refreshInbox, search]);
+  }, [refreshInbox]);
 
   useEffect(() => {
     setChatFilter('all');
-  }, [search]);
+  }, [searchState.query]);
 
   useEffect(() => {
     const isEditableTarget = (target) => {
@@ -640,7 +641,8 @@ function ForeGround() {
       />
       <div className="grid grid-rows-[auto_1fr] overflow-hidden">
         <fg.header
-          setSearch={setSearch}
+          searchState={searchState}
+          setSearchState={setSearchState}
           chatFilter={chatFilter}
           setChatFilter={setChatFilter}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
@@ -662,6 +664,7 @@ function ForeGround() {
           inboxes={inboxes}
           setInboxes={setInboxes}
           chatFilter={chatFilter}
+          searchState={searchState}
         />
       </div>
     </div>

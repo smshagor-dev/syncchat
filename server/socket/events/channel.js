@@ -28,6 +28,7 @@ const {
   getContactMap,
   canUserAddToGroup,
 } = require('../../helpers/privacy');
+const { trackChannelEvent } = require('../../helpers/channelAnalytics');
 
 const ensureAdminControl = ({ channel, userId }) => {
   if (!channel) throw new Error('Channel not found');
@@ -149,6 +150,17 @@ module.exports = (socket) => {
         io.to(requestedParticipants).emit('channel/avatar', avatarPayload);
       }
 
+      await Promise.allSettled(
+        requestedParticipants.map((participantId) =>
+          trackChannelEvent({
+            channelId: channel._id,
+            userId: participantId,
+            eventType: 'subscriber_join',
+            meta: { source: 'channel-create' },
+          })
+        )
+      );
+
       cb({
         success: true,
         message: 'Channel created successfully',
@@ -221,6 +233,12 @@ module.exports = (socket) => {
         io.to(inboxes[0].ownersId).emit('inbox/find', inboxes[0]);
       }
       io.to(channel.roomId).emit('channel/edit', { participantsId: nextParticipants });
+      await trackChannelEvent({
+        channelId: channel._id,
+        userId,
+        eventType: 'subscriber_join',
+        meta: { source: 'channel-subscribe' },
+      });
 
       cb({
         success: true,
@@ -235,6 +253,12 @@ module.exports = (socket) => {
   socket.on('channel/exit', async ({ userId, channelId }, cb) => {
     try {
       const channel = await ChannelModel.findOne({ where: { _id: channelId } });
+      await trackChannelEvent({
+        channelId,
+        userId,
+        eventType: 'subscriber_leave',
+        meta: { source: 'channel-exit' },
+      });
       const participantsId = pullFromArray(channel.participantsId, [userId]);
       if (participantsId.length === 0) {
         await InboxModel.destroy({ where: { roomId: channel.roomId } });
@@ -343,6 +367,12 @@ module.exports = (socket) => {
         participantId,
         adminsId: normalizedAdminsId,
         adminId: normalizedAdminsId[0] || channel.adminId,
+      });
+      await trackChannelEvent({
+        channelId: channel._id,
+        userId: participantId,
+        eventType: 'subscriber_leave',
+        meta: { source: 'remove-participant' },
       });
     } catch (error0) {
       console.error(error0.message);

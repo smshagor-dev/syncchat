@@ -21,11 +21,19 @@ function AttachPoll() {
 
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(buildInitialOptions());
+  const [pollMode, setPollMode] = useState('poll');
+  const [anonymous, setAnonymous] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [correctOptionIds, setCorrectOptionIds] = useState([]);
   const [status, setStatus] = useState('');
 
   const closeModal = () => {
     setQuestion('');
     setOptions(buildInitialOptions());
+    setPollMode('poll');
+    setAnonymous(false);
+    setMultiSelect(false);
+    setCorrectOptionIds([]);
     setStatus('');
     dispatch(setModal({ target: 'attachPoll', data: false }));
   };
@@ -60,6 +68,20 @@ function AttachPoll() {
     setOptions((prev) =>
       prev.length <= 2 ? prev : prev.filter((option) => option.id !== id)
     );
+    setCorrectOptionIds((prev) => prev.filter((optionId) => optionId !== id));
+  };
+
+  const toggleCorrectOption = (id) => {
+    if (pollMode !== 'quiz') return;
+    if (multiSelect) {
+      setCorrectOptionIds((prev) =>
+        prev.includes(id)
+          ? prev.filter((item) => item !== id)
+          : [...prev, id]
+      );
+      return;
+    }
+    setCorrectOptionIds((prev) => (prev[0] === id ? [] : [id]));
   };
 
   const handleSend = (e) => {
@@ -77,15 +99,35 @@ function AttachPoll() {
       setStatus('Please add a question and at least two options.');
       return;
     }
+    const optionRows = options
+      .map((item) => ({
+        id: item.id,
+        text: item.value.trim(),
+      }))
+      .filter((item) => item.text);
+
+    const validCorrectIds = correctOptionIds.filter((id) =>
+      optionRows.some((item) => item.id === id)
+    );
+    if (pollMode === 'quiz' && validCorrectIds.length === 0) {
+      setStatus('Select at least one correct answer for quiz.');
+      return;
+    }
 
     const pollPayload = {
-      version: 1,
+      version: 2,
+      mode: pollMode,
       question: cleanQuestion,
-      options: cleanOptions.map((option, index) => ({
-        id: `opt-${Date.now()}-${index + 1}`,
-        text: option,
+      options: optionRows.map((option, index) => ({
+        id: option.id || `opt-${Date.now()}-${index + 1}`,
+        text: option.text,
         votes: [],
       })),
+      anonymous,
+      multiSelect,
+      correctOptionIds: pollMode === 'quiz' ? validCorrectIds : [],
+      closedAt: null,
+      closedBy: null,
       createdBy: master._id,
       createdAt: new Date().toISOString(),
     };
@@ -146,11 +188,75 @@ function AttachPoll() {
             </label>
 
             <div className="grid gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'poll', label: 'Poll' },
+                  { id: 'quiz', label: 'Quiz' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`h-9 rounded-md border text-sm font-medium ${
+                      pollMode === item.id
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-400 dark:bg-sky-900/30 dark:text-sky-300'
+                        : 'border-spill-300 hover:bg-spill-100 dark:border-spill-700 dark:hover:bg-spill-700'
+                    }`}
+                    onClick={() => setPollMode(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="h-9 rounded-md border border-spill-300 px-3 text-xs flex items-center justify-between dark:border-spill-700">
+                  <span>Anonymous</span>
+                  <input
+                    type="checkbox"
+                    checked={anonymous}
+                    onChange={(e) => setAnonymous(e.target.checked)}
+                  />
+                </label>
+                <label className="h-9 rounded-md border border-spill-300 px-3 text-xs flex items-center justify-between dark:border-spill-700">
+                  <span>Multi select</span>
+                  <input
+                    type="checkbox"
+                    checked={multiSelect}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setMultiSelect(checked);
+                      if (!checked && correctOptionIds.length > 1) {
+                        setCorrectOptionIds((prev) => prev.slice(0, 1));
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
               {options.map((option, index) => (
                 <div
                   key={option.id}
-                  className="grid grid-cols-[1fr_auto] gap-2"
+                  className="grid grid-cols-[auto_1fr_auto] gap-2"
                 >
+                  {pollMode === 'quiz' ? (
+                    <button
+                      type="button"
+                      className={`h-10 w-10 rounded-md border text-sm font-semibold ${
+                        correctOptionIds.includes(option.id)
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : 'border-spill-300 dark:border-spill-700'
+                      }`}
+                      onClick={() => toggleCorrectOption(option.id)}
+                      title="Mark correct answer"
+                    >
+                      {correctOptionIds.includes(option.id) ? 'A' : '?'}
+                    </button>
+                  ) : (
+                    <span className="h-10 w-10 rounded-md border border-spill-300 dark:border-spill-700 grid place-items-center text-xs opacity-70">
+                      {index + 1}
+                    </span>
+                  )}
                   <input
                     id={option.id}
                     type="text"

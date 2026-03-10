@@ -44,6 +44,16 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    pinnedMessages: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    pinHistory: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     favouriteBy: {
       type: DataTypes.JSON,
       allowNull: false,

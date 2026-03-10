@@ -131,7 +131,6 @@ exports.update = async (req, res) => {
         ? nextPreset
         : 'whatsapp';
     }
-
     const setting = await ensureSetting(req.user._id);
     await setting.update(updates);
 

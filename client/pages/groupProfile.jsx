@@ -57,6 +57,9 @@ function GroupProfile({ mode = 'group' }) {
 
   const [participants, setParticipants] = useState(null);
   const [group, setGroup] = useState(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupLoadError, setGroupLoadError] = useState('');
+  const [groupReloadTick, setGroupReloadTick] = useState(0);
   const [privacyForm, setPrivacyForm] = useState({
     accessType: 'public',
     password: '',
@@ -87,6 +90,9 @@ function GroupProfile({ mode = 'group' }) {
     counts: { media: 0, link: 0, file: 0 },
     photos: [],
   });
+  const [channelAnalytics, setChannelAnalytics] = useState(null);
+  const [channelAnalyticsLoading, setChannelAnalyticsLoading] = useState(false);
+  const [analyticsPageOpen, setAnalyticsPageOpen] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [encryptionPopupOpen, setEncryptionPopupOpen] = useState(false);
   const [inboxPrefs, setInboxPrefs] = useState({
@@ -172,6 +178,8 @@ function GroupProfile({ mode = 'group' }) {
 
   const handleGetGroup = (signal) => {
     if (groupProfileId && !addParticipant && !groupParticipant) {
+      setGroupLoading(true);
+      setGroupLoadError('');
       if (isChannelView && chatRoom?.data?.channel?._id === groupProfileId) {
         setGroup((prev) => prev || chatRoom.data.channel);
       }
@@ -192,14 +200,28 @@ function GroupProfile({ mode = 'group' }) {
         .catch((error0) => {
           if (isChannelView && chatRoom?.data?.channel?._id === groupProfileId) {
             setGroup(chatRoom.data.channel);
+            setGroupLoadError('');
+            return;
           }
-          console.error(error0.message);
+          if (!isChannelView && chatRoom?.data?.group?._id === groupProfileId) {
+            setGroup(chatRoom.data.group);
+            setGroupLoadError('');
+            return;
+          }
+          const message = error0?.response?.data?.message || error0.message;
+          setGroup(null);
+          setParticipants([]);
+          setGroupLoadError(message || `Failed to load ${entityLabelLower} info`);
+          console.error(message);
+        })
+        .finally(() => {
+          setGroupLoading(false);
         });
     } else {
-      setTimeout(() => {
-        setParticipants(null);
-        setGroup(null);
-      }, 150);
+      setParticipants(null);
+      setGroup(null);
+      setGroupLoadError('');
+      setGroupLoading(false);
     }
   };
 
@@ -276,6 +298,27 @@ function GroupProfile({ mode = 'group' }) {
     }
   };
 
+  const handleGetChannelAnalytics = async (signal) => {
+    if (!isChannelView || !groupProfileId) {
+      setChannelAnalytics(null);
+      setChannelAnalyticsLoading(false);
+      return;
+    }
+
+    try {
+      setChannelAnalyticsLoading(true);
+      const { data } = await axios.get(`/channels/${groupProfileId}/analytics`, {
+        signal,
+      });
+      setChannelAnalytics(data?.payload || null);
+    } catch (error0) {
+      setChannelAnalytics(null);
+      console.error(error0.message);
+    } finally {
+      setChannelAnalyticsLoading(false);
+    }
+  };
+
   const updateInboxPreference = async (action, value) => {
     const roomId = groupProfileRoomIdFromPage || group?.roomId;
     if (!roomId) return false;
@@ -324,6 +367,7 @@ function GroupProfile({ mode = 'group' }) {
     handleGetGroup(abortCtrl.signal);
     handleGetRoomMedia(abortCtrl.signal);
     handleGetInboxPreference(abortCtrl.signal);
+    handleGetChannelAnalytics(abortCtrl.signal);
 
     return () => {
       abortCtrl.abort();
@@ -335,6 +379,8 @@ function GroupProfile({ mode = 'group' }) {
     addParticipant,
     !!groupParticipant,
     master?._id,
+    isChannelView,
+    groupReloadTick,
   ]);
 
   useEffect(() => {
@@ -548,6 +594,7 @@ function GroupProfile({ mode = 'group' }) {
     if (!groupProfileId) {
       setPermissionModalOpen(false);
       setPendingListModalOpen(false);
+      setAnalyticsPageOpen(false);
     }
   }, [groupProfileId]);
 
@@ -867,6 +914,86 @@ function GroupProfile({ mode = 'group' }) {
     }
   };
 
+  const analyticsGrowthDaily = Array.isArray(channelAnalytics?.subscriberGrowth?.daily)
+    ? channelAnalytics.subscriberGrowth.daily.slice(-10)
+    : [];
+  const analyticsMuteLeaveDaily = Array.isArray(channelAnalytics?.muteLeaveTrend?.daily)
+    ? channelAnalytics.muteLeaveTrend.daily.slice(-10)
+    : [];
+
+  const growthNetSeries = analyticsGrowthDaily.map((item) =>
+    Number(item?.net || 0)
+  );
+  const growthStart = Math.max(
+    0,
+    Number(channelAnalytics?.subscriberGrowth?.currentSubscribers || 0) -
+      growthNetSeries.reduce((sum, value) => sum + value, 0)
+  );
+  const growthSubscriberSeries = (() => {
+    let running = growthStart;
+    return growthNetSeries.map((value) => {
+      running += value;
+      return running;
+    });
+  })();
+
+  const muteSeries = analyticsMuteLeaveDaily.map((item) =>
+    Number(item?.mute || 0)
+  );
+  const leaveSeries = analyticsMuteLeaveDaily.map((item) =>
+    Number(item?.leave || 0)
+  );
+  const unmuteSeries = analyticsMuteLeaveDaily.map((item) =>
+    Number(item?.unmute || 0)
+  );
+
+  const chartSpec = {
+    width: 360,
+    height: 190,
+    left: 46,
+    right: 14,
+    top: 16,
+    bottom: 38,
+  };
+  const chartInnerWidth = chartSpec.width - chartSpec.left - chartSpec.right;
+  const chartInnerHeight = chartSpec.height - chartSpec.top - chartSpec.bottom;
+
+  const getChartX = (index, total) => {
+    if (total <= 1) return chartSpec.left + chartInnerWidth / 2;
+    return chartSpec.left + (index / (total - 1)) * chartInnerWidth;
+  };
+
+  const getChartY = (value, min, max) => {
+    const range = max - min || 1;
+    return chartSpec.top + (1 - (value - min) / range) * chartInnerHeight;
+  };
+
+  const buildLinePoints = (values, min, max) =>
+    values
+      .map((value, index) =>
+        `${getChartX(index, values.length).toFixed(1)},${getChartY(
+          value,
+          min,
+          max
+        ).toFixed(1)}`
+      )
+      .join(' ');
+
+  const growthYMin = Math.min(...growthSubscriberSeries, 0);
+  const growthYMax = Math.max(...growthSubscriberSeries, 1);
+  const growthRange = growthYMax - growthYMin || 1;
+  const growthTicks = [0, 1, 2, 3, 4].map((index) =>
+    Math.round(growthYMin + (index / 4) * growthRange)
+  );
+
+  const muteLeaveAll = [...muteSeries, ...leaveSeries, ...unmuteSeries];
+  const muteLeaveYMin = Math.min(...muteLeaveAll, 0);
+  const muteLeaveYMax = Math.max(...muteLeaveAll, 1);
+  const muteLeaveRange = muteLeaveYMax - muteLeaveYMin || 1;
+  const muteLeaveTicks = [0, 1, 2, 3, 4].map((index) =>
+    Math.round(muteLeaveYMin + (index / 4) * muteLeaveRange)
+  );
+
   return (
     <div
       className={`
@@ -878,7 +1005,7 @@ function GroupProfile({ mode = 'group' }) {
     >
       {
         // loading animation
-        !group && (
+        !group && groupLoading && (
           <div className="absolute w-full h-full flex justify-center items-center bg-white dark:bg-spill-900">
             <span className="flex gap-2 items-center">
               <i className="animate-spin">
@@ -889,6 +1016,38 @@ function GroupProfile({ mode = 'group' }) {
           </div>
         )
       }
+      {!group && !groupLoading && groupLoadError && (
+        <div className="absolute inset-x-0 top-16 z-20 px-4">
+          <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3 dark:border-rose-800 dark:bg-rose-900/20">
+            <p className="text-sm text-rose-700 dark:text-rose-300">
+              {groupLoadError}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                className="h-8 rounded-lg border border-spill-300 px-3 text-xs hover:bg-spill-100 dark:border-spill-700 dark:hover:bg-spill-800"
+                onClick={() =>
+                  dispatch(
+                    setPage({
+                      target: isChannelView ? 'channelProfile' : 'groupProfile',
+                      data: false,
+                    })
+                  )
+                }
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="h-8 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700"
+                onClick={() => setGroupReloadTick((prev) => prev + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* group context menu */}
       {!groupParticipant && modal.groupContextMenu && <GroupContextMenu />}
       {/* header */}
@@ -1149,6 +1308,21 @@ function GroupProfile({ mode = 'group' }) {
             <div className="px-4 py-2 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
               <hr className="border-0 border-t border-solid border-spill-200 dark:border-spill-700" />
             </div>
+            {isChannelView && (
+              <button
+                type="button"
+                className="py-3 px-4 grid grid-cols-[auto_1fr_auto] gap-3 items-center text-left border-0 border-b border-solid border-spill-100 dark:border-spill-800 hover:bg-spill-50 dark:hover:bg-spill-800/60"
+                onClick={() => {
+                  setAnalyticsPageOpen(true);
+                }}
+              >
+                <i>
+                  <bi.BiBarChartAlt2 />
+                </i>
+                <span>Channel analytics</span>
+                <bi.BiChevronRight />
+              </button>
+            )}
             <button
               type="button"
               className="py-3 px-4 grid grid-cols-[auto_1fr_auto] gap-3 items-center text-left border-0 border-b border-solid border-spill-100 dark:border-spill-800 hover:bg-spill-50 dark:hover:bg-spill-800/60"
@@ -1662,6 +1836,293 @@ function GroupProfile({ mode = 'group' }) {
                 <span>{item.label}</span>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {group && isChannelView && analyticsPageOpen && (
+        <div className="absolute inset-0 z-[180] bg-white dark:bg-spill-900 grid grid-rows-[auto_1fr]">
+          <div className="h-14 px-3 border-b border-spill-200 dark:border-spill-700 flex items-center gap-2">
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              onClick={() => setAnalyticsPageOpen(false)}
+            >
+              <bi.BiArrowBack size={18} />
+            </button>
+            <div className="min-w-0">
+              <p className="font-semibold truncate">Channel analytics</p>
+              {channelAnalyticsLoading && (
+                <p className="text-xs opacity-70">Loading...</p>
+              )}
+            </div>
+          </div>
+          <div className="overflow-y-auto p-3 grid gap-3">
+            {!channelAnalyticsLoading && !channelAnalytics && (
+              <p className="text-xs opacity-70">Analytics unavailable right now</p>
+            )}
+
+            {channelAnalytics && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/70 dark:bg-spill-800/50">
+                    <p className="text-xs opacity-70">Subscriber</p>
+                    <p className="text-xl font-bold">
+                      {channelAnalytics.subscriberGrowth.currentSubscribers}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/70 dark:bg-spill-800/50">
+                    <p className="text-xs opacity-70">Post</p>
+                    <p className="text-xl font-bold">
+                      {channelAnalytics.postReach.totalPosts}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/70 dark:bg-spill-800/50">
+                    <p className="text-xs opacity-70">Reaction</p>
+                    <p className="text-xl font-bold">
+                      {channelAnalytics.reactions.totalReactions}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-slate-50/70 dark:bg-spill-800/50">
+                    <p className="text-xs opacity-70">Mute</p>
+                    <p className="text-xl font-bold">
+                      {channelAnalytics.muteLeaveTrend.currentMutedSubscribers}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-white dark:bg-spill-900/70">
+                  <p className="text-xs font-semibold mb-2">
+                    Subscriber growth line (last 10 days)
+                  </p>
+                  <svg
+                    viewBox={`0 0 ${chartSpec.width} ${chartSpec.height}`}
+                    className="w-full h-40"
+                  >
+                    <text
+                      x={chartSpec.width / 2}
+                      y={chartSpec.height - 4}
+                      textAnchor="middle"
+                      fontSize="10"
+                      className="fill-slate-500 dark:fill-slate-300"
+                    >
+                      Date
+                    </text>
+                    <text
+                      x="12"
+                      y={chartSpec.height / 2}
+                      transform={`rotate(-90 12 ${chartSpec.height / 2})`}
+                      textAnchor="middle"
+                      fontSize="10"
+                      className="fill-slate-500 dark:fill-slate-300"
+                    >
+                      Subscribers
+                    </text>
+
+                    {growthTicks.map((tick) => {
+                      const y = getChartY(tick, growthYMin, growthYMax);
+                      return (
+                        <g key={`growth-tick-${tick}`}>
+                          <line
+                            x1={chartSpec.left}
+                            y1={y}
+                            x2={chartSpec.width - chartSpec.right}
+                            y2={y}
+                            stroke="currentColor"
+                            className="text-slate-200 dark:text-slate-700"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={chartSpec.left - 8}
+                            y={y + 3}
+                            textAnchor="end"
+                            fontSize="10"
+                            className="fill-slate-500 dark:fill-slate-300"
+                          >
+                            {tick}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    <line
+                      x1={chartSpec.left}
+                      y1={chartSpec.top}
+                      x2={chartSpec.left}
+                      y2={chartSpec.height - chartSpec.bottom}
+                      stroke="currentColor"
+                      className="text-slate-400 dark:text-slate-500"
+                      strokeWidth="1.2"
+                    />
+                    <line
+                      x1={chartSpec.left}
+                      y1={chartSpec.height - chartSpec.bottom}
+                      x2={chartSpec.width - chartSpec.right}
+                      y2={chartSpec.height - chartSpec.bottom}
+                      stroke="currentColor"
+                      className="text-slate-400 dark:text-slate-500"
+                      strokeWidth="1.2"
+                    />
+
+                    <polyline
+                      fill="none"
+                      stroke="#0ea5e9"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={buildLinePoints(
+                        growthSubscriberSeries,
+                        growthYMin,
+                        growthYMax
+                      )}
+                    />
+
+                    {analyticsGrowthDaily.map((day, index) => (
+                      <text
+                        key={`growth-x-${day.date}`}
+                        x={getChartX(index, analyticsGrowthDaily.length)}
+                        y={chartSpec.height - chartSpec.bottom + 14}
+                        textAnchor="middle"
+                        fontSize="9"
+                        className="fill-slate-500 dark:fill-slate-300"
+                      >
+                        {day.date.slice(5)}
+                      </text>
+                    ))}
+                  </svg>
+                </div>
+
+                <div className="p-3 rounded-lg border border-spill-200 dark:border-spill-700 bg-white dark:bg-spill-900/70">
+                  <p className="text-xs font-semibold mb-2">
+                    Mute / leave line graph (last 10 days)
+                  </p>
+                  <svg
+                    viewBox={`0 0 ${chartSpec.width} ${chartSpec.height}`}
+                    className="w-full h-40"
+                  >
+                    <text
+                      x={chartSpec.width / 2}
+                      y={chartSpec.height - 4}
+                      textAnchor="middle"
+                      fontSize="10"
+                      className="fill-slate-500 dark:fill-slate-300"
+                    >
+                      Date
+                    </text>
+                    <text
+                      x="12"
+                      y={chartSpec.height / 2}
+                      transform={`rotate(-90 12 ${chartSpec.height / 2})`}
+                      textAnchor="middle"
+                      fontSize="10"
+                      className="fill-slate-500 dark:fill-slate-300"
+                    >
+                      Events
+                    </text>
+
+                    {muteLeaveTicks.map((tick) => {
+                      const y = getChartY(tick, muteLeaveYMin, muteLeaveYMax);
+                      return (
+                        <g key={`mute-tick-${tick}`}>
+                          <line
+                            x1={chartSpec.left}
+                            y1={y}
+                            x2={chartSpec.width - chartSpec.right}
+                            y2={y}
+                            stroke="currentColor"
+                            className="text-slate-200 dark:text-slate-700"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={chartSpec.left - 8}
+                            y={y + 3}
+                            textAnchor="end"
+                            fontSize="10"
+                            className="fill-slate-500 dark:fill-slate-300"
+                          >
+                            {tick}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    <line
+                      x1={chartSpec.left}
+                      y1={chartSpec.top}
+                      x2={chartSpec.left}
+                      y2={chartSpec.height - chartSpec.bottom}
+                      stroke="currentColor"
+                      className="text-slate-400 dark:text-slate-500"
+                      strokeWidth="1.2"
+                    />
+                    <line
+                      x1={chartSpec.left}
+                      y1={chartSpec.height - chartSpec.bottom}
+                      x2={chartSpec.width - chartSpec.right}
+                      y2={chartSpec.height - chartSpec.bottom}
+                      stroke="currentColor"
+                      className="text-slate-400 dark:text-slate-500"
+                      strokeWidth="1.2"
+                    />
+
+                    <polyline
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="2.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={buildLinePoints(muteSeries, muteLeaveYMin, muteLeaveYMax)}
+                    />
+                    <polyline
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="2.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={buildLinePoints(leaveSeries, muteLeaveYMin, muteLeaveYMax)}
+                    />
+                    <polyline
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="2.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={buildLinePoints(
+                        unmuteSeries,
+                        muteLeaveYMin,
+                        muteLeaveYMax
+                      )}
+                    />
+
+                    {analyticsMuteLeaveDaily.map((day, index) => (
+                      <text
+                        key={`mute-x-${day.date}`}
+                        x={getChartX(index, analyticsMuteLeaveDaily.length)}
+                        y={chartSpec.height - chartSpec.bottom + 14}
+                        textAnchor="middle"
+                        fontSize="9"
+                        className="fill-slate-500 dark:fill-slate-300"
+                      >
+                        {day.date.slice(5)}
+                      </text>
+                    ))}
+                  </svg>
+                  <div className="flex flex-wrap gap-3 text-[11px]">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      Mute
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      Leave
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      Unmute
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

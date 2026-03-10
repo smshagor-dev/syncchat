@@ -6,7 +6,7 @@ import socket from '../../../helpers/socket';
 import EmojiBoard from './emojiBoard';
 import { setModal } from '../../../redux/features/modal';
 import { setSetting } from '../../../redux/features/user';
-import { setReplyingChat } from '../../../redux/features/chore';
+import { setEditingChat, setReplyingChat } from '../../../redux/features/chore';
 import { isGroupAdmin } from '../../../helpers/groupAdmins';
 import { replaceTextTokensWithEmoji } from '../../../helpers/emojiText';
 import { playOutgoingMessageSound } from '../../../helpers/sound';
@@ -17,7 +17,7 @@ function Send({ setChats, setNewMessage, control }) {
   const dispatch = useDispatch();
   const {
     user: { master, setting },
-    chore: { replyingChat },
+    chore: { replyingChat, editingChat },
     room: { chat: chatRoom },
   } = useSelector((state) => state);
 
@@ -290,6 +290,24 @@ function Send({ setChats, setNewMessage, control }) {
       ? replaceTextTokensWithEmoji(form.text)
       : form.text;
 
+    if (editingChat?._id) {
+      const safeText = String(nextText || '').trim();
+      if (!safeText) return;
+
+      socket.emit('chat/edit', {
+        roomId: chatRoom.data.roomId,
+        chatId: editingChat._id,
+        userId: master._id,
+        text: safeText,
+        replyTo: editingChat.replyTo || null,
+      });
+
+      setForm({ text: '', file: null });
+      setViewOnceText(false);
+      dispatch(setEditingChat(null));
+      return;
+    }
+
     if (nextText.length > 0 || form.file) {
       if (canSendInCurrentRoom()) {
         socket.emit('chat/insert', {
@@ -311,6 +329,7 @@ function Send({ setChats, setNewMessage, control }) {
       setForm({ text: '', file: null });
       setViewOnceText(false);
       dispatch(setReplyingChat(null));
+      dispatch(setEditingChat(null));
     }
   };
 
@@ -471,9 +490,31 @@ function Send({ setChats, setNewMessage, control }) {
       );
     });
 
+    socket.on('chat/edit', ({ chatId, text, replyTo, editedAt, editHistory, isEdited }) => {
+      if (!chatId) return;
+      setChats((prev) =>
+        (prev || []).map((chat) =>
+          chat._id === chatId
+            ? {
+                ...chat,
+                text: text ?? chat.text,
+                replyTo: replyTo ?? null,
+                reply: null,
+                editedAt: editedAt || new Date().toISOString(),
+                isEdited: isEdited !== false,
+                editHistory: Array.isArray(editHistory)
+                  ? editHistory
+                  : chat.editHistory || [],
+              }
+            : chat
+        )
+      );
+    });
+
     return () => {
       socket.off('chat/insert');
       socket.off('chat/relay-update');
+      socket.off('chat/edit');
     };
   }, [
     chatRoom?.data?.roomId,
@@ -578,6 +619,19 @@ function Send({ setChats, setNewMessage, control }) {
   );
 
   useEffect(() => {
+    if (!editingChat?._id) return;
+    setForm((prev) => ({
+      ...prev,
+      text: editingChat.text || '',
+      file: null,
+    }));
+    setViewOnceText(false);
+    setShowSchedulePanel(false);
+    setEmojiBoard(false);
+    dispatch(setReplyingChat(null));
+  }, [dispatch, editingChat?._id, editingChat?.text]);
+
+  useEffect(() => {
     if (!showSchedulePanel) return;
     setScheduleForm((prev) =>
       prev.scheduledFor
@@ -602,6 +656,7 @@ function Send({ setChats, setNewMessage, control }) {
     if (showAdminOnlyNotice) return 'adminOnly';
     return 'normal';
   })();
+  const isEditing = !!editingChat?._id;
 
   return (
     <div className="bg-white border-t border-slate-200 text-slate-500 dark:bg-spill-800 dark:border-spill-700 dark:text-spill-300">
@@ -623,6 +678,26 @@ function Send({ setChats, setNewMessage, control }) {
             type="button"
             className="p-1 rounded hover:bg-slate-200 dark:hover:bg-spill-700"
             onClick={() => dispatch(setReplyingChat(null))}
+          >
+            <bi.BiX />
+          </button>
+        </div>
+      )}
+      {isEditing && (
+        <div className="px-3 py-1 border-b border-slate-200 dark:border-spill-700 flex items-center justify-between bg-amber-50 dark:bg-amber-900/20">
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Editing message
+          </p>
+          <button
+            type="button"
+            className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            onClick={() => {
+              dispatch(setEditingChat(null));
+              setForm((prev) => ({
+                ...prev,
+                text: '',
+              }));
+            }}
           >
             <bi.BiX />
           </button>
@@ -871,7 +946,7 @@ function Send({ setChats, setNewMessage, control }) {
                 <button
                   type="button"
                   className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
-                  disabled={isRecording || isSendingVoice}
+                  disabled={isRecording || isSendingVoice || isEditing}
                   onClick={() => {
                     if (isRecording || isSendingVoice) return;
                     const { group, profile } = chatRoom.data;
@@ -893,7 +968,7 @@ function Send({ setChats, setNewMessage, control }) {
                 <button
                   type="button"
                   className="p-2 rounded-full -rotate-90 hover:bg-slate-200 dark:hover:bg-spill-700"
-                  disabled={isRecording || isSendingVoice}
+                  disabled={isRecording || isSendingVoice || isEditing}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isRecording || isSendingVoice) return;
@@ -923,7 +998,7 @@ function Send({ setChats, setNewMessage, control }) {
                       ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
                       : ''
                   }`}
-                  disabled={isRecording || isSendingVoice || isGroup}
+                  disabled={isRecording || isSendingVoice || isGroup || isEditing}
                   onClick={() => {
                     if (isRecording || isSendingVoice || isGroup) return;
                     if (isBlocked || isBlockedByFriend) return;
@@ -942,7 +1017,7 @@ function Send({ setChats, setNewMessage, control }) {
                       ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
                       : ''
                   }`}
-                  disabled={isRecording || isSendingVoice}
+                  disabled={isRecording || isSendingVoice || isEditing}
                   onClick={() => {
                     if (isRecording || isSendingVoice) return;
                     if (isBlocked || isBlockedByFriend) return;
@@ -983,7 +1058,7 @@ function Send({ setChats, setNewMessage, control }) {
                     id="new-message"
                     autoComplete="off"
                     spellCheck={setting?.spellCheckEnabled !== false}
-                    placeholder="Type a message"
+                    placeholder={isEditing ? 'Edit message' : 'Type a message'}
                     className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
                     onChange={handleChange}
                     value={form.text}
@@ -1006,6 +1081,8 @@ function Send({ setChats, setNewMessage, control }) {
                     return;
                   }
 
+                  if (isEditing) return;
+
                   if (isRecording) {
                     stopVoiceRecording(true);
                     return;
@@ -1015,7 +1092,11 @@ function Send({ setChats, setNewMessage, control }) {
                 }}
               >
                 <i>
-                  {hasText || isRecording ? <bi.BiSend /> : <bi.BiMicrophone />}
+                  {hasText || isRecording || isEditing ? (
+                    <bi.BiSend />
+                  ) : (
+                    <bi.BiMicrophone />
+                  )}
                 </i>
               </button>
             </>

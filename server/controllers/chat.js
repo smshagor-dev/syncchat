@@ -181,6 +181,143 @@ const getResolvedChatText = ({ chat, secretRoom }) => {
   return chat?.text || '';
 };
 
+const normalizePinnedMessages = (value) =>
+  asArray(value)
+    .map((item) => ({
+      chatId: String(item?.chatId || ''),
+      pinnedBy: String(item?.pinnedBy || ''),
+      pinnedAt: item?.pinnedAt || new Date().toISOString(),
+    }))
+    .filter((item) => item.chatId);
+
+const normalizePinHistory = (value) =>
+  asArray(value)
+    .map((item) => ({
+      chatId: String(item?.chatId || ''),
+      action: item?.action === 'unpin' ? 'unpin' : 'pin',
+      actorId: String(item?.actorId || ''),
+      at: item?.at || new Date().toISOString(),
+    }))
+    .filter((item) => item.chatId && item.actorId);
+
+const ensureInboxRoomAccess = async ({ roomId, userId }) => {
+  const inbox = await InboxModel.findOne({ where: { roomId } });
+  if (!inbox) {
+    const error = new Error('Room not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!asArray(inbox.ownersId).includes(userId)) {
+    const error = new Error('Forbidden');
+    error.statusCode = 403;
+    throw error;
+  }
+  return inbox;
+};
+
+const buildPinnedPayload = async ({ roomId, viewerId, inboxDoc = null }) => {
+  const inbox = inboxDoc || (await InboxModel.findOne({ where: { roomId } }));
+  if (!inbox) return { roomId, pinned: [], history: [] };
+  const inboxPlain = toPlain(inbox);
+
+  const pinned = normalizePinnedMessages(inboxPlain.pinnedMessages);
+  const history = normalizePinHistory(inboxPlain.pinHistory).slice(-120).reverse();
+  const pinnedIds = pinned.map((item) => item.chatId);
+  const historyChatIds = history.map((item) => item.chatId);
+  const chatIds = [...new Set([...pinnedIds, ...historyChatIds])];
+  const userIds = [
+    ...new Set([
+      ...pinned.map((item) => item.pinnedBy),
+      ...history.map((item) => item.actorId),
+    ]),
+  ].filter(Boolean);
+
+  const [chatRows, profileRows] = await Promise.all([
+    chatIds.length
+      ? ChatModel.findAll({
+          where: { _id: { [Op.in]: chatIds }, roomId },
+          order: [['createdAt', 'DESC']],
+        })
+      : [],
+    userIds.length
+      ? ProfileModel.findAll({
+          where: { userId: { [Op.in]: userIds } },
+          attributes: ['userId', 'fullname', 'username', 'avatar'],
+        })
+      : [],
+  ]);
+  const fileIds = [
+    ...new Set(toPlainMany(chatRows).map((chat) => chat.fileId).filter(Boolean)),
+  ];
+  const fileRows = fileIds.length
+    ? await FileModel.findAll({
+        where: { fileId: { [Op.in]: fileIds } },
+      })
+    : [];
+
+  const chatMap = new Map(toPlainMany(chatRows).map((chat) => [chat._id, chat]));
+  const profileMap = new Map(toPlainMany(profileRows).map((item) => [item.userId, item]));
+  const fileMap = new Map(toPlainMany(fileRows).map((item) => [item.fileId, item]));
+
+  const pinnedPayload = pinned
+    .map((entry) => {
+      const chat = chatMap.get(entry.chatId);
+      if (!chat) return null;
+      if (asArray(chat.deletedBy).includes(viewerId)) return null;
+      return {
+        chatId: entry.chatId,
+        pinnedBy: entry.pinnedBy,
+        pinnedAt: entry.pinnedAt,
+        pinnedByProfile: profileMap.get(entry.pinnedBy) || null,
+        chat: {
+          _id: chat._id,
+          roomId: chat.roomId,
+          text: chat.text || '',
+          createdAt: chat.createdAt,
+          userId: chat.userId,
+          file: chat.fileId ? fileMap.get(chat.fileId) || null : null,
+          profile: profileMap.get(chat.userId) || null,
+          replyTo: chat.replyTo || null,
+        },
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => new Date(right.pinnedAt) - new Date(left.pinnedAt));
+
+  const historyPayload = history
+    .map((entry) => {
+      const chat = chatMap.get(entry.chatId);
+      return {
+        chatId: entry.chatId,
+        action: entry.action,
+        actorId: entry.actorId,
+        at: entry.at,
+        actorProfile: profileMap.get(entry.actorId) || null,
+        chat: chat
+          ? {
+              _id: chat._id,
+              text: chat.text || '',
+              createdAt: chat.createdAt,
+            }
+          : null,
+      };
+    })
+    .slice(0, 60);
+
+  return {
+    roomId,
+    pinned: pinnedPayload,
+    history: historyPayload,
+  };
+};
+
+const emitPinsUpdate = async (roomId) => {
+  const inbox = await InboxModel.findOne({ where: { roomId } });
+  if (!inbox || !global?.io) return;
+  global.io.to(roomId).emit('chat/pins', { roomId });
+  global.io.to(asArray(toPlain(inbox).ownersId)).emit('chat/pins', { roomId });
+};
+
 exports.upload = async (req, res) => {
   try {
     logger.info('CHAT_UPLOAD_START', {
@@ -592,6 +729,123 @@ exports.findByRoomId = async (req, res) => {
       res,
       message: `${chats.length} chats found`,
       payload: chats,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.findPinned = async (req, res) => {
+  try {
+    const roomId = String(req.params.roomId || '').trim();
+    const userId = req.user._id;
+    await ensureInboxRoomAccess({ roomId, userId });
+    const payload = await buildPinnedPayload({ roomId, viewerId: userId });
+    response({
+      res,
+      message: `${payload.pinned.length} pinned messages found`,
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.pinMessage = async (req, res) => {
+  try {
+    const chatId = String(req.params.chatId || '').trim();
+    const roomId = String(req.body?.roomId || '').trim();
+    const userId = req.user._id;
+    if (!chatId || !roomId) throw new Error('chatId and roomId are required');
+
+    const [inbox, chat] = await Promise.all([
+      ensureInboxRoomAccess({ roomId, userId }),
+      ChatModel.findOne({ where: { _id: chatId, roomId } }),
+    ]);
+    if (!chat) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Message not found in this room',
+      });
+      return;
+    }
+
+    const inboxPlain = toPlain(inbox);
+    const pinned = normalizePinnedMessages(inboxPlain.pinnedMessages);
+    const history = normalizePinHistory(inboxPlain.pinHistory);
+    const nowIso = new Date().toISOString();
+    const nextPinned = [
+      { chatId, pinnedBy: userId, pinnedAt: nowIso },
+      ...pinned.filter((item) => item.chatId !== chatId),
+    ].slice(0, 20);
+    const nextHistory = [
+      ...history,
+      { chatId, action: 'pin', actorId: userId, at: nowIso },
+    ].slice(-300);
+
+    await inbox.update({
+      pinnedMessages: nextPinned,
+      pinHistory: nextHistory,
+    });
+
+    await emitPinsUpdate(roomId);
+    const payload = await buildPinnedPayload({ roomId, viewerId: userId });
+    response({
+      res,
+      message: 'Message pinned',
+      payload,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.unpinMessage = async (req, res) => {
+  try {
+    const chatId = String(req.params.chatId || '').trim();
+    const roomId = String(req.body?.roomId || '').trim();
+    const userId = req.user._id;
+    if (!chatId || !roomId) throw new Error('chatId and roomId are required');
+
+    const inbox = await ensureInboxRoomAccess({ roomId, userId });
+    const inboxPlain = toPlain(inbox);
+    const pinned = normalizePinnedMessages(inboxPlain.pinnedMessages);
+    const history = normalizePinHistory(inboxPlain.pinHistory);
+    const nowIso = new Date().toISOString();
+    const nextPinned = pinned.filter((item) => item.chatId !== chatId);
+    const nextHistory = [
+      ...history,
+      { chatId, action: 'unpin', actorId: userId, at: nowIso },
+    ].slice(-300);
+
+    await inbox.update({
+      pinnedMessages: nextPinned,
+      pinHistory: nextHistory,
+    });
+
+    await emitPinsUpdate(roomId);
+    const payload = await buildPinnedPayload({ roomId, viewerId: userId });
+    response({
+      res,
+      message: 'Message unpinned',
+      payload,
     });
   } catch (error0) {
     response({

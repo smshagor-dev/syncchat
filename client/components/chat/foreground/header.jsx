@@ -9,7 +9,8 @@ import { setRefreshInbox } from '../../../redux/features/chore';
 import config from '../../../config';
 
 function Header({
-  setSearch,
+  searchState,
+  setSearchState,
   chatFilter,
   setChatFilter,
   filterCounts,
@@ -24,9 +25,11 @@ function Header({
 }) {
   const dispatch = useDispatch();
   const page = useSelector((state) => state.page);
-  const inputTimeout = useRef(null);
   const selectMenuRef = useRef(null);
   const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const normalizedSearch = {
+    query: String(searchState?.query || ''),
+  };
   const hasSelectModeHandlers =
     typeof onExitSelectMode === 'function' &&
     typeof onBulkMarkUnread === 'function' &&
@@ -210,18 +213,27 @@ function Header({
               autoComplete="off"
               className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
               placeholder="Search chats..."
-              onChange={(e) => {
-                clearTimeout(inputTimeout.current);
-
-                inputTimeout.current = setTimeout(() => {
-                  if (e.target.value.length < 3) {
-                    setSearch('');
-                  } else {
-                    setSearch(e.target.value);
-                  }
-                }, 1000);
-              }}
+              value={normalizedSearch.query}
+              onChange={(e) =>
+                setSearchState((prev) => ({
+                  ...(prev || {}),
+                  query: e.target.value,
+                }))
+              }
             />
+            {normalizedSearch.query && (
+              <button
+                type="button"
+                className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
+                onClick={() =>
+                  setSearchState({
+                    query: '',
+                  })
+                }
+              >
+                <bi.BiX size={16} />
+              </button>
+            )}
           </label>
           {showFilters && (
             <div className="mt-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-spill-700">

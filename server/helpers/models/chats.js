@@ -19,6 +19,7 @@ const normalizePollVotes = (votes) =>
     .map((vote) => ({
       userId: vote?.userId || '',
       fullname: vote?.fullname || '[unknown]',
+      at: vote?.at || null,
     }))
     .filter((vote) => vote.userId);
 
@@ -39,9 +40,17 @@ const parsePollFromText = (text) => {
     }
 
     return {
-      version: 1,
+      version: Number(parsed?.version || 1),
+      mode: parsed?.mode === 'quiz' ? 'quiz' : 'poll',
       question: String(parsed.question).trim(),
       options,
+      anonymous: !!parsed?.anonymous,
+      multiSelect: !!parsed?.multiSelect,
+      correctOptionIds: asArray(parsed?.correctOptionIds)
+        .map((id) => String(id || '').trim())
+        .filter((id) => options.some((option) => option.id === id)),
+      closedAt: parsed?.closedAt || null,
+      closedBy: parsed?.closedBy || null,
       createdBy: parsed?.createdBy || null,
       createdAt: parsed?.createdAt || null,
     };
