@@ -93,7 +93,7 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-10`
+- Last updated: `2026-03-11`
 
 ## Core System Features
 
@@ -168,6 +168,37 @@ syncchat/
   - correct-option selection for quizzes
   - payload upgraded to poll schema `version: 2`
 - Updated poll parsing/serialization across server and client helpers to support new poll fields (`mode`, `anonymous`, `multiSelect`, `correctOptionIds`, `closedAt`, `closedBy`).
+
+## Recent Changes (2026-03-11)
+
+- Added account backup and restore inside `Settings -> Account settings`:
+  - encrypted user backup export
+  - restore from uploaded archive
+  - selective restore for supported account data
+  - Google Drive backup upload using the signed-in user's own Drive
+- Added multi-device session manager inside Settings:
+  - active devices list
+  - current device identification
+  - remote logout for individual sessions
+  - logout other devices
+  - suspicious login indicators for new devices or networks
+- Added companion-device linking flow similar to WhatsApp/Telegram:
+  - `Link new device` popup inside the Devices page
+  - QR code + short code pairing flow
+  - email verification code delivery
+  - second verification code sent through `SyncChat Support` chat
+  - full-screen responsive modal instead of a separate subpage
+- Added `SyncChat Support` system identity improvements:
+  - static SyncChat app icon in room header, message area, and chat list
+  - support chat used for secure device-link verification messaging
+- Added end-to-end moderation controls for groups and channels:
+  - report center for admin review
+  - auto moderation rules
+  - banned words filtering
+  - blocked media type rules
+  - slow mode for groups and channels
+  - composer and realtime moderation feedback on blocked actions
+- Updated chat page document title to show only the site name instead of `@username + site name`.
 
 ## Recent Changes (2026-03-09)
 

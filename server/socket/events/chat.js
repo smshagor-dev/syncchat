@@ -24,6 +24,7 @@ const {
   deleteLocalFileByUrl,
 } = require('../../helpers/storage');
 const { canGroupMemberSendMessage } = require('../../helpers/groupPermissions');
+const { enforceModerationForMessage } = require('../../helpers/moderation');
 const {
   canReceiveUnknownMessage,
   allowsReadReceipts,
@@ -330,7 +331,13 @@ const canAccessGroupRoom = async ({ roomId, userId }) => {
     }),
     GroupModel.findOne({
       where: { roomId },
-      attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
+      attributes: [
+        'participantsId',
+        'adminId',
+        'adminsId',
+        'permissions',
+        'moderation',
+      ],
     }),
   ]);
   const roomEntity = channelDoc || groupDoc;
@@ -359,6 +366,13 @@ const canManagePoll = ({ poll, chat, userId, roomType, groupAccess }) => {
     ...asArray(group.adminsId),
   ].filter(Boolean);
   return adminIds.includes(userId);
+};
+
+const emitChatError = (message, extra = {}) => {
+  socket.emit('chat/error', {
+    message,
+    ...extra,
+  });
 };
 
 module.exports = (socket) => {
@@ -396,6 +410,14 @@ module.exports = (socket) => {
           userId: args.userId,
         });
         if (!groupAccess.canAccess || !groupAccess.canSend) return;
+        await enforceModerationForMessage({
+          roomEntity: groupAccess.channel || groupAccess.group,
+          roomId: args.roomId,
+          roomType: args.roomType,
+          senderId: args.userId,
+          text: args.text,
+          file: args.file,
+        });
       }
 
       if (args.roomType === 'private') {
@@ -646,6 +668,14 @@ module.exports = (socket) => {
         io.to(visibleOwners).emit('inbox/find', inboxes[0]);
       }
     } catch (error0) {
+      if (error0?.statusCode === 403 || error0?.statusCode === 429) {
+        emitChatError(error0.message, {
+          code: error0.code || 'moderation_blocked',
+          roomId: roomId || null,
+          details: error0.details || {},
+        });
+        return;
+      }
       logger.error('CHAT_INSERT_ERROR', {
         socketId: socket.id,
         message: error0.message,
@@ -995,6 +1025,14 @@ module.exports = (socket) => {
         io.to(visibleOwners).emit('inbox/find', inboxes[0]);
       }
     } catch (error0) {
+      if (error0?.statusCode === 403 || error0?.statusCode === 429) {
+        emitChatError(error0.message, {
+          code: error0.code || 'moderation_blocked',
+          roomId: args?.roomId || null,
+          details: error0.details || {},
+        });
+        return;
+      }
       console.error(error0.message);
     }
   });
@@ -1015,6 +1053,13 @@ module.exports = (socket) => {
       const secretRoom = await getSecretRoomState(roomId);
       const currentText = getResolvedChatText({ chat, secretRoom });
       if (isStructuredMessage(currentText)) return;
+      const inbox = toPlain(
+        await InboxModel.findOne({
+          where: { roomId },
+          attributes: ['roomType'],
+        })
+      );
+      const roomType = inbox?.roomType === 'group' ? 'group' : 'private';
 
       const nextText = String(text || '').trim();
       if (!nextText) return;
@@ -1025,6 +1070,20 @@ module.exports = (socket) => {
       }
 
       const editedAt = new Date().toISOString();
+      const groupAccess =
+        roomType === 'group'
+          ? await canAccessGroupRoom({ roomId, userId })
+          : null;
+      if (roomType === 'group') {
+        await enforceModerationForMessage({
+          roomEntity: groupAccess?.channel || groupAccess?.group,
+          roomId,
+          roomType,
+          senderId: userId,
+          text: nextText,
+          file: null,
+        });
+      }
       const nextHistory = [
         ...sanitizeEditHistory(chat.editHistory),
         buildHistoryEntry({
@@ -1100,6 +1159,14 @@ module.exports = (socket) => {
         }
       }
     } catch (error0) {
+      if (error0?.statusCode === 403 || error0?.statusCode === 429) {
+        emitChatError(error0.message, {
+          code: error0.code || 'moderation_blocked',
+          roomId,
+          details: error0.details || {},
+        });
+        return;
+      }
       logger.error('CHAT_EDIT_ERROR', {
         message: error0.message,
         stack: error0.stack,

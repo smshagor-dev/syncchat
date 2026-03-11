@@ -1,4 +1,5 @@
 const SettingModel = require('../db/models/setting');
+const fs = require('fs');
 const { toPlain } = require('../db/utils');
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
@@ -7,6 +8,8 @@ const qrcode = require('qrcode');
 const UserModel = require('../db/models/user');
 const ProfileModel = require('../db/models/profile');
 const AccountExportModel = require('../db/models/accountExport');
+const UserSessionModel = require('../db/models/userSession');
+const DeviceLinkRequestModel = require('../db/models/deviceLinkRequest');
 const Inbox = require('../helpers/models/inbox');
 const {
   buildOtpAuthUrl,
@@ -19,10 +22,45 @@ const {
 } = require('../helpers/privacy');
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const mailer = require('../helpers/mailer');
+const { sendSupportMessage } = require('../helpers/supportChat');
 const {
   cleanupExpiredExports,
   createAccountExport,
+  createEncryptedAccountBackup,
+  RESTOREABLE_SECTIONS,
+  restoreFromEncryptedBackup,
 } = require('../helpers/accountExport');
+const {
+  listSessions,
+  revokeOtherSessions,
+  revokeSession,
+  serializeSession,
+} = require('../helpers/userSessions');
+
+const DEVICE_LINK_TTL_MS = 10 * 60 * 1000;
+
+const generateSixDigitCode = () =>
+  String(Math.floor(100000 + Math.random() * 900000));
+
+const cleanupExpiredDeviceLinks = async () => {
+  await DeviceLinkRequestModel.update(
+    { status: 'expired' },
+    {
+      where: {
+        status: 'pending',
+        expiresAt: { [require('sequelize').Op.lte]: new Date() },
+      },
+    }
+  );
+};
+
+const maskEmail = (value = '') => {
+  const email = String(value || '').trim().toLowerCase();
+  const [local = '', domain = ''] = email.split('@');
+  if (!local || !domain) return '';
+  const head = local.slice(0, 2);
+  return `${head}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+};
 
 const getSafeSetting = (setting) => {
   const plain = toPlain(setting) || null;
@@ -228,6 +266,7 @@ exports.requestAccountExport = async (req, res) => {
       payload: {
         email: user.email,
         expiresAt,
+        fileUrl,
       },
     });
   } catch (error0) {
@@ -237,6 +276,112 @@ exports.requestAccountExport = async (req, res) => {
       success: false,
       message: error0.message,
     });
+  }
+};
+
+exports.downloadEncryptedBackup = async (req, res) => {
+  try {
+    const passphrase = String(req.body?.passphrase || '');
+    if (passphrase.length < 8) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Backup password must be at least 8 characters',
+      });
+      return;
+    }
+
+    const user = await UserModel.findOne({
+      where: { _id: req.user._id },
+      attributes: ['_id', 'username'],
+    });
+
+    const backup = await createEncryptedAccountBackup({
+      userId: req.user._id,
+      username: user?.username || 'user',
+      passphrase,
+    });
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${backup.fileName.replace(/"/g, '')}"`
+    );
+    res.setHeader('X-SyncChat-Backup-Sections', backup.availableSections.join(','));
+    res.status(200).send(backup.buffer);
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.restoreEncryptedBackup = async (req, res) => {
+  const archivePath = req.file?.path || null;
+  try {
+    if (!archivePath) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Backup archive is required',
+      });
+      return;
+    }
+
+    const passphrase = String(req.body?.passphrase || '');
+    if (passphrase.length < 8) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Backup password must be at least 8 characters',
+      });
+      return;
+    }
+
+    const selections = Array.isArray(req.body?.selections)
+      ? req.body.selections
+      : String(req.body?.selections || '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+    const result = await restoreFromEncryptedBackup({
+      userId: req.user._id,
+      archivePath,
+      passphrase,
+      selections,
+    });
+
+    response({
+      res,
+      message:
+        result.restored.length > 0
+          ? `Restored ${result.restored.join(', ')}`
+          : 'No matching sections were restored',
+      payload: {
+        restored: result.restored,
+        availableSections: result.availableSections,
+        supportedSections: RESTOREABLE_SECTIONS,
+        exportedAt: result.exportedAt,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  } finally {
+    if (archivePath && fs.existsSync(archivePath)) {
+      await fs.promises.unlink(archivePath).catch(() => {});
+    }
   }
 };
 
@@ -286,6 +431,230 @@ exports.hiddenChats = async (req, res) => {
     );
 
     response({ res, payload });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.deviceSessions = async (req, res) => {
+  try {
+    const sessions = await listSessions({
+      userId: req.user._id,
+      currentSessionId: req.session?._id || null,
+    });
+
+    response({
+      res,
+      payload: sessions,
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.revokeDeviceSession = async (req, res) => {
+  try {
+    const session = await UserSessionModel.findOne({
+      where: { _id: req.params.sessionId, userId: req.user._id },
+    });
+
+    if (!session) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Device session not found',
+      });
+      return;
+    }
+
+    if (req.session?._id === session._id) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Use current device sign out for this session',
+      });
+      return;
+    }
+
+    await revokeSession({ session, reason: 'remote-logout' });
+
+    response({
+      res,
+      message: 'Device logged out remotely',
+      payload: serializeSession(session, req.session?._id || null),
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.revokeCurrentDeviceSession = async (req, res) => {
+  try {
+    if (!req.session) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Current session is unavailable',
+      });
+      return;
+    }
+
+    await revokeSession({ session: req.session, reason: 'self-logout' });
+
+    response({
+      res,
+      message: 'Current device signed out',
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.revokeOtherDeviceSessions = async (req, res) => {
+  try {
+    const count = await revokeOtherSessions({
+      userId: req.user._id,
+      currentSessionId: req.session?._id || null,
+    });
+
+    response({
+      res,
+      message: count > 0 ? 'Other devices logged out' : 'No other active devices found',
+      payload: { count },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.createDeviceLinkRequest = async (req, res) => {
+  try {
+    await cleanupExpiredDeviceLinks();
+    const user = await UserModel.findOne({
+      where: { _id: req.user._id },
+      attributes: ['_id', 'fullname', 'email'],
+    });
+
+    if (!user?.email) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Email address is not configured for this account',
+      });
+      return;
+    }
+
+    await DeviceLinkRequestModel.update(
+      { status: 'cancelled' },
+      {
+        where: {
+          userId: req.user._id,
+          status: 'pending',
+        },
+      }
+    );
+
+    const requestRow = await DeviceLinkRequestModel.create({
+      userId: req.user._id,
+      requesterSessionId: req.session?._id || null,
+      pairingToken: require('crypto').randomBytes(24).toString('hex'),
+      shortCode: generateSixDigitCode(),
+      emailCode: generateSixDigitCode(),
+      supportCode: generateSixDigitCode(),
+      status: 'pending',
+      expiresAt: new Date(Date.now() + DEVICE_LINK_TTL_MS),
+    });
+
+    const appOrigin = String(
+      req.get('origin') || process.env.APP_ORIGIN || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const linkUrl = `${appOrigin}/?link=${encodeURIComponent(
+      requestRow.pairingToken
+    )}`;
+    const qrImage = await qrcode.toDataURL(linkUrl, {
+      width: 260,
+      margin: 2,
+    });
+
+    const deliveryResults = await Promise.allSettled([
+      mailer({
+        to: user.email,
+        fullname: user.fullname,
+        subject: 'Your SyncChat device link email code',
+        otp: requestRow.emailCode,
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+            <p>Hello #fullname#,</p>
+            <p>Use this email verification code to link a new SyncChat device:</p>
+            <h2 style="letter-spacing:0.12em">${requestRow.emailCode}</h2>
+            <p>This code expires in 10 minutes.</p>
+          </div>
+        `,
+      }),
+      sendSupportMessage({
+        userId: req.user._id,
+        text: `Device link verification code: ${requestRow.supportCode}\n\nEnter this code on the new device together with the email code. This request expires in 10 minutes.`,
+      }),
+    ]);
+
+    const emailDelivered = deliveryResults[0]?.status === 'fulfilled';
+    const supportDelivered = deliveryResults[1]?.status === 'fulfilled';
+    const warnings = [];
+
+    if (!emailDelivered) {
+      warnings.push('Email code could not be delivered');
+    }
+    if (!supportDelivered) {
+      warnings.push('Support chat code could not be delivered');
+    }
+
+    response({
+      res,
+      message:
+        warnings.length > 0
+          ? 'Device link created with delivery warnings'
+          : 'Device link request created',
+      payload: {
+        token: requestRow.pairingToken,
+        shortCode: requestRow.shortCode,
+        expiresAt: requestRow.expiresAt,
+        emailHint: maskEmail(user.email),
+        linkUrl,
+        qrImage,
+        emailDelivered,
+        supportDelivered,
+        warnings,
+      },
+    });
   } catch (error0) {
     response({
       res,

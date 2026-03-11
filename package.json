@@ -14,7 +14,7 @@
     "dev:client": "node --no-deprecation ./node_modules/webpack-cli/bin/cli.js serve --config ./webpack.dev.js",
     "dev:client:wait": "node scripts/wait-for-port.js 8080 && npm run dev:client",
     "predev:server": "node scripts/free-ports.js 8080",
-    "dev:server": "nodemon --ignore logs --ignore uploads --ignore client/public server",
+    "dev:server": "nodemon --watch .env --ignore logs --ignore uploads --ignore client/public server",
     "predev": "node scripts/free-ports.js 3000 8080",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client:wait\"",
     "build": "webpack --config ./webpack.prod.js",

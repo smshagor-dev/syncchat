@@ -27,6 +27,11 @@ router.patch(
   authenticate,
   ctrl.updatePermissions
 );
+router.patch(
+  '/channels/:channelId/moderation',
+  authenticate,
+  ctrl.updateModeration
+);
 router.post(
   '/channels/:channelId/pending-members/:memberId/approve',
   authenticate,

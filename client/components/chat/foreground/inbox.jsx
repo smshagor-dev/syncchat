@@ -14,6 +14,7 @@ import { setPage } from '../../../redux/features/page';
 import { setRefreshInbox } from '../../../redux/features/chore';
 import { setSelectedInboxes } from '../../../redux/features/chore';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
+import { getSupportAwareAvatar } from '../../../helpers/supportIdentity';
 import { getPresenceMeta } from '../../../helpers/presence';
 
 import {
@@ -1864,7 +1865,9 @@ function Inbox({
               : elem.group?.name || 'Group';
           const avatarUrl = resolveUploadUrl(
             elem.roomType === 'private'
-              ? elem.owners.find((x) => x.userId !== master._id)?.avatar
+              ? getSupportAwareAvatar(
+                  elem.owners.find((x) => x.userId !== master._id)
+                )
               : elem.group?.avatar
           );
 
@@ -2219,7 +2222,7 @@ function Inbox({
                   src={
                     resolveUploadUrl(
                       elem.roomType === 'private'
-                        ? privateProfile?.avatar
+                        ? getSupportAwareAvatar(privateProfile)
                         : elem.channel?.avatar || elem.group?.avatar
                     ) ||
                     (elem.roomType === 'private'

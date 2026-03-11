@@ -10,6 +10,7 @@ const { asArray, toPlain, toPlainMany, addToSet, pullFromArray } = require('../d
 const Inbox = require('./models/inbox');
 const Chat = require('./models/chats');
 const { canGroupMemberSendMessage } = require('./groupPermissions');
+const { enforceModerationForMessage } = require('./moderation');
 const {
   canReceiveUnknownMessage,
   getSettingMap,
@@ -256,12 +257,18 @@ const canAccessGroupRoom = async ({ roomId, userId }) => {
     }),
     GroupModel.findOne({
       where: { roomId },
-      attributes: ['participantsId', 'adminId', 'adminsId', 'permissions'],
+      attributes: [
+        'participantsId',
+        'adminId',
+        'adminsId',
+        'permissions',
+        'moderation',
+      ],
     }),
   ]);
   const roomEntity = toPlain(channelDoc) || toPlain(groupDoc);
   if (!roomEntity) {
-    return { canAccess: false, canSend: false, channel: null };
+    return { canAccess: false, canSend: false, channel: null, group: null };
   }
 
   const canAccess = asArray(roomEntity.participantsId).includes(userId);
@@ -270,6 +277,7 @@ const canAccessGroupRoom = async ({ roomId, userId }) => {
     canSend:
       canAccess && canGroupMemberSendMessage({ group: roomEntity, userId }),
     channel: toPlain(channelDoc),
+    group: toPlain(groupDoc),
   };
 };
 
@@ -298,6 +306,14 @@ exports.sendTextMessage = async ({
     if (!groupAccess.canAccess || !groupAccess.canSend) {
       throw new Error('You do not have permission to send messages');
     }
+    await enforceModerationForMessage({
+      roomEntity: groupAccess.channel || groupAccess.group,
+      roomId,
+      roomType,
+      senderId,
+      text,
+      file: null,
+    });
   }
 
   if (roomType === 'private') {

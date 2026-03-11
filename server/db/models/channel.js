@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 const { DEFAULT_GROUP_PERMISSIONS } = require('../../helpers/groupPermissions');
+const { DEFAULT_MODERATION_SETTINGS } = require('../../helpers/moderation');
 
 const ChannelModel = sequelize.define(
   'channels',
@@ -72,6 +73,11 @@ const ChannelModel = sequelize.define(
         ...DEFAULT_GROUP_PERMISSIONS,
         memberCanSendMessage: false,
       },
+    },
+    moderation: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: DEFAULT_MODERATION_SETTINGS,
     },
   },
   {

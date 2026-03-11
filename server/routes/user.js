@@ -6,6 +6,8 @@ const ctrl = require('../controllers/user');
 router.post('/users/register', ctrl.register);
 router.post('/users/login', ctrl.login);
 router.post('/users/login/2fa-verify', ctrl.verifyLoginTwoFactor);
+router.post('/users/device-link/info', ctrl.deviceLinkInfo);
+router.post('/users/device-link/complete', ctrl.completeDeviceLink);
 router.get('/users/social-config', ctrl.socialConfig);
 router.post('/users/social-auth', ctrl.socialAuth);
 router.post('/users/forgot-pass/request', ctrl.requestForgotPass);

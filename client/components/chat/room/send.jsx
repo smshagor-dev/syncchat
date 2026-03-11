@@ -38,6 +38,9 @@ function Send({ setChats, setNewMessage, control }) {
     isGroupMember &&
     !isCurrentUserGroupAdmin &&
     !memberCanSendMessage;
+  const roomSlowModeSeconds = Number(
+    chatRoom.data?.group?.moderation?.slowModeSeconds || 0
+  );
   const isBlocked =
     !isGroup &&
     setting?.blockedUserIds?.includes(chatRoom.data?.profile?.userId);
@@ -62,6 +65,7 @@ function Send({ setChats, setNewMessage, control }) {
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [viewOnceText, setViewOnceText] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState('');
   const recorderRef = useRef(null);
   const recordStreamRef = useRef(null);
   const recordChunksRef = useRef([]);
@@ -511,10 +515,17 @@ function Send({ setChats, setNewMessage, control }) {
       );
     });
 
+    socket.on('chat/error', (payload) => {
+      if (!payload?.message) return;
+      if (payload?.roomId && payload.roomId !== chatRoom?.data?.roomId) return;
+      setModerationNotice(payload.message);
+    });
+
     return () => {
       socket.off('chat/insert');
       socket.off('chat/relay-update');
       socket.off('chat/edit');
+      socket.off('chat/error');
     };
   }, [
     chatRoom?.data?.roomId,
@@ -522,6 +533,12 @@ function Send({ setChats, setNewMessage, control }) {
     setting?.mute,
     setting?.outgoingMessageSoundEnabled,
   ]);
+
+  useEffect(() => {
+    if (!moderationNotice) return undefined;
+    const timer = setTimeout(() => setModerationNotice(''), 3500);
+    return () => clearTimeout(timer);
+  }, [moderationNotice]);
 
   useEffect(() => {
     const handleScheduledUpsert = (payload) => {
@@ -707,6 +724,20 @@ function Send({ setChats, setNewMessage, control }) {
         <div className="px-3 pt-2">
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
             This text will be blurred in chat and can be opened only one time.
+          </div>
+        </div>
+      )}
+      {moderationNotice && composerMode === 'normal' && (
+        <div className="px-3 pt-2">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-200">
+            {moderationNotice}
+          </div>
+        </div>
+      )}
+      {roomSlowModeSeconds > 0 && composerMode === 'normal' && (
+        <div className="px-3 pt-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-spill-700 dark:bg-spill-900/40 dark:text-spill-300">
+            Slow mode is enabled. Non-admin members can send one message every {roomSlowModeSeconds}s.
           </div>
         </div>
       )}

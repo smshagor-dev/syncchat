@@ -1,8 +1,8 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const qrcode = require('qrcode');
 const { Op } = require('sequelize');
 
 const UserModel = require('../db/models/user');
@@ -10,6 +10,7 @@ const ProfileModel = require('../db/models/profile');
 const SettingModel = require('../db/models/setting');
 const GroupModel = require('../db/models/group');
 const ContactModel = require('../db/models/contact');
+const DeviceLinkRequestModel = require('../db/models/deviceLinkRequest');
 
 const { toPlain, asArray, pullFromArray } = require('../db/utils');
 const response = require('../helpers/response');
@@ -18,11 +19,19 @@ const { toAbsoluteUploadUrl } = require('../helpers/storage');
 
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
-const { verifyToken } = require('../helpers/totp');
-
-const JWT_SECRET = 'shhhhh';
+const { verifyToken: verifyTotpToken } = require('../helpers/totp');
+const UserSessionModel = require('../db/models/userSession');
+const {
+  createSession,
+  notifySuspiciousLogin,
+  revokeOtherSessions,
+  signTwoFactorTempToken,
+  signUserToken,
+  verifyToken: verifyAuthToken,
+} = require('../helpers/userSessions');
 
 const SOCIAL_EMAIL_DOMAIN = 'social.syncchat.local';
+const DEVICE_LINK_TTL_MS = 10 * 60 * 1000;
 
 const createError = (statusCode, message) => {
   const error = new Error(message);
@@ -30,14 +39,26 @@ const createError = (statusCode, message) => {
   return error;
 };
 
-const signUserToken = (userId) => jwt.sign({ _id: userId }, JWT_SECRET);
+const cleanupExpiredDeviceLinks = async () => {
+  await DeviceLinkRequestModel.update(
+    { status: 'expired' },
+    {
+      where: {
+        status: 'pending',
+        expiresAt: { [Op.lte]: new Date() },
+      },
+    }
+  );
+};
 
-const signTwoFactorTempToken = (userId) =>
-  jwt.sign({ _id: userId, purpose: 'user-2fa' }, JWT_SECRET, {
-    expiresIn: '10m',
-  });
+const maskEmail = (value = '') => {
+  const email = String(value || '').trim().toLowerCase();
+  const [local = '', domain = ''] = email.split('@');
+  if (!local || !domain) return '';
+  return `${local.slice(0, 2)}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+};
 
-const buildLoginPayload = async (user) => {
+const buildLoginPayload = async ({ user, req, authProvider = 'password' }) => {
   const setting = await SettingModel.findOne({
     where: { userId: user._id },
     attributes: ['twoFactorEnabled', 'twoFactorSecret'],
@@ -46,13 +67,20 @@ const buildLoginPayload = async (user) => {
   if (setting?.twoFactorEnabled && setting?.twoFactorSecret) {
     return {
       requiresTwoFactor: true,
-      tempToken: signTwoFactorTempToken(user._id),
+      tempToken: signTwoFactorTempToken({ userId: user._id }),
     };
   }
 
+  const session = await createSession({
+    userId: user._id,
+    req,
+    authProvider,
+  });
+  notifySuspiciousLogin(session);
+
   return {
     requiresTwoFactor: false,
-    token: signUserToken(user._id),
+    token: signUserToken({ userId: user._id, sessionId: session._id }),
   };
 };
 
@@ -364,7 +392,13 @@ exports.register = async (req, res) => {
       fullname: req.body.fullname,
     });
 
-    const token = signUserToken(userId);
+    const session = await createSession({
+      userId,
+      req,
+      authProvider: 'password',
+    });
+    notifySuspiciousLogin(session);
+    const token = signUserToken({ userId, sessionId: session._id });
     const template = fs.readFileSync(
       path.resolve(__dirname, '../helpers/templates/otp.html'),
       'utf8'
@@ -480,7 +514,11 @@ exports.login = async (req, res) => {
       throw createError(401, 'Invalid password');
     }
 
-    const payload = await buildLoginPayload(user);
+    const payload = await buildLoginPayload({
+      user,
+      req,
+      authProvider: 'password',
+    });
 
     response({
       res,
@@ -509,6 +547,122 @@ exports.socialConfig = async (req, res) => {
   });
 };
 
+exports.deviceLinkInfo = async (req, res) => {
+  try {
+    await cleanupExpiredDeviceLinks();
+    const token = String(req.body?.token || req.query?.token || '').trim();
+    const shortCode = String(req.body?.shortCode || '').trim();
+
+    if (!token && !shortCode) {
+      throw createError(400, 'Device link token or short code is required');
+    }
+
+    const row = await DeviceLinkRequestModel.findOne({
+      where: token
+        ? { pairingToken: token, status: 'pending' }
+        : { shortCode, status: 'pending' },
+      order: [['createdAt', 'DESC']],
+    });
+
+    if (!row || new Date(row.expiresAt).getTime() <= Date.now()) {
+      throw createError(404, 'This device link request has expired');
+    }
+
+    const user = await UserModel.findOne({
+      where: { _id: row.userId },
+      attributes: ['fullname', 'email'],
+    });
+
+    const appOrigin = String(
+      req.get('origin') || process.env.APP_ORIGIN || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const linkUrl = `${appOrigin}/?link=${encodeURIComponent(
+      row.pairingToken
+    )}`;
+    const qrImage = await qrcode.toDataURL(linkUrl, {
+      width: 260,
+      margin: 2,
+    });
+
+    response({
+      res,
+      payload: {
+        token: row.pairingToken,
+        shortCode: row.shortCode,
+        expiresAt: row.expiresAt,
+        accountName: user?.fullname || 'SyncChat account',
+        emailHint: maskEmail(user?.email || ''),
+        linkUrl,
+        qrImage,
+        requires: ['emailCode', 'supportCode'],
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.completeDeviceLink = async (req, res) => {
+  try {
+    await cleanupExpiredDeviceLinks();
+    const token = String(req.body?.token || '').trim();
+    const emailCode = String(req.body?.emailCode || '').replace(/\D+/g, '').slice(0, 6);
+    const supportCode = String(req.body?.supportCode || '').replace(/\D+/g, '').slice(0, 6);
+
+    if (!token || !emailCode || !supportCode) {
+      throw createError(400, 'Token, email code, and support code are required');
+    }
+
+    const row = await DeviceLinkRequestModel.findOne({
+      where: { pairingToken: token, status: 'pending' },
+    });
+
+    if (!row || new Date(row.expiresAt).getTime() <= Date.now()) {
+      throw createError(404, 'This device link request has expired');
+    }
+    if (row.emailCode !== emailCode || row.supportCode !== supportCode) {
+      throw createError(401, 'Invalid verification codes');
+    }
+
+    const user = await UserModel.findOne({ where: { _id: row.userId } });
+    if (!user) throw createError(404, 'User not found');
+
+    const session = await createSession({
+      userId: user._id,
+      req,
+      authProvider: 'linked-device',
+    });
+    notifySuspiciousLogin(session);
+
+    await row.update({
+      status: 'consumed',
+      consumedAt: new Date(),
+      expiresAt: new Date(Date.now() + DEVICE_LINK_TTL_MS),
+    });
+
+    response({
+      res,
+      message: 'New device linked successfully',
+      payload: {
+        requiresTwoFactor: false,
+        token: signUserToken({ userId: user._id, sessionId: session._id }),
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
 exports.socialAuth = async (req, res) => {
   try {
     const provider = String(req.body.provider || '')
@@ -519,7 +673,11 @@ exports.socialAuth = async (req, res) => {
     const socialData = await verifySocialPayload({ provider, payload });
     const { user, created } = await upsertSocialUser(socialData);
 
-    const loginPayload = await buildLoginPayload(user);
+    const loginPayload = await buildLoginPayload({
+      user,
+      req,
+      authProvider: provider || 'social',
+    });
 
     response({
       res,
@@ -546,7 +704,7 @@ exports.verifyLoginTwoFactor = async (req, res) => {
 
     if (!tempToken) throw createError(400, 'Temporary login token is required');
 
-    const payload = jwt.verify(tempToken, JWT_SECRET);
+    const payload = verifyAuthToken(tempToken);
     if (payload?.purpose !== 'user-2fa' || !payload?._id) {
       throw createError(401, 'Invalid two-factor session');
     }
@@ -560,16 +718,23 @@ exports.verifyLoginTwoFactor = async (req, res) => {
       throw createError(400, 'Two-factor authentication is not enabled');
     }
 
-    if (!verifyToken({ secret: setting.twoFactorSecret, token: code })) {
+    if (!verifyTotpToken({ secret: setting.twoFactorSecret, token: code })) {
       throw createError(400, 'Invalid authentication code');
     }
+
+    const session = await createSession({
+      userId: payload._id,
+      req,
+      authProvider: 'password',
+    });
+    notifySuspiciousLogin(session);
 
     response({
       res,
       message: 'Two-factor verification successful',
       payload: {
         requiresTwoFactor: false,
-        token: signUserToken(payload._id),
+        token: signUserToken({ userId: payload._id, sessionId: session._id }),
       },
     });
   } catch (error0) {
@@ -675,6 +840,7 @@ exports.delete = async (req, res) => {
     await ProfileModel.destroy({ where: { userId } });
     await SettingModel.destroy({ where: { userId } });
     await ContactModel.destroy({ where: { userId } });
+    await UserSessionModel.destroy({ where: { userId } });
 
     const groups = await GroupModel.findAll();
     await Promise.all(
@@ -719,13 +885,20 @@ exports.changePass = async (req, res) => {
     }
 
     await user.update({ password: encrypt(newPass) });
+    const loggedOutSessions = await revokeOtherSessions({
+      userId,
+      currentSessionId: req.session?._id || null,
+    });
 
     const payload = toPlain(user);
     delete payload.password;
     response({
       res,
       message: 'Password changed successfully',
-      payload,
+      payload: {
+        ...payload,
+        loggedOutSessions,
+      },
     });
   } catch (error0) {
     response({

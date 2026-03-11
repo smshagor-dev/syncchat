@@ -76,6 +76,7 @@ function GroupProfile({ mode = 'group' }) {
   const [privacyRespond, setPrivacyRespond] = useState('');
   const [passwordRespond, setPasswordRespond] = useState('');
   const [permissionRespond, setPermissionRespond] = useState('');
+  const [moderationRespond, setModerationRespond] = useState('');
   const [permissionForm, setPermissionForm] = useState({
     memberCanEditInfo: false,
     memberCanSendMessage: true,
@@ -84,6 +85,18 @@ function GroupProfile({ mode = 'group' }) {
     adminApprovalRequired: false,
   });
   const [pendingProfiles, setPendingProfiles] = useState([]);
+  const [moderationForm, setModerationForm] = useState({
+    slowModeSeconds: 0,
+    bannedWordsText: '',
+    blockImage: false,
+    blockVideo: false,
+    blockAudio: false,
+    blockDocument: false,
+    autoReportViolations: true,
+  });
+  const [savingModeration, setSavingModeration] = useState(false);
+  const [reportCenterLoading, setReportCenterLoading] = useState(false);
+  const [reportCenterItems, setReportCenterItems] = useState([]);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [roomMedia, setRoomMedia] = useState({
     loaded: false,
@@ -148,6 +161,19 @@ function GroupProfile({ mode = 'group' }) {
     memberCanAddMember: !!group?.permissions?.memberCanAddMember,
     memberCanInviteViaLink: !!group?.permissions?.memberCanInviteViaLink,
     adminApprovalRequired: !!group?.permissions?.adminApprovalRequired,
+  };
+  const normalizedModeration = {
+    slowModeSeconds: Math.max(
+      0,
+      Number(group?.moderation?.slowModeSeconds || 0) || 0
+    ),
+    bannedWords: Array.isArray(group?.moderation?.bannedWords)
+      ? group.moderation.bannedWords
+      : [],
+    blockedMediaTypes: Array.isArray(group?.moderation?.blockedMediaTypes)
+      ? group.moderation.blockedMediaTypes
+      : [],
+    autoReportViolations: group?.moderation?.autoReportViolations !== false,
   };
   const canEditGroupInfo =
     isAdmin || (isMember && normalizedPermissions.memberCanEditInfo);
@@ -591,6 +617,19 @@ function GroupProfile({ mode = 'group' }) {
   }, [group?._id, JSON.stringify(group?.permissions || {})]);
 
   useEffect(() => {
+    if (!group) return;
+    setModerationForm({
+      slowModeSeconds: normalizedModeration.slowModeSeconds,
+      bannedWordsText: normalizedModeration.bannedWords.join(', '),
+      blockImage: normalizedModeration.blockedMediaTypes.includes('image'),
+      blockVideo: normalizedModeration.blockedMediaTypes.includes('video'),
+      blockAudio: normalizedModeration.blockedMediaTypes.includes('audio'),
+      blockDocument: normalizedModeration.blockedMediaTypes.includes('document'),
+      autoReportViolations: normalizedModeration.autoReportViolations,
+    });
+  }, [group?._id, JSON.stringify(group?.moderation || {})]);
+
+  useEffect(() => {
     if (!groupProfileId) {
       setPermissionModalOpen(false);
       setPendingListModalOpen(false);
@@ -603,6 +642,11 @@ function GroupProfile({ mode = 'group' }) {
       setPendingListModalOpen(false);
     }
   }, [permissionForm.adminApprovalRequired]);
+
+  useEffect(() => {
+    if (!permissionModalOpen || !group?.roomId || !isAdmin) return;
+    loadReportCenter();
+  }, [permissionModalOpen, group?.roomId, isAdmin]);
 
   useEffect(() => {
     const pendingIds = Array.isArray(group?.pendingMembersId)
@@ -709,6 +753,79 @@ function GroupProfile({ mode = 'group' }) {
       setPermissionRespond(error0?.response?.data?.message || error0.message);
     } finally {
       setSavingPermissions(false);
+    }
+  };
+
+  const loadReportCenter = async () => {
+    try {
+      if (!group?.roomId || !isAdmin) return;
+      setReportCenterLoading(true);
+      const { data } = await axios.get(`/reports/rooms/${group.roomId}`);
+      setReportCenterItems(Array.isArray(data?.payload) ? data.payload : []);
+    } catch (error0) {
+      setPermissionRespond(error0?.response?.data?.message || error0.message);
+    } finally {
+      setReportCenterLoading(false);
+    }
+  };
+
+  const submitModeration = async () => {
+    try {
+      if (!group || !isAdmin) return;
+      setSavingModeration(true);
+      setModerationRespond('');
+
+      const blockedMediaTypes = [
+        moderationForm.blockImage ? 'image' : null,
+        moderationForm.blockVideo ? 'video' : null,
+        moderationForm.blockAudio ? 'audio' : null,
+        moderationForm.blockDocument ? 'document' : null,
+      ].filter(Boolean);
+
+      const bannedWords = String(moderationForm.bannedWordsText || '')
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const moderationPayload = {
+        slowModeSeconds: Math.max(
+          0,
+          Math.min(3600, Number(moderationForm.slowModeSeconds || 0) || 0)
+        ),
+        bannedWords,
+        blockedMediaTypes,
+        autoReportViolations: moderationForm.autoReportViolations !== false,
+      };
+
+      const { data } = await axios.patch(
+        `/${entityPath}/${group._id}/moderation`,
+        {
+          moderation: moderationPayload,
+        }
+      );
+
+      setModerationRespond(data.message || 'Moderation updated');
+      setGroup((prev) => ({
+        ...prev,
+        moderation: moderationPayload,
+      }));
+    } catch (error0) {
+      setModerationRespond(error0?.response?.data?.message || error0.message);
+    } finally {
+      setSavingModeration(false);
+    }
+  };
+
+  const updateReportStatus = async (reportId, status) => {
+    try {
+      const { data } = await axios.patch(`/reports/${reportId}`, { status });
+      setReportCenterItems((prev) =>
+        (prev || []).map((item) =>
+          item._id === reportId ? { ...item, ...(data?.payload || {}), status } : item
+        )
+      );
+    } catch (error0) {
+      setModerationRespond(error0?.response?.data?.message || error0.message);
     }
   };
 
@@ -2468,6 +2585,176 @@ function GroupProfile({ mode = 'group' }) {
                         adminApprovalRequired: !prev.adminApprovalRequired,
                       })),
                   })}
+                </div>
+              </section>
+
+              <section className="p-3 rounded-xl border border-spill-200 dark:border-spill-700 grid gap-3 bg-slate-50/70 dark:bg-spill-800/60">
+                <div>
+                  <h3 className="text-sm font-semibold">Auto Moderation</h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-white/60">
+                    Configure slow mode, banned words, and blocked media for this {entityLabelLower}.
+                  </p>
+                </div>
+                {moderationRespond && (
+                  <p className="text-xs text-sky-600 dark:text-sky-400">
+                    {moderationRespond}
+                  </p>
+                )}
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-slate-500 dark:text-white/60">
+                    Slow mode in seconds
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="3600"
+                    value={moderationForm.slowModeSeconds}
+                    onChange={(e) =>
+                      setModerationForm((prev) => ({
+                        ...prev,
+                        slowModeSeconds: e.target.value,
+                      }))
+                    }
+                    className="h-11 rounded-lg border border-spill-300 bg-white px-3 text-sm dark:border-spill-700 dark:bg-spill-900"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-slate-500 dark:text-white/60">
+                    Banned words
+                  </span>
+                  <textarea
+                    rows="3"
+                    value={moderationForm.bannedWordsText}
+                    onChange={(e) =>
+                      setModerationForm((prev) => ({
+                        ...prev,
+                        bannedWordsText: e.target.value,
+                      }))
+                    }
+                    placeholder="spam, scam, abuse"
+                    className="rounded-lg border border-spill-300 bg-white px-3 py-2 text-sm dark:border-spill-700 dark:bg-spill-900"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['blockImage', 'Block images'],
+                    ['blockVideo', 'Block videos'],
+                    ['blockAudio', 'Block audio'],
+                    ['blockDocument', 'Block documents'],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`h-11 rounded-lg border px-3 text-sm text-left ${
+                        moderationForm[key]
+                          ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200'
+                          : 'border-spill-300 bg-white dark:border-spill-700 dark:bg-spill-900'
+                      }`}
+                      onClick={() =>
+                        setModerationForm((prev) => ({
+                          ...prev,
+                          [key]: !prev[key],
+                        }))
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="h-11 px-3 rounded-lg border border-spill-300 dark:border-spill-700 flex items-center justify-between bg-white dark:bg-spill-900">
+                  <span className="text-sm">Auto report blocked attempts</span>
+                  {renderPermissionToggle({
+                    checked: !!moderationForm.autoReportViolations,
+                    id: 'moderation-toggle-auto-report',
+                    onClick: () =>
+                      setModerationForm((prev) => ({
+                        ...prev,
+                        autoReportViolations: !prev.autoReportViolations,
+                      })),
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="h-11 rounded-lg border border-sky-300 bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                  onClick={submitModeration}
+                  disabled={savingModeration}
+                >
+                  {savingModeration ? 'Saving moderation...' : 'Update Moderation'}
+                </button>
+              </section>
+
+              <section className="p-3 rounded-xl border border-spill-200 dark:border-spill-700 grid gap-3 bg-slate-50/70 dark:bg-spill-800/60">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">Report Center</h3>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-white/60">
+                      Review user reports and auto moderation events for this room.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-spill-300 px-3 text-xs font-semibold hover:bg-spill-100 dark:border-spill-700 dark:hover:bg-spill-800"
+                    onClick={loadReportCenter}
+                    disabled={reportCenterLoading}
+                  >
+                    {reportCenterLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+                <div className="grid gap-2 max-h-64 overflow-y-auto">
+                  {reportCenterItems.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-spill-300 px-3 py-3 text-xs text-slate-500 dark:border-spill-700 dark:text-white/60">
+                      No reports yet.
+                    </div>
+                  )}
+                  {reportCenterItems.map((item) => (
+                    <div
+                      key={item._id}
+                      className="rounded-lg border border-spill-300 bg-white px-3 py-3 text-sm dark:border-spill-700 dark:bg-spill-900"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold capitalize">
+                            {item.category || 'general'}{' '}
+                            <span className="ml-1 text-xs font-medium uppercase text-slate-400">
+                              {item.source || 'user'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-white/60">
+                            {item.reporter?.fullname || 'System'} •{' '}
+                            {new Date(item.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                          item.status === 'resolved'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            : item.status === 'dismissed'
+                              ? 'bg-slate-200 text-slate-600 dark:bg-spill-700 dark:text-white/60'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-white/75">
+                        {item.reason}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                          onClick={() => updateReportStatus(item._id, 'resolved')}
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-spill-300 px-3 py-1.5 text-xs font-semibold hover:bg-spill-100 dark:border-spill-700 dark:hover:bg-spill-800"
+                          onClick={() => updateReportStatus(item._id, 'dismissed')}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </section>
 

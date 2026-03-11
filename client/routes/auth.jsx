@@ -3,18 +3,39 @@ import * as comp from '../components/auth';
 import config from '../config';
 
 function Auth() {
+  const linkToken =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('link') || ''
+      : '';
   const [respond, setRespond] = useState({ success: true, message: null });
   const [login, setLogin] = useState(true);
   const [forgotPass, setForgotPass] = useState(false);
+  const [linkDevice, setLinkDevice] = useState(!!linkToken);
   let title = 'Sign up';
   let badgeLabel = 'Create account';
-  if (forgotPass) title = 'Forgot password';
+  if (linkDevice) title = 'Link device';
+  else if (forgotPass) title = 'Forgot password';
   else if (login) title = 'Sign in';
-  if (forgotPass) badgeLabel = 'Recovery';
+  if (linkDevice) badgeLabel = 'Companion';
+  else if (forgotPass) badgeLabel = 'Recovery';
   else if (login) badgeLabel = 'Sign in';
 
   let form = <comp.register setRespond={setRespond} />;
-  if (forgotPass) {
+  if (linkDevice) {
+    form = (
+      <comp.linkDevice
+        setRespond={setRespond}
+        initialToken={linkToken}
+        onBack={() => {
+          setLinkDevice(false);
+          setRespond({ success: true, message: null });
+          if (window.history?.replaceState) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        }}
+      />
+    );
+  } else if (forgotPass) {
     form = (
       <comp.forgotPass
         setRespond={setRespond}
@@ -87,7 +108,7 @@ function Auth() {
 
           <div
             className={`${
-              forgotPass ? 'hidden ' : ''
+              forgotPass || linkDevice ? 'hidden ' : ''
             } mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1`}
           >
             <button
@@ -125,7 +146,9 @@ function Auth() {
               {title}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {forgotPass
+              {linkDevice
+                ? 'Scan a QR or enter a short code from your signed-in device.'
+                : forgotPass
                 ? 'Verify your identity and set a new password.'
                 : 'Access your secure Space in seconds.'}
             </p>
@@ -145,7 +168,7 @@ function Auth() {
 
           <div className="transition duration-150">{form}</div>
 
-          <div className={`${forgotPass ? 'hidden ' : ''} pt-5`}>
+          <div className={`${forgotPass || linkDevice ? 'hidden ' : ''} pt-5`}>
             <p className="text-center text-sm text-slate-500">
               <span>
                 {login ? "Don't have an account? " : 'Have an account? '}
@@ -159,6 +182,18 @@ function Auth() {
                 }}
               >
                 {login ? 'Create one now' : 'Sign in instead'}
+              </button>
+            </p>
+            <p className="mt-3 text-center text-sm text-slate-500">
+              <button
+                type="button"
+                className="font-semibold text-sky-700 hover:text-sky-900 hover:underline"
+                onClick={() => {
+                  setRespond({ success: true, message: null });
+                  setLinkDevice(true);
+                }}
+              >
+                Link a device with QR or code
               </button>
             </p>
           </div>

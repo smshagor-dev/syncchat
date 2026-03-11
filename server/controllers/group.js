@@ -18,6 +18,10 @@ const {
   getGroupPermissions,
   canGroupMemberAddOtherMember,
 } = require('../helpers/groupPermissions');
+const {
+  normalizeModerationSettings,
+  getModerationSettings,
+} = require('../helpers/moderation');
 const { getGroupAdmins, isGroupAdminUser } = require('../helpers/groupAdmins');
 const {
   getSettingMap,
@@ -57,6 +61,7 @@ const sanitizeGroupForUser = (group, requesterId) => {
   if (!plain) return null;
   delete plain.passwordHash;
   plain.permissions = getGroupPermissions(plain);
+  plain.moderation = getModerationSettings(plain);
   if (!isGroupAdminUser({ group: plain, userId: requesterId })) {
     plain.pendingMembersId = [];
   }
@@ -719,6 +724,38 @@ exports.updatePermissions = async (req, res) => {
       payload: {
         groupId: group._id,
         permissions: nextPermissions,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.updateModeration = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { groupId } = req.params;
+    const group = await GroupModel.findOne({ where: { _id: groupId } });
+    ensureGroupAdminAccess(group, userId);
+
+    const nextModeration = normalizeModerationSettings(req.body?.moderation);
+    await group.update({ moderation: nextModeration });
+
+    global.io.to(group.roomId).emit('group/edit', {
+      moderation: nextModeration,
+    });
+
+    response({
+      res,
+      message: 'Group moderation updated',
+      payload: {
+        groupId: group._id,
+        moderation: nextModeration,
       },
     });
   } catch (error0) {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
 import { setModal } from '../../redux/features/modal';
 
 function Logout() {
@@ -42,13 +43,15 @@ function Logout() {
           <button
             type="button"
             className="py-2 px-4 rounded-md bg-sky-600 hover:bg-sky-700"
-            onClick={() => {
-              // delete access token
-              localStorage.removeItem('token');
-              // close modal
-              dispatch(setModal({ target: 'signout' }));
+            onClick={async () => {
+              try {
+                await axios.delete('/settings/device-sessions/current');
+              } catch (error0) {
+                // local sign-out still proceeds if the session is already invalid
+              }
 
-              // reload & display auth page after 0.5s
+              localStorage.removeItem('token');
+              dispatch(setModal({ target: 'signout' }));
               setTimeout(() => {
                 window.location.reload();
               }, 500);

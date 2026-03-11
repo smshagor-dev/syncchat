@@ -10,6 +10,7 @@ import socket from '../../../helpers/socket';
 import RoomHeaderMenu from '../../modals/roomHeaderMenu';
 import { getPresenceMeta } from '../../../helpers/presence';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
+import { getSupportAwareAvatar } from '../../../helpers/supportIdentity';
 
 function Header({ searchQuery, setSearchQuery, pinsData, onPinsRefresh }) {
   const dispatch = useDispatch();
@@ -257,7 +258,7 @@ function Header({ searchQuery, setSearchQuery, pinsData, onPinsRefresh }) {
                           chatRoom.data.channel?.avatar ||
                           chatRoom.data.group.avatar ||
                           'assets/images/default-group-avatar.png'
-                        : chatRoom.data.profile.avatar ||
+                        : getSupportAwareAvatar(chatRoom.data.profile) ||
                           'assets/images/default-avatar.png'
                     }
                     alt=""

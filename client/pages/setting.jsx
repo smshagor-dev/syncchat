@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
+import * as ri from 'react-icons/ri';
+import QRCode from 'qrcode';
 
 import { setSetting } from '../redux/features/user';
 import { setPage } from '../redux/features/page';
@@ -14,6 +16,73 @@ import {
   getWallpaperStyle,
 } from '../helpers/roomAppearance';
 import { KEYBOARD_SHORTCUT_SECTIONS } from '../helpers/keyboardShortcuts';
+
+const GOOGLE_DRIVE_SESSION_KEY = 'syncchat:google-drive-session';
+const RESTORE_SECTION_OPTIONS = [
+  {
+    value: 'profile',
+    title: 'Profile',
+    desc: 'Restore fullname, bio, phone, social links, and avatar.',
+  },
+  {
+    value: 'settings',
+    title: 'Settings',
+    desc: 'Restore privacy, notifications, chats, and device preferences.',
+  },
+  {
+    value: 'contacts',
+    title: 'Contacts',
+    desc: 'Restore saved contacts that still exist on this server.',
+  },
+  {
+    value: 'statuses',
+    title: 'Statuses',
+    desc: 'Restore statuses as fresh 24-hour posts.',
+  },
+];
+
+const loadExternalScript = ({ id, src }) =>
+  new Promise((resolve, reject) => {
+    const existing = document.getElementById(id);
+    if (existing) {
+      if (existing.getAttribute('data-loaded') === '1') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener(
+        'error',
+        () => reject(new Error(`Failed to load script: ${src}`)),
+        { once: true }
+      );
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      script.setAttribute('data-loaded', '1');
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    document.body.appendChild(script);
+  });
+
+const readGoogleDriveSession = () => {
+  try {
+    const raw = localStorage.getItem(GOOGLE_DRIVE_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.accessToken || !parsed?.expiresAt) return null;
+    if (new Date(parsed.expiresAt).getTime() <= Date.now()) return null;
+    return parsed;
+  } catch (error0) {
+    return null;
+  }
+};
 
 function Setting() {
   const dispatch = useDispatch();
@@ -54,7 +123,25 @@ function Setting() {
     loading: false,
     exportLoading: false,
     exportInfo: null,
+    backupPassword: '',
+    backupLoading: '',
+    backupStatus: null,
+    restorePassword: '',
+    restoreSelections: RESTORE_SECTION_OPTIONS.map((item) => item.value),
+    restoreFile: null,
+    restoreLoading: false,
+    restoreResult: null,
     error: '',
+  });
+  const [driveState, setDriveState] = React.useState(() => {
+    const session = typeof window !== 'undefined' ? readGoogleDriveSession() : null;
+    return {
+      clientId: '',
+      configured: false,
+      loading: false,
+      error: '',
+      session,
+    };
   });
   const [voiceVideoDialog, setVoiceVideoDialog] = React.useState({
     open: false,
@@ -74,7 +161,27 @@ function Setting() {
   const [shortcutDialog, setShortcutDialog] = React.useState({
     open: false,
   });
+  const [deviceDialog, setDeviceDialog] = React.useState({
+    open: false,
+    loading: false,
+    saving: '',
+    error: '',
+    sessions: [],
+  });
+  const [deviceLinkDialog, setDeviceLinkDialog] = React.useState({
+    open: false,
+    loading: false,
+    error: '',
+    token: '',
+    shortCode: '',
+    expiresAt: '',
+    emailHint: '',
+    qrImage: '',
+    linkUrl: '',
+  });
   const chatWallpaperInputRef = React.useRef(null);
+  const restoreArchiveInputRef = React.useRef(null);
+  const googleTokenClientRef = React.useRef(null);
   const privacyChoices = [
     { value: 'everyone', label: 'Everyone' },
     { value: 'my_contacts', label: 'My contacts' },
@@ -103,6 +210,13 @@ function Setting() {
           desc: 'Security notifications, account info export, password and delete options.',
           toggle: false,
           icon: <bi.BiUserCircle />,
+        },
+        {
+          target: 'deviceSessions',
+          title: 'Devices',
+          desc: 'Active devices, remote logout, device details, and suspicious login alerts.',
+          toggle: false,
+          icon: <bi.BiDevices />,
         },
       ],
     },
@@ -277,12 +391,180 @@ function Setting() {
     dispatch(setSetting(refresh ?? fallback ?? setting));
   };
 
+  const syncDriveSession = React.useCallback((session) => {
+    if (session) {
+      localStorage.setItem(GOOGLE_DRIVE_SESSION_KEY, JSON.stringify(session));
+    } else {
+      localStorage.removeItem(GOOGLE_DRIVE_SESSION_KEY);
+    }
+    setDriveState((prev) => ({
+      ...prev,
+      session,
+      error: '',
+      loading: false,
+    }));
+  }, []);
+
+  const loadGoogleDriveConfig = React.useCallback(async () => {
+    try {
+      setDriveState((prev) => ({
+        ...prev,
+        loading: true,
+        error: '',
+      }));
+      const { data } = await axios.get('/users/social-config');
+      setDriveState((prev) => ({
+        ...prev,
+        loading: false,
+        clientId: data?.payload?.googleClientId || '',
+        configured: !!data?.payload?.googleClientId,
+      }));
+    } catch (error0) {
+      setDriveState((prev) => ({
+        ...prev,
+        loading: false,
+        configured: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  }, []);
+
+  const ensureGoogleDriveToken = React.useCallback(
+    async (interactive = true) => {
+      const currentSession = readGoogleDriveSession();
+      if (currentSession?.accessToken) {
+        setDriveState((prev) => ({
+          ...prev,
+          session: currentSession,
+          error: '',
+        }));
+        return currentSession.accessToken;
+      }
+
+      if (!driveState.clientId) {
+        throw new Error('Google Drive is not configured on this server');
+      }
+
+      await loadExternalScript({
+        id: 'google-identity-services',
+        src: 'https://accounts.google.com/gsi/client',
+      });
+
+      if (!window.google?.accounts?.oauth2) {
+        throw new Error('Google Drive connect is unavailable right now');
+      }
+
+      const token = await new Promise((resolve, reject) => {
+        const client =
+          googleTokenClientRef.current ||
+          window.google.accounts.oauth2.initTokenClient({
+            client_id: driveState.clientId,
+            scope:
+              'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
+            callback: () => {},
+          });
+        googleTokenClientRef.current = client;
+
+        client.callback = async (response) => {
+          if (response?.error) {
+            reject(new Error(response.error));
+            return;
+          }
+
+          try {
+            const profileResponse = await fetch(
+              'https://www.googleapis.com/oauth2/v3/userinfo',
+              {
+                headers: {
+                  Authorization: `Bearer ${response.access_token}`,
+                },
+              }
+            );
+            const profile = await profileResponse.json();
+            const session = {
+              accessToken: response.access_token,
+              expiresAt: new Date(
+                Date.now() + Number(response.expires_in || 3600) * 1000
+              ).toISOString(),
+              email: profile?.email || '',
+            };
+            syncDriveSession(session);
+            resolve(response.access_token);
+          } catch (error0) {
+            reject(error0);
+          }
+        };
+
+        client.requestAccessToken({
+          prompt: interactive ? 'consent' : '',
+        });
+      });
+
+      return token;
+    },
+    [driveState.clientId, syncDriveSession]
+  );
+
+  const uploadBackupToGoogleDrive = React.useCallback(
+    async ({ blob, fileName }) => {
+      const accessToken = await ensureGoogleDriveToken(true);
+      const formData = new FormData();
+      formData.append(
+        'metadata',
+        new Blob(
+          [
+            JSON.stringify({
+              name: fileName,
+              mimeType: 'application/octet-stream',
+            }),
+          ],
+          { type: 'application/json' }
+        )
+      );
+      formData.append(
+        'file',
+        new Blob([blob], { type: 'application/octet-stream' }),
+        fileName
+      );
+
+      const response0 = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!response0.ok) {
+        const errorText = await response0.text();
+        throw new Error(errorText || 'Google Drive upload failed');
+      }
+
+      return response0.json();
+    },
+    [ensureGoogleDriveToken]
+  );
+
   const closeAccountDialog = () => {
+    if (restoreArchiveInputRef.current) {
+      restoreArchiveInputRef.current.value = '';
+    }
     setAccountDialog({
       open: false,
       loading: false,
       exportLoading: false,
       exportInfo: null,
+      backupPassword: '',
+      backupLoading: '',
+      backupStatus: null,
+      restorePassword: '',
+      restoreSelections: RESTORE_SECTION_OPTIONS.map((item) => item.value),
+      restoreFile: null,
+      restoreLoading: false,
+      restoreResult: null,
       error: '',
     });
   };
@@ -296,6 +578,7 @@ function Setting() {
         error: '',
       }));
       const { data } = await axios.get('/settings/account-export');
+      await loadGoogleDriveConfig();
       setAccountDialog((prev) => ({
         ...prev,
         loading: false,
@@ -305,6 +588,174 @@ function Setting() {
       setAccountDialog((prev) => ({
         ...prev,
         loading: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const updateAccountDialogValue = (key, value) => {
+    setAccountDialog((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const toggleRestoreSelection = (value) => {
+    setAccountDialog((prev) => ({
+      ...prev,
+      restoreSelections: prev.restoreSelections.includes(value)
+        ? prev.restoreSelections.filter((item) => item !== value)
+        : [...prev.restoreSelections, value],
+    }));
+  };
+
+  const disconnectGoogleDrive = () => {
+    syncDriveSession(null);
+  };
+
+  const connectGoogleDrive = async () => {
+    try {
+      setDriveState((prev) => ({
+        ...prev,
+        loading: true,
+        error: '',
+      }));
+      await ensureGoogleDriveToken(true);
+    } catch (error0) {
+      setDriveState((prev) => ({
+        ...prev,
+        loading: false,
+        error: error0?.message || 'Google Drive connect failed',
+      }));
+    }
+  };
+
+  const parseDownloadFileName = (headerValue = '') => {
+    const match = String(headerValue || '').match(/filename="?([^"]+)"?/i);
+    return match?.[1] || `syncchat-backup-${Date.now()}.syncbackup`;
+  };
+
+  const triggerBrowserDownload = async ({ blob, fileName }) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  };
+
+  const createEncryptedBackup = async (target = 'download') => {
+    try {
+      if (String(accountDialog.backupPassword || '').length < 8) {
+        throw new Error('Backup password must be at least 8 characters');
+      }
+
+      setAccountDialog((prev) => ({
+        ...prev,
+        backupLoading: target,
+        backupStatus: null,
+        error: '',
+      }));
+
+      const response0 = await axios.post(
+        '/settings/account-backup',
+        {
+          passphrase: accountDialog.backupPassword,
+        },
+        {
+          responseType: 'blob',
+        }
+      );
+
+      const fileName = parseDownloadFileName(
+        response0.headers['content-disposition']
+      );
+      const blob = new Blob([response0.data], {
+        type: 'application/octet-stream',
+      });
+
+      if (target === 'drive') {
+        const driveFile = await uploadBackupToGoogleDrive({ blob, fileName });
+        setAccountDialog((prev) => ({
+          ...prev,
+          backupLoading: '',
+          backupStatus: {
+            type: 'drive',
+            name: driveFile?.name || fileName,
+            link: driveFile?.webViewLink || '',
+          },
+        }));
+        return;
+      }
+
+      await triggerBrowserDownload({ blob, fileName });
+      setAccountDialog((prev) => ({
+        ...prev,
+        backupLoading: '',
+        backupStatus: {
+          type: 'download',
+          name: fileName,
+          link: '',
+        },
+      }));
+    } catch (error0) {
+      let message = error0?.response?.data?.message || error0.message;
+      if (
+        error0?.response?.data instanceof Blob &&
+        typeof error0.response.data.text === 'function'
+      ) {
+        try {
+          const parsed = JSON.parse(await error0.response.data.text());
+          message = parsed?.message || message;
+        } catch (error1) {
+          message = message || 'Backup failed';
+        }
+      }
+      setAccountDialog((prev) => ({
+        ...prev,
+        backupLoading: '',
+        error: message,
+      }));
+    }
+  };
+
+  const restoreEncryptedBackup = async () => {
+    try {
+      if (!accountDialog.restoreFile) {
+        throw new Error('Select an encrypted backup archive first');
+      }
+      if (String(accountDialog.restorePassword || '').length < 8) {
+        throw new Error('Backup password must be at least 8 characters');
+      }
+      if (accountDialog.restoreSelections.length === 0) {
+        throw new Error('Select at least one restore section');
+      }
+
+      setAccountDialog((prev) => ({
+        ...prev,
+        restoreLoading: true,
+        restoreResult: null,
+        error: '',
+      }));
+
+      const formData = new FormData();
+      formData.append('archive', accountDialog.restoreFile);
+      formData.append('passphrase', accountDialog.restorePassword);
+      formData.append('selections', accountDialog.restoreSelections.join(','));
+
+      const { data } = await axios.post('/settings/account-restore', formData);
+      await refreshSettings();
+      setAccountDialog((prev) => ({
+        ...prev,
+        restoreLoading: false,
+        restoreResult: data?.payload || null,
+      }));
+    } catch (error0) {
+      setAccountDialog((prev) => ({
+        ...prev,
+        restoreLoading: false,
         error: error0?.response?.data?.message || error0.message,
       }));
     }
@@ -324,6 +775,7 @@ function Setting() {
         exportInfo: {
           email: data?.payload?.email || '',
           expiresAt: data?.payload?.expiresAt || null,
+          fileUrl: data?.payload?.fileUrl || '',
         },
       }));
     } catch (error0) {
@@ -407,9 +859,211 @@ function Setting() {
     closeVoiceVideoDialog();
     closeNotificationDialog();
     closeChatsDialog();
+    closeDeviceDialog();
     setShortcutDialog({
       open: true,
     });
+  };
+
+  const closeDeviceDialog = () => {
+    setDeviceDialog({
+      open: false,
+      loading: false,
+      saving: '',
+      error: '',
+      sessions: [],
+    });
+    setDeviceLinkDialog({
+      open: false,
+      loading: false,
+      error: '',
+      token: '',
+      shortCode: '',
+      expiresAt: '',
+      emailHint: '',
+      qrImage: '',
+      linkUrl: '',
+    });
+  };
+
+  const closeDeviceLinkDialog = () => {
+    setDeviceLinkDialog({
+      open: false,
+      loading: false,
+      error: '',
+      token: '',
+      shortCode: '',
+      expiresAt: '',
+      emailHint: '',
+      qrImage: '',
+      linkUrl: '',
+    });
+  };
+
+  const loadDeviceSessions = async () => {
+    const { data } = await axios.get('/settings/device-sessions');
+    return Array.isArray(data?.payload) ? data.payload : [];
+  };
+
+  const openDeviceDialog = async () => {
+    try {
+      closeAccountDialog();
+      closePrivacyDialog();
+      closeVoiceVideoDialog();
+      closeNotificationDialog();
+      closeChatsDialog();
+      closeShortcutDialog();
+      setDeviceDialog({
+        open: true,
+        loading: true,
+        saving: '',
+        error: '',
+        sessions: [],
+      });
+      const sessions = await loadDeviceSessions();
+      setDeviceDialog((prev) => ({
+        ...prev,
+        loading: false,
+        sessions,
+      }));
+    } catch (error0) {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const logoutDeviceSession = async (sessionId) => {
+    try {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: sessionId,
+        error: '',
+      }));
+      await axios.delete(`/settings/device-sessions/${sessionId}`);
+      const sessions = await loadDeviceSessions();
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: '',
+        sessions,
+      }));
+    } catch (error0) {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: '',
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const logoutOtherDevices = async () => {
+    try {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: 'logout-others',
+        error: '',
+      }));
+      await axios.post('/settings/device-sessions/logout-others');
+      const sessions = await loadDeviceSessions();
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: '',
+        sessions,
+      }));
+    } catch (error0) {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: '',
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const signOutCurrentDevice = async () => {
+    try {
+      setDeviceDialog((prev) => ({
+        ...prev,
+        saving: 'current',
+        error: '',
+      }));
+      await axios.delete('/settings/device-sessions/current');
+    } catch (error0) {
+      // fall through to local sign-out
+    } finally {
+      localStorage.removeItem('token');
+      window.location.reload();
+    }
+  };
+
+  const openDeviceLinkDialog = async () => {
+    try {
+      setDeviceLinkDialog({
+        open: true,
+        loading: true,
+        error: '',
+        token: '',
+        shortCode: '',
+        expiresAt: '',
+        emailHint: '',
+        qrImage: '',
+        linkUrl: '',
+      });
+      const { data } = await axios.post('/settings/device-link-request');
+      let token = data?.payload?.token || '';
+      const shortCode = data?.payload?.shortCode || '';
+      let expiresAt = data?.payload?.expiresAt || '';
+      let emailHint = data?.payload?.emailHint || '';
+      let linkUrl =
+        data?.payload?.linkUrl ||
+        (token
+          ? `${window.location.origin}/?link=${encodeURIComponent(token)}`
+          : '');
+      let qrImage = data?.payload?.qrImage || '';
+
+      if ((!token || !linkUrl || !qrImage) && shortCode) {
+        const infoRes = await axios.post('/users/device-link/info', {
+          shortCode,
+        });
+        token = token || infoRes?.data?.payload?.token || '';
+        expiresAt = expiresAt || infoRes?.data?.payload?.expiresAt || '';
+        emailHint = emailHint || infoRes?.data?.payload?.emailHint || '';
+        linkUrl =
+          linkUrl ||
+          infoRes?.data?.payload?.linkUrl ||
+          (token
+            ? `${window.location.origin}/?link=${encodeURIComponent(token)}`
+            : '');
+        qrImage = qrImage || infoRes?.data?.payload?.qrImage || '';
+      }
+
+      if (!qrImage && linkUrl) {
+        qrImage = await QRCode.toDataURL(linkUrl, {
+          width: 260,
+          margin: 2,
+        });
+      }
+
+      setDeviceLinkDialog({
+        open: true,
+        loading: false,
+        error: '',
+        token,
+        shortCode,
+        expiresAt,
+        emailHint,
+        qrImage,
+        linkUrl,
+      });
+    } catch (error0) {
+      setDeviceLinkDialog((prev) => ({
+        ...prev,
+        open: true,
+        loading: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
   };
 
   const openPrivacyDialog = async () => {
@@ -447,6 +1101,7 @@ function Setting() {
   React.useEffect(() => {
     if (!page.setting) {
       closeShortcutDialog();
+      closeDeviceDialog();
     }
   }, [page.setting]);
 
@@ -768,6 +1423,11 @@ function Setting() {
     [master?._id]
   );
 
+  const formatSessionDate = React.useCallback((value) => {
+    if (!value) return 'Unknown';
+    return new Date(value).toLocaleString();
+  }, []);
+
   return (
     <div
       className={`
@@ -1012,6 +1672,328 @@ function Setting() {
           )}
         <div
           className={`${
+            deviceDialog.open ? 'translate-x-0' : '-translate-x-full'
+          } absolute inset-0 z-30 grid grid-rows-[auto_1fr] bg-white transition duration-200 dark:bg-spill-900 dark:text-white/90`}
+          aria-hidden={!deviceDialog.open}
+        >
+          <div className="h-16 px-2 flex gap-4 items-center">
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-800"
+              onClick={closeDeviceDialog}
+            >
+              <bi.BiArrowBack className="text-2xl" />
+            </button>
+            <h1 className="text-2xl font-bold">Devices</h1>
+          </div>
+          <div className="pb-16 md:pb-0 overflow-y-auto bg-slate-100 dark:bg-spill-950">
+            <div className="mx-auto grid max-w-3xl gap-4 px-3 py-4">
+              {deviceDialog.error && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                  {deviceDialog.error}
+                </div>
+              )}
+              <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-900 text-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                <div className="px-5 py-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-300">
+                    Session Manager
+                  </p>
+                  <h2 className="mt-2 max-w-[14ch] text-3xl font-semibold leading-tight sm:max-w-none sm:text-[29px] sm:leading-8">
+                    Control Every Signed in device
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-[15px] leading-6 text-white/75">
+                    Review active devices, remove old sessions remotely, and
+                    check suspicious logins based on new devices or new
+                    networks.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                <div className="grid gap-3 px-5 py-5 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-sky-500 px-5 text-sm font-semibold text-white hover:bg-sky-600"
+                    onClick={openDeviceLinkDialog}
+                  >
+                    <bi.BiQrScan />
+                    Link new device
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-spill-800 dark:hover:bg-spill-700"
+                    onClick={logoutOtherDevices}
+                    disabled={deviceDialog.saving === 'logout-others'}
+                  >
+                    {deviceDialog.saving === 'logout-others' ? (
+                      <bi.BiLoaderAlt className="animate-spin" />
+                    ) : (
+                      <bi.BiExit />
+                    )}
+                    Logout others device
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-rose-500 px-5 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60 sm:col-span-2"
+                    onClick={signOutCurrentDevice}
+                    disabled={deviceDialog.saving === 'current'}
+                  >
+                    {deviceDialog.saving === 'current' ? (
+                      <bi.BiLoaderAlt className="animate-spin" />
+                    ) : (
+                      <bi.BiLogOut />
+                    )}
+                    Signout This Device
+                  </button>
+                </div>
+              </div>
+
+              {deviceDialog.loading ? (
+                <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-spill-800 dark:bg-spill-900 dark:text-white/60">
+                  <span className="inline-flex items-center gap-2">
+                    <bi.BiLoaderAlt className="animate-spin" />
+                    Loading active devices...
+                  </span>
+                </div>
+              ) : deviceDialog.sessions.length === 0 ? (
+                <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-sm text-slate-500 shadow-sm dark:border-spill-800 dark:bg-spill-900 dark:text-white/60">
+                  No device sessions found.
+                </div>
+              ) : (
+                deviceDialog.sessions.map((session) => (
+                  <div
+                    key={session._id}
+                    className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900"
+                  >
+                    <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-start">
+                      <div className="grid gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-lg font-semibold">{session.deviceName}</p>
+                          {session.isCurrent && (
+                            <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                              This device
+                            </span>
+                          )}
+                          {session.isActive ? (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-white/65">
+                              Logged out
+                            </span>
+                          )}
+                          {session.suspicious && (
+                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                              Suspicious
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid gap-1 text-sm text-slate-500 dark:text-white/60">
+                          <p>
+                            {session.browser || 'Browser'} / {session.os || 'Unknown OS'} /{' '}
+                            {session.deviceType || 'device'}
+                          </p>
+                          <p>
+                            {session.locationLabel || 'Unknown location'}
+                            {session.ipAddress ? ` (${session.ipAddress})` : ''}
+                          </p>
+                          <p>Signed in: {formatSessionDate(session.createdAt)}</p>
+                          <p>Last active: {formatSessionDate(session.lastSeenAt)}</p>
+                          {session.suspiciousReason && (
+                            <p className="text-amber-600 dark:text-amber-300">
+                              Alert: {session.suspiciousReason}
+                            </p>
+                          )}
+                          {!session.isActive && session.revokedAt && (
+                            <p>Logged out: {formatSessionDate(session.revokedAt)}</p>
+                          )}
+                        </div>
+                      </div>
+                      {!session.isCurrent && session.isActive ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-rose-200 px-4 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                          onClick={() => logoutDeviceSession(session._id)}
+                          disabled={deviceDialog.saving === session._id}
+                        >
+                          {deviceDialog.saving === session._id ? (
+                            <bi.BiLoaderAlt className="animate-spin" />
+                          ) : (
+                            <bi.BiPowerOff />
+                          )}
+                          Remote logout
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        {typeof document !== 'undefined'
+          ? createPortal(
+              <div
+                className={`${
+                  deviceLinkDialog.open
+                    ? 'pointer-events-auto opacity-100'
+                    : 'pointer-events-none opacity-0'
+                } fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm transition duration-200`}
+                aria-hidden={!deviceLinkDialog.open}
+                onClick={closeDeviceLinkDialog}
+              >
+                <div
+                  aria-hidden
+                  className={`${
+                    deviceLinkDialog.open
+                      ? 'translate-y-0 scale-100'
+                      : 'translate-y-4 scale-95'
+                  } max-h-[calc(100vh-1.5rem)] w-full max-w-4xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl transition duration-200 dark:border-spill-700 dark:bg-spill-900`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-spill-800 sm:px-5">
+                    <div>
+                      <h1 className="text-xl font-bold sm:text-2xl">
+                        Link a device
+                      </h1>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
+                        QR scan + email code + SyncChat Support chat code
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100 dark:hover:bg-spill-800"
+                      onClick={closeDeviceLinkDialog}
+                    >
+                      <bi.BiX className="text-2xl" />
+                    </button>
+                  </div>
+                  <div className="max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-100 px-3 py-4 dark:bg-spill-950 sm:px-4">
+                    <div className="mx-auto grid max-w-4xl gap-4">
+                      {deviceLinkDialog.error && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                          {deviceLinkDialog.error}
+                        </div>
+                      )}
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
+                        <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-900 text-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                          <div className="px-5 py-5">
+                            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-300">
+                              Companion login
+                            </p>
+                            <h2 className="mt-2 text-3xl font-semibold leading-tight">
+                              Scan QR on the new device
+                            </h2>
+                            <p className="mt-3 max-w-xl text-[15px] leading-6 text-white/75">
+                              Open SyncChat on the new device, scan this QR,
+                              then finish verification with one email code and
+                              one support-chat code.
+                            </p>
+                            <div className="mt-6 flex justify-center rounded-[28px] bg-white p-4">
+                              {deviceLinkDialog.loading ? (
+                                <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
+                                  <bi.BiLoaderAlt className="animate-spin text-2xl" />
+                                </div>
+                              ) : deviceLinkDialog.qrImage ? (
+                                <img
+                                  src={deviceLinkDialog.qrImage}
+                                  alt="Link device QR"
+                                  className="h-[220px] w-[220px] rounded-2xl sm:h-[260px] sm:w-[260px]"
+                                />
+                              ) : (
+                                <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
+                                  QR unavailable
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid gap-4">
+                          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                            <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
+                              <p className="text-lg font-semibold">
+                                Verification steps
+                              </p>
+                            </div>
+                            <div className="grid gap-4 px-5 py-4 text-sm text-slate-600 dark:text-white/65">
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-white/90">
+                                  1. Scan or open the QR link
+                                </p>
+                                <p className="mt-1 break-all">
+                                  {deviceLinkDialog.linkUrl ||
+                                    'Preparing secure link...'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-white/90">
+                                  2. Email code
+                                </p>
+                                <p className="mt-1">
+                                  Sent to{' '}
+                                  {deviceLinkDialog.emailHint ||
+                                    'your account email'}
+                                  .
+                                </p>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-white/90">
+                                  3. SyncChat Support chat code
+                                </p>
+                                <p className="mt-1">
+                                  A second code is delivered in your regular
+                                  chat list from SyncChat Support.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                            <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
+                              <p className="text-lg font-semibold">
+                                Short code
+                              </p>
+                            </div>
+                            <div className="px-5 py-5">
+                              <div className="rounded-2xl bg-slate-100 px-4 py-4 text-center dark:bg-spill-950">
+                                <p className="text-2xl font-bold tracking-[0.22em] text-slate-900 dark:text-white/90 sm:text-3xl sm:tracking-[0.28em]">
+                                  {deviceLinkDialog.shortCode || '------'}
+                                </p>
+                              </div>
+                              <p className="mt-3 text-sm text-slate-500 dark:text-white/60">
+                                Expires at{' '}
+                                {deviceLinkDialog.expiresAt
+                                  ? new Date(
+                                      deviceLinkDialog.expiresAt
+                                    ).toLocaleString()
+                                  : '...'}
+                              </p>
+                              <button
+                                type="button"
+                                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-semibold hover:bg-slate-50 dark:border-spill-700 dark:hover:bg-spill-800"
+                                onClick={openDeviceLinkDialog}
+                                disabled={deviceLinkDialog.loading}
+                              >
+                                {deviceLinkDialog.loading ? (
+                                  <bi.BiLoaderAlt className="animate-spin" />
+                                ) : (
+                                  <bi.BiRefresh />
+                                )}
+                                Refresh QR and codes
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
+        <div
+          className={`${
             accountDialog.open ? 'translate-x-0' : '-translate-x-full'
           } absolute inset-0 z-30 grid grid-rows-[auto_1fr] bg-white transition duration-200 dark:bg-spill-900 dark:text-white/90`}
         >
@@ -1125,6 +2107,247 @@ function Setting() {
               </div>
 
               <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-[#202c33]">
+                <div className="border-b border-slate-100 px-5 py-4 dark:border-spill-800">
+                  <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+                    <span>
+                      <p className="font-medium">Encrypted backup</p>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-[#8696a0]">
+                        Create a password-protected backup archive and download it or send it to your own Google Drive.
+                      </p>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium hover:bg-slate-50 dark:border-spill-700 dark:hover:bg-spill-800"
+                        onClick={
+                          driveState.session?.accessToken
+                            ? disconnectGoogleDrive
+                            : connectGoogleDrive
+                        }
+                        disabled={!driveState.configured || driveState.loading}
+                      >
+                        {driveState.loading ? (
+                          <bi.BiLoaderAlt className="animate-spin" />
+                        ) : (
+                          <bi.BiCloud />
+                        )}
+                        {driveState.session?.accessToken
+                          ? 'Disconnect Drive'
+                          : 'Connect Drive'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">
+                        Backup password
+                      </span>
+                      <input
+                        type="password"
+                        value={accountDialog.backupPassword}
+                        onChange={(e) =>
+                          updateAccountDialogValue(
+                            'backupPassword',
+                            e.target.value
+                          )
+                        }
+                        placeholder="At least 8 characters"
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-sky-400 dark:border-spill-700 dark:bg-spill-950"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center gap-2 rounded-full bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                        onClick={() => createEncryptedBackup('download')}
+                        disabled={!!accountDialog.backupLoading}
+                      >
+                        {accountDialog.backupLoading === 'download' ? (
+                          <bi.BiLoaderAlt className="animate-spin" />
+                        ) : (
+                          <bi.BiDownload />
+                        )}
+                        Download backup
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60 dark:border-spill-700 dark:hover:bg-spill-800"
+                        onClick={() => createEncryptedBackup('drive')}
+                        disabled={
+                          !!accountDialog.backupLoading || !driveState.configured
+                        }
+                      >
+                        {accountDialog.backupLoading === 'drive' ? (
+                          <bi.BiLoaderAlt className="animate-spin" />
+                        ) : (
+                          <ri.RiGoogleFill />
+                        )}
+                        Save to Google Drive
+                      </button>
+                    </div>
+                    <div className="grid gap-1 text-xs">
+                      <p className="text-slate-500 dark:text-[#8696a0]">
+                        {driveState.configured
+                          ? driveState.session?.email
+                            ? `Drive connected for this session as ${driveState.session.email}.`
+                            : 'Connect Drive to upload the backup directly to your Google Drive.'
+                          : 'Google Drive connect is unavailable until GOOGLE_CLIENT_ID is configured on the server.'}
+                      </p>
+                      {accountDialog.backupStatus?.type === 'download' && (
+                        <p className="text-emerald-600 dark:text-emerald-400">
+                          Encrypted backup downloaded as {accountDialog.backupStatus.name}.
+                        </p>
+                      )}
+                      {accountDialog.backupStatus?.type === 'drive' && (
+                        <p className="text-emerald-600 dark:text-emerald-400">
+                          Backup uploaded to Google Drive as{' '}
+                          {accountDialog.backupStatus.link ? (
+                            <a
+                              href={accountDialog.backupStatus.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-semibold underline"
+                            >
+                              {accountDialog.backupStatus.name}
+                            </a>
+                          ) : (
+                            accountDialog.backupStatus.name
+                          )}
+                          .
+                        </p>
+                      )}
+                      {driveState.error && (
+                        <p className="text-rose-600 dark:text-rose-400">
+                          {driveState.error}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-b border-slate-100 px-5 py-4 dark:border-spill-800">
+                  <div className="grid gap-2">
+                    <p className="font-medium">Restore from uploaded archive</p>
+                    <p className="text-sm text-slate-500 dark:text-[#8696a0]">
+                      Upload an encrypted backup archive, enter its password, and choose which parts to restore.
+                    </p>
+                  </div>
+                  <div className="mt-4 grid gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={restoreArchiveInputRef}
+                        type="file"
+                        accept=".syncbackup,.json,.bin,.backup"
+                        className="hidden"
+                        onChange={(e) =>
+                          updateAccountDialogValue(
+                            'restoreFile',
+                            e.target.files?.[0] || null
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium hover:bg-slate-50 dark:border-spill-700 dark:hover:bg-spill-800"
+                        onClick={() => restoreArchiveInputRef.current?.click()}
+                      >
+                        <bi.BiUpload />
+                        Choose archive
+                      </button>
+                      {accountDialog.restoreFile && (
+                        <span className="text-sm text-slate-500 dark:text-[#8696a0]">
+                          {accountDialog.restoreFile.name}
+                        </span>
+                      )}
+                    </div>
+
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">
+                        Backup password
+                      </span>
+                      <input
+                        type="password"
+                        value={accountDialog.restorePassword}
+                        onChange={(e) =>
+                          updateAccountDialogValue(
+                            'restorePassword',
+                            e.target.value
+                          )
+                        }
+                        placeholder="Enter the archive password"
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-sky-400 dark:border-spill-700 dark:bg-spill-950"
+                      />
+                    </label>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {RESTORE_SECTION_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-[22px] border px-4 py-4 text-left transition ${
+                            accountDialog.restoreSelections.includes(option.value)
+                              ? 'border-sky-300 bg-sky-50 dark:border-sky-500/50 dark:bg-sky-500/10'
+                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-spill-700 dark:bg-spill-950 dark:hover:bg-spill-800'
+                          }`}
+                          onClick={() => toggleRestoreSelection(option.value)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <span>
+                              <p className="font-medium">{option.title}</p>
+                              <p className="mt-1 text-sm text-slate-500 dark:text-[#8696a0]">
+                                {option.desc}
+                              </p>
+                            </span>
+                            <span
+                              className={`mt-1 grid h-5 w-5 place-items-center rounded-full border ${
+                                accountDialog.restoreSelections.includes(option.value)
+                                  ? 'border-sky-500 bg-sky-500 text-white'
+                                  : 'border-slate-300'
+                              }`}
+                            >
+                              {accountDialog.restoreSelections.includes(
+                                option.value
+                              ) && <bi.BiCheck size={14} />}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="inline-flex h-10 w-fit items-center gap-2 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      onClick={restoreEncryptedBackup}
+                      disabled={accountDialog.restoreLoading}
+                    >
+                      {accountDialog.restoreLoading ? (
+                        <bi.BiLoaderAlt className="animate-spin" />
+                      ) : (
+                        <bi.BiRefresh />
+                      )}
+                      Restore selected data
+                    </button>
+
+                    {accountDialog.restoreResult && (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-300">
+                        <p className="font-medium">
+                          Restored: {accountDialog.restoreResult.restored?.join(', ') || 'Nothing'}
+                        </p>
+                        {accountDialog.restoreResult.exportedAt && (
+                          <p className="mt-1 opacity-80">
+                            Backup created on{' '}
+                            {new Date(
+                              accountDialog.restoreResult.exportedAt
+                            ).toLocaleString()}
+                            .
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <button
                   type="button"
                   className="grid w-full grid-cols-[auto_1fr_auto] gap-4 px-5 py-4 text-left hover:bg-spill-100/50 dark:hover:bg-[#182229]"
@@ -1135,9 +2358,9 @@ function Setting() {
                     <bi.BiCloudDownload size={22} />
                   </i>
                   <span>
-                    <p className="font-medium">Request account info</p>
+                    <p className="font-medium">Request account info export</p>
                     <p className="mt-1 text-sm text-slate-500 dark:text-[#8696a0]">
-                      Collect your account info, chats, media, groups and communities in a downloadable ZIP link sent to your email.
+                      Existing export flow for a server-generated ZIP link sent to your email.
                     </p>
                     {accountDialog.loading && (
                       <p className="mt-2 text-xs text-slate-500 dark:text-[#8696a0]">
@@ -1152,6 +2375,20 @@ function Setting() {
                           ? ` at ${accountDialog.exportInfo.email}`
                           : ''}
                       </p>
+                    )}
+                    {accountDialog.exportInfo?.fileUrl && (
+                      <div className="mt-3">
+                        <a
+                          href={accountDialog.exportInfo.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 items-center gap-2 rounded-full bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <bi.BiDownload />
+                          Download available file
+                        </a>
+                      </div>
                     )}
                   </span>
                   <span className="self-center">
@@ -2142,6 +3379,8 @@ function Setting() {
                       dispatch(setPage({ target: 'license', data: true }));
                     } else if (child.target === 'accountSettings') {
                       openAccountDialog();
+                    } else if (child.target === 'deviceSessions') {
+                      openDeviceDialog();
                     } else if (child.target === 'notifications') {
                       openNotificationDialog();
                     } else if (child.target === 'chats') {

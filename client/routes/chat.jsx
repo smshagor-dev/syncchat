@@ -72,7 +72,7 @@ function Chat() {
       </div>
 
       <Helmet>
-        <title>{`@${master.username} - ${config.brandName}`}</title>
+        <title>{config.brandName}</title>
       </Helmet>
 
       <modal.signout />

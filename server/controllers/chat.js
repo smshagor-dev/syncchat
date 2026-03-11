@@ -10,6 +10,7 @@ const ChannelModel = require('../db/models/channel');
 const SettingModel = require('../db/models/setting');
 const { asArray, toPlain, toPlainMany, pullFromArray } = require('../db/utils');
 const { canGroupMemberSendMessage } = require('../helpers/groupPermissions');
+const { enforceModerationForMessage } = require('../helpers/moderation');
 
 const response = require('../helpers/response');
 const Chat = require('../helpers/models/chats');
@@ -152,7 +153,15 @@ const getGroupLikeRoom = async (roomId) => {
     }),
     GroupModel.findOne({
       where: { roomId },
-      attributes: ['participantsId', 'adminId', 'adminsId', 'permissions', 'name', 'avatar'],
+      attributes: [
+        'participantsId',
+        'adminId',
+        'adminsId',
+        'permissions',
+        'moderation',
+        'name',
+        'avatar',
+      ],
     }),
   ]);
   return {
@@ -500,6 +509,14 @@ exports.sendFile = async (req, res) => {
         });
         return;
       }
+      await enforceModerationForMessage({
+        roomEntity,
+        roomId,
+        roomType,
+        senderId,
+        text,
+        file: filePayload,
+      });
     }
     if (roomType === 'private') {
       const privateBlock = await getPrivateChatBlockState({

@@ -25,6 +25,7 @@ import {
   getWallpaperStyle,
 } from '../../../helpers/roomAppearance';
 import { isGroupAdmin } from '../../../helpers/groupAdmins';
+import { getSupportAwareAvatar } from '../../../helpers/supportIdentity';
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
@@ -1301,8 +1302,8 @@ function Monitor({
                         src={
                           resolveUploadUrl(
                             isGroup
-                              ? lead.profile?.avatar
-                              : chatRoom.data.profile?.avatar
+                              ? getSupportAwareAvatar(lead.profile)
+                              : getSupportAwareAvatar(chatRoom.data.profile)
                           ) ||
                           'assets/images/default-avatar.png'
                         }

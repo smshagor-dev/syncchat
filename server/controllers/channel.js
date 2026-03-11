@@ -19,6 +19,10 @@ const {
   getGroupPermissions,
   canGroupMemberAddOtherMember,
 } = require('../helpers/groupPermissions');
+const {
+  normalizeModerationSettings,
+  getModerationSettings,
+} = require('../helpers/moderation');
 const { getGroupAdmins, isGroupAdminUser } = require('../helpers/groupAdmins');
 const {
   getSettingMap,
@@ -58,6 +62,7 @@ const sanitizeChannelForUser = (channel, requesterId) => {
   if (!plain) return null;
   delete plain.passwordHash;
   plain.permissions = getGroupPermissions(plain);
+  plain.moderation = getModerationSettings(plain);
   plain.adminsId = getGroupAdmins(plain);
   if (!isGroupAdminUser({ group: plain, userId: requesterId })) {
     plain.pendingMembersId = [];
@@ -574,6 +579,32 @@ exports.updatePermissions = async (req, res) => {
       res,
       message: 'Channel permissions updated',
       payload: { channelId: channel._id, permissions: nextPermissions },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.updateModeration = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { channelId } = req.params;
+    const channel = await ChannelModel.findOne({ where: { _id: channelId } });
+    ensureChannelAdminAccess(channel, userId);
+    const nextModeration = normalizeModerationSettings(req.body?.moderation);
+    await channel.update({ moderation: nextModeration });
+    global.io.to(channel.roomId).emit('channel/edit', {
+      moderation: nextModeration,
+    });
+    response({
+      res,
+      message: 'Channel moderation updated',
+      payload: { channelId: channel._id, moderation: nextModeration },
     });
   } catch (error0) {
     response({

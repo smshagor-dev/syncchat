@@ -25,6 +25,7 @@ router.patch(
   authenticate,
   ctrl.updatePermissions
 );
+router.patch('/groups/:groupId/moderation', authenticate, ctrl.updateModeration);
 router.post(
   '/groups/:groupId/pending-members/:memberId/approve',
   authenticate,

@@ -224,7 +224,11 @@ function App() {
     // Optional: system notifications
     socket.on('system', (event) => {
       const title =
-        event?.type === 'security-notice' ? 'Security notification' : 'Notification';
+        event?.type === 'security-notice'
+          ? 'Security notification'
+          : event?.type === 'suspicious-login'
+            ? 'Suspicious login'
+            : 'Notification';
       emitNotice({
         category: 'system',
         title,
@@ -339,7 +343,12 @@ function App() {
                 <button
                   type="button"
                   className="h-10 rounded-lg border border-slate-600 px-3 text-sm hover:bg-slate-800"
-                  onClick={() => {
+                  onClick={async () => {
+                    try {
+                      await axios.delete('/settings/device-sessions/current');
+                    } catch (error0) {
+                      // ignore and continue local sign-out
+                    }
                     if (master?._id) {
                       sessionStorage.removeItem(getAppLockSessionKey(master._id));
                     }

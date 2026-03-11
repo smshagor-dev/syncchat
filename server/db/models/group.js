@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 const { DEFAULT_GROUP_PERMISSIONS } = require('../../helpers/groupPermissions');
+const { DEFAULT_MODERATION_SETTINGS } = require('../../helpers/moderation');
 
 const GroupModel = sequelize.define(
   'groups',
@@ -79,6 +80,11 @@ const GroupModel = sequelize.define(
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: DEFAULT_GROUP_PERMISSIONS,
+    },
+    moderation: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: DEFAULT_MODERATION_SETTINGS,
     },
   },
   {
