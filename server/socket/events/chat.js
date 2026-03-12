@@ -45,10 +45,46 @@ const {
   getViewOnceType,
   isViewOnceChat,
 } = require('../../helpers/viewOnce');
+const { sendPushToUsers } = require('../../helpers/pushNotifications');
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
 const GROUP_INFO_PREFIX = '__group_info__::';
+const APP_ORIGIN = String(process.env.APP_ORIGIN || 'http://localhost:3000')
+  .trim()
+  .replace(/\/$/, '');
+
+const normalizeDeepLinkToken = (link, prefix) => {
+  const raw = String(link || '');
+  if (!raw.startsWith(prefix)) return '';
+  return raw.slice(prefix.length);
+};
+
+const buildPushUrl = ({ roomType, profile, roomAccess }) => {
+  if (roomType === 'private' && profile?.username) {
+    return `${APP_ORIGIN}/?u=${encodeURIComponent(profile.username)}`;
+  }
+  const groupToken = normalizeDeepLinkToken(roomAccess?.group?.link, '/group/+');
+  if (groupToken) {
+    return `${APP_ORIGIN}/?g=${encodeURIComponent(groupToken)}`;
+  }
+  const channelToken = normalizeDeepLinkToken(
+    roomAccess?.channel?.link,
+    '/channel/+'
+  );
+  if (channelToken) {
+    return `${APP_ORIGIN}/?c=${encodeURIComponent(channelToken)}`;
+  }
+  return APP_ORIGIN || '/';
+};
+
+const getFileCleanupUrls = (file) =>
+  [
+    file?.url,
+    file?.thumbnailUrl,
+    file?.streamUrl,
+    file?.streamHdUrl,
+  ].filter(Boolean);
 
 const sanitizeEditHistory = (history) =>
   asArray(history)
@@ -148,9 +184,12 @@ const getInboxPreviewText = (chatText, file) => {
   if (poll) return 'Poll';
   const event = parseEventFromText(chatText);
   if (event) return 'Event';
-  return chatText && chatText.length > 0
-    ? chatText
-    : toPlain(file)?.originalname || '';
+  if (chatText && chatText.length > 0) return chatText;
+  const safeFile = toPlain(file);
+  if (safeFile?.type === 'image') return 'Photo';
+  if (safeFile?.type === 'video') return 'Video';
+  if (safeFile?.type === 'audio') return 'Voice';
+  return safeFile?.originalname || '';
 };
 
 const sanitizeFolderName = (value, fallback = 'unknown') => {
@@ -508,6 +547,12 @@ module.exports = (socket) => {
             type,
             format,
             size: upload.size,
+            duration: Math.max(0, Math.round(Number(args.file?.duration) || 0)),
+            thumbnailUrl: args.file?.thumbnailUrl || '',
+            streamUrl: args.file?.streamUrl || '',
+            streamHdUrl: args.file?.streamHdUrl || '',
+            width: Math.max(0, Number(args.file?.width) || 0),
+            height: Math.max(0, Number(args.file?.height) || 0),
           });
         } else {
           logger.info('CHAT_INSERT_FILE_URL', {
@@ -523,6 +568,12 @@ module.exports = (socket) => {
             type: args.file.type || 'raw',
             format: args.file.format || format,
             size: Number(args.file.size || 0),
+            duration: Math.max(0, Math.round(Number(args.file?.duration) || 0)),
+            thumbnailUrl: args.file?.thumbnailUrl || '',
+            streamUrl: args.file?.streamUrl || '',
+            streamHdUrl: args.file?.streamHdUrl || '',
+            width: Math.max(0, Number(args.file?.width) || 0),
+            height: Math.max(0, Number(args.file?.height) || 0),
           });
         }
       }
@@ -558,7 +609,7 @@ module.exports = (socket) => {
 
       const profileDoc = await ProfileModel.findOne({
         where: { userId: args.userId },
-        attributes: ['userId', 'avatar', 'fullname'],
+        attributes: ['userId', 'avatar', 'fullname', 'username'],
       });
       const profile = toPlain(profileDoc);
       const roomAccess =
@@ -657,6 +708,50 @@ module.exports = (socket) => {
         poll: parsePollFromText(resolvedChatText),
         secret: getSecretPayload(secretRoom, chat),
       });
+
+      const pushTargets = visibleOwners.filter(
+        (ownerId) => ownerId !== args.userId
+      );
+      if (pushTargets.length > 0) {
+        const pushCategory = args.roomType === 'group' ? 'group' : 'message';
+        const roomLabel =
+          roomAccess.channel?.name || roomAccess.group?.name || '';
+        const pushTitle =
+          args.roomType === 'group'
+            ? roomLabel
+              ? `New message in ${roomLabel}`
+              : 'New group message'
+            : senderName || 'New message';
+        const safeContent = contentText || 'New message';
+        const pushPreview =
+          args.roomType === 'group'
+            ? `${senderName || 'Someone'}: ${safeContent}`
+            : safeContent;
+        const pushFallback =
+          args.roomType === 'group' ? 'New group message' : 'New message';
+
+        sendPushToUsers({
+          userIds: pushTargets,
+          title: pushTitle,
+          preview: pushPreview,
+          fallback: pushFallback,
+          category: pushCategory,
+          url: buildPushUrl({
+            roomType: args.roomType,
+            profile,
+            roomAccess,
+          }),
+          data: {
+            roomId: args.roomId,
+            roomType: args.roomType,
+          },
+        }).catch((error0) => {
+          logger.warn('PUSH_NOTIFY_ERROR', {
+            roomId: args.roomId,
+            message: error0?.message || 'Failed to send push notification',
+          });
+        });
+      }
 
       logger.info('CHAT_INSERT_DONE', {
         roomId: args.roomId,
@@ -806,11 +901,15 @@ module.exports = (socket) => {
           if (filesId.length > 0) {
             const files = await FileModel.findAll({
               where: { fileId: { [Op.in]: filesId } },
-              attributes: ['url', 'fileId'],
+              attributes: ['url', 'fileId', 'thumbnailUrl', 'streamUrl', 'streamHdUrl'],
             });
 
             await Promise.all(
-              files.map((file) => deleteLocalFileByUrl(file.url))
+              files.flatMap((file) =>
+                getFileCleanupUrls(file).map((targetUrl) =>
+                  deleteLocalFileByUrl(targetUrl)
+                )
+              )
             );
             await FileModel.destroy({
               where: { fileId: { [Op.in]: filesId } },

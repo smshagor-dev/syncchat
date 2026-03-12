@@ -14,7 +14,7 @@
     "dev:client": "node --no-deprecation ./node_modules/webpack-cli/bin/cli.js serve --config ./webpack.dev.js",
     "dev:client:wait": "node scripts/wait-for-port.js 8080 && npm run dev:client",
     "predev:server": "node scripts/free-ports.js 8080",
-    "dev:server": "nodemon --watch .env --ignore logs --ignore uploads --ignore client/public server",
+    "dev:server": "nodemon --watch server --watch .env --ignore logs --ignore uploads --ignore client/public server",
     "predev": "node scripts/free-ports.js 3000 8080",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client:wait\"",
     "build": "webpack --config ./webpack.prod.js",
@@ -81,6 +81,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "jsonwebtoken": "^8.5.1",
     "linkify": "^0.2.1",
     "linkify-react": "^4.0.2",
@@ -102,6 +104,7 @@
     "socket.io-client": "^4.5.3",
     "tailwind-scrollbar": "^2.1.0-preview.0",
     "tailwindcss": "^3.1.8",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "web-push": "^3.6.7"
   }
 }

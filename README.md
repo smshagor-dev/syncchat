@@ -23,6 +23,17 @@ cp .env.example .env
 ```
 
 Update `.env` with your local values before running.
+If you want push notifications, generate VAPID keys and set these in `.env`:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+```
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:support@syncchat.app
+```
 
 ## Run
 
@@ -93,7 +104,7 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-11`
+- Last updated: `2026-03-12`
 
 ## Core System Features
 
@@ -131,6 +142,169 @@ syncchat/
   - user settings read/update pipeline
   - privacy/notification/chat-preference persistence at account level
 
+## Recent Changes (2026-03-03)
+
+- Added private chat lock (per-user) with lock/unlock/change-password flow.
+- Added app-level lock in Settings (enable, remove with password verify, change password).
+- Added post-login app unlock screen when app lock is enabled.
+- App unlock is remembered for current browser tab session (no repeated prompt on refresh).
+- Improved chat list unread behavior:
+  - unread filters now count unread chats
+  - per-chat unread badge shows unread message count
+  - unread rows show bold visual state
+- Fixed popup/modal layering and clipping using centered portal rendering.
+- Improved sidebar unread badge counting to match unread chat count logic.
+- Improved webpack compile performance with filesystem + babel caching and faster dev sourcemap.
+
+## Recent Changes (2026-03-04)
+
+- Updated group admin system to support multiple admins (`adminsId`):
+  - `Make as admin` now adds a new admin without replacing the existing admin.
+  - Added `Remove from admin` action.
+  - Enforced safety checks to keep at least one admin in a group.
+- Added shared group-admin helper logic on server and client for consistent permissions checks.
+- Improved group participant/admin flows end-to-end:
+  - admin promotion/demotion event handling via sockets
+  - participant removal now updates admin state safely
+  - admin checks in group actions now support multi-admin
+- Improved group permissions and moderation UX:
+  - professional group permission settings modal
+  - member/admin permission toggles
+  - pending user request list with approve/reject flow
+- Improved group context menu UI and actions:
+  - polished action buttons
+  - clearer admin management options
+- Updated group chat composer behavior to respect admin-only messaging using multi-admin checks.
+
+
+## Recent Changes (2026-03-05)
+
+- Added real-time status post delivery using sockets:
+  - new status broadcasts instantly to owner + friends (`status/new`)
+  - inbox status rail and status page now update without manual refresh
+- Updated status rail "Create" item to show current user avatar with add badge.
+- Improved logout flow:
+  - fixed chat-list 3-dot menu logout modal open behavior
+  - added logout option at the end of Settings page
+  - fixed signout modal popup layering/positioning (`fixed inset` behavior)
+- Added social auth support (DB upsert + token flow) for:
+  - Google
+  - Facebook
+  - Telegram
+- Added social auth endpoints:
+  - `GET /api/users/social-config`
+  - `POST /api/users/social-auth`
+- Updated env docs for social providers:
+  - `GOOGLE_CLIENT_ID`
+  - `FACEBOOK_APP_ID`
+  - `TELEGRAM_BOT_USERNAME`
+  - `TELEGRAM_BOT_TOKEN`
+- Updated login/register social UI:
+  - Google/Facebook/Telegram shown in one horizontal row
+  - improved responsive sizing for mobile layout
+
+## Recent Changes (2026-03-08)
+
+- Added full channel system with separate `channels` table and Socket.IO-based realtime updates.
+- Added channel create/join/private-password flow:
+  - public and private channels
+  - private channel password verify before open
+  - custom in-app password popup (no browser prompt)
+- Added channel profile/info flow:
+  - channel info panel
+  - channel-specific labels/copy
+  - inline channel name edit from info panel
+- Added channel avatar persistence:
+  - save to local uploads
+  - store URL in DB
+  - realtime avatar update via sockets
+- Added channel chat behavior:
+  - admin-only posting by default
+  - member posting only if admin enables permission
+  - channel messages display using channel identity instead of user identity
+- Improved realtime rename/avatar propagation:
+  - room header updates instantly
+  - inbox/chat list rows update instantly
+  - group and channel info stay in sync through sockets
+- Improved group and channel subscriber/member inbox insertion:
+  - when a user joins or is added/approved, the room now appears in that user's chat list immediately
+  - added local fallback insertion for join timing/state edge cases
+- Added channel unread badge on sidebar.
+- Added settings/features across the app:
+  - Privacy subpage
+  - Account settings subpage
+  - Chats subpage
+  - Notifications subpage
+  - Voice & Video subpage
+  - Keyboard shortcuts subpage
+  - License page
+- Added Google Authenticator style 2FA for users:
+  - enable/disable in settings
+  - login verification when enabled
+- Added privacy controls end-to-end:
+  - last seen / online
+  - profile picture
+  - status visibility
+  - groups
+  - read receipts
+  - blocked contacts
+  - unknown message requests
+  - link preview control
+- Added chat behavior settings:
+  - global wallpaper
+  - media quality
+  - media auto-download toggles
+  - spell check
+  - emoji text replacement
+  - enter to send
+  - keep archived
+- Added notification settings:
+  - banner / popup / push toggles
+  - category-level toggles for message, group, status, call
+  - preview toggle
+  - outgoing sound toggle
+  - mute control
+- Added account tools:
+  - security notifications setting
+  - account info export request flow
+- Fixed delete-chat removal so deleted chats disappear from chat list immediately and after refresh.
+
+## Recent Changes (2026-03-09)
+
+- Added end-to-end hidden chat system:
+  - `Hide chat` action from chat-list menu
+  - hidden chats are removed from the main inbox list immediately
+  - hidden chat management inside `Settings -> Privacy`
+  - unhide flow restores chats back to the main list
+  - backend persistence with hidden-chat filtering on fetch
+- Added advanced secret chat / privacy chat system:
+  - Advanced Privacy Chat subpage inside friend profile
+  - Secret Chat toggle, screenshot alerts, and disappearing timer
+  - secret session generation and regeneration
+  - secret system notices in the center of the chat timeline
+  - forwarding, save/download, and export blocking for secret chats
+  - secret chat state sync across room, profile panel, and inbox refresh flow
+- Added end-to-end message scheduling:
+  - schedule send for later
+  - recurring reminders (`daily`, `weekly`, `monthly`)
+  - `send when online` for private chats
+  - room-level scheduled message list with cancel action
+  - background scheduler worker on the server
+  - Socket.IO sync for scheduled message updates
+- Added reusable scheduled-message delivery pipeline on the backend so scheduled messages use the same room/inbox realtime flow as normal chat messages.
+- Added one-time encrypted message/media flow:
+  - one-time text from the composer
+  - one-time photo/video from the send-file modal
+  - blurred/locked preview in chat before opening
+  - server-side open-once enforcement
+  - after one open, the same user cannot view it again
+  - Socket.IO sync when a one-time message is opened
+- Updated chat history and inbox preview handling for one-time content:
+  - real content is not exposed in normal room payload before open
+  - inbox preview shows secure generic wording instead of leaking content
+  - chat list preview shows icon + `Sent a photo/video/message` for one-time items
+
+  
 ## Recent Changes (2026-03-10)
 
 - Added end-to-end pinned message system:
@@ -200,163 +374,35 @@ syncchat/
   - composer and realtime moderation feedback on blocked actions
 - Updated chat page document title to show only the site name instead of `@username + site name`.
 
-## Recent Changes (2026-03-09)
+## Recent Changes (2026-03-12)
 
-- Added end-to-end hidden chat system:
-  - `Hide chat` action from chat-list menu
-  - hidden chats are removed from the main inbox list immediately
-  - hidden chat management inside `Settings -> Privacy`
-  - unhide flow restores chats back to the main list
-  - backend persistence with hidden-chat filtering on fetch
-- Added advanced secret chat / privacy chat system:
-  - Advanced Privacy Chat subpage inside friend profile
-  - Secret Chat toggle, screenshot alerts, and disappearing timer
-  - secret session generation and regeneration
-  - secret system notices in the center of the chat timeline
-  - forwarding, save/download, and export blocking for secret chats
-  - secret chat state sync across room, profile panel, and inbox refresh flow
-- Added end-to-end message scheduling:
-  - schedule send for later
-  - recurring reminders (`daily`, `weekly`, `monthly`)
-  - `send when online` for private chats
-  - room-level scheduled message list with cancel action
-  - background scheduler worker on the server
-  - Socket.IO sync for scheduled message updates
-- Added reusable scheduled-message delivery pipeline on the backend so scheduled messages use the same room/inbox realtime flow as normal chat messages.
-- Added one-time encrypted message/media flow:
-  - one-time text from the composer
-  - one-time photo/video from the send-file modal
-  - blurred/locked preview in chat before opening
-  - server-side open-once enforcement
-  - after one open, the same user cannot view it again
-  - Socket.IO sync when a one-time message is opened
-- Updated chat history and inbox preview handling for one-time content:
-  - real content is not exposed in normal room payload before open
-  - inbox preview shows secure generic wording instead of leaking content
-  - chat list preview shows icon + `Sent a photo/video/message` for one-time items
+- Added recovery codes for Google 2FA:
+  - generation/regenerate/revoke flows
+  - recovery-code login fallback
+  - recovery code status/remaining counts in settings
+- Moved recovery codes into a dedicated settings card + modal under 2FA.
+- Added secret key copy button in the 2FA setup modal.
+- Fixed dark mode styling for 2FA and app-lock popups (and social-auth strip).
+- Added in-chat YouTube/Facebook share link embeds with inline playback.
+- Added voice note upgrades:
+  - waveform
+  - playback speed
+  - pause/resume recording
+  - noise suppression
+- Added video upload pipeline:
+  - real HD/standard transcoding
+  - thumbnail generation
+  - streaming preview instead of raw file load
+- Added contact labels / folders:
+  - work/family/custom labels
+  - smart filters
+  - custom inbox sections
+- Added Web Push notifications (VAPID) for online/offline delivery:
+  - browser push subscription storage
+  - service-worker push + click handling
+  - server-side push dispatch on new messages
 
-## Recent Changes (2026-03-08)
 
-- Added full channel system with separate `channels` table and Socket.IO-based realtime updates.
-- Added channel create/join/private-password flow:
-  - public and private channels
-  - private channel password verify before open
-  - custom in-app password popup (no browser prompt)
-- Added channel profile/info flow:
-  - channel info panel
-  - channel-specific labels/copy
-  - inline channel name edit from info panel
-- Added channel avatar persistence:
-  - save to local uploads
-  - store URL in DB
-  - realtime avatar update via sockets
-- Added channel chat behavior:
-  - admin-only posting by default
-  - member posting only if admin enables permission
-  - channel messages display using channel identity instead of user identity
-- Improved realtime rename/avatar propagation:
-  - room header updates instantly
-  - inbox/chat list rows update instantly
-  - group and channel info stay in sync through sockets
-- Improved group and channel subscriber/member inbox insertion:
-  - when a user joins or is added/approved, the room now appears in that user's chat list immediately
-  - added local fallback insertion for join timing/state edge cases
-- Added channel unread badge on sidebar.
-- Added settings/features across the app:
-  - Privacy subpage
-  - Account settings subpage
-  - Chats subpage
-  - Notifications subpage
-  - Voice & Video subpage
-  - Keyboard shortcuts subpage
-  - License page
-- Added Google Authenticator style 2FA for users:
-  - enable/disable in settings
-  - login verification when enabled
-- Added privacy controls end-to-end:
-  - last seen / online
-  - profile picture
-  - status visibility
-  - groups
-  - read receipts
-  - blocked contacts
-  - unknown message requests
-  - link preview control
-- Added chat behavior settings:
-  - global wallpaper
-  - media quality
-  - media auto-download toggles
-  - spell check
-  - emoji text replacement
-  - enter to send
-  - keep archived
-- Added notification settings:
-  - banner / popup / push toggles
-  - category-level toggles for message, group, status, call
-  - preview toggle
-  - outgoing sound toggle
-  - mute control
-- Added account tools:
-  - security notifications setting
-  - account info export request flow
-- Fixed delete-chat removal so deleted chats disappear from chat list immediately and after refresh.
 
-## Recent Changes (2026-03-05)
 
-- Added real-time status post delivery using sockets:
-  - new status broadcasts instantly to owner + friends (`status/new`)
-  - inbox status rail and status page now update without manual refresh
-- Updated status rail "Create" item to show current user avatar with add badge.
-- Improved logout flow:
-  - fixed chat-list 3-dot menu logout modal open behavior
-  - added logout option at the end of Settings page
-  - fixed signout modal popup layering/positioning (`fixed inset` behavior)
-- Added social auth support (DB upsert + token flow) for:
-  - Google
-  - Facebook
-  - Telegram
-- Added social auth endpoints:
-  - `GET /api/users/social-config`
-  - `POST /api/users/social-auth`
-- Updated env docs for social providers:
-  - `GOOGLE_CLIENT_ID`
-  - `FACEBOOK_APP_ID`
-  - `TELEGRAM_BOT_USERNAME`
-  - `TELEGRAM_BOT_TOKEN`
-- Updated login/register social UI:
-  - Google/Facebook/Telegram shown in one horizontal row
-  - improved responsive sizing for mobile layout
 
-## Recent Changes (2026-03-04)
-
-- Updated group admin system to support multiple admins (`adminsId`):
-  - `Make as admin` now adds a new admin without replacing the existing admin.
-  - Added `Remove from admin` action.
-  - Enforced safety checks to keep at least one admin in a group.
-- Added shared group-admin helper logic on server and client for consistent permissions checks.
-- Improved group participant/admin flows end-to-end:
-  - admin promotion/demotion event handling via sockets
-  - participant removal now updates admin state safely
-  - admin checks in group actions now support multi-admin
-- Improved group permissions and moderation UX:
-  - professional group permission settings modal
-  - member/admin permission toggles
-  - pending user request list with approve/reject flow
-- Improved group context menu UI and actions:
-  - polished action buttons
-  - clearer admin management options
-- Updated group chat composer behavior to respect admin-only messaging using multi-admin checks.
-
-## Recent Changes (2026-03-03)
-
-- Added private chat lock (per-user) with lock/unlock/change-password flow.
-- Added app-level lock in Settings (enable, remove with password verify, change password).
-- Added post-login app unlock screen when app lock is enabled.
-- App unlock is remembered for current browser tab session (no repeated prompt on refresh).
-- Improved chat list unread behavior:
-  - unread filters now count unread chats
-  - per-chat unread badge shows unread message count
-  - unread rows show bold visual state
-- Fixed popup/modal layering and clipping using centered portal rendering.
-- Improved sidebar unread badge counting to match unread chat count logic.
-- Improved webpack compile performance with filesystem + babel caching and faster dev sourcemap.

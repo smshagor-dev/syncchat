@@ -40,6 +40,24 @@ router.post('/settings/app-lock/verify', authenticate, ctrl.verifyAppLock);
 router.post('/settings/two-factor/setup', authenticate, ctrl.setupTwoFactor);
 router.post('/settings/two-factor/enable', authenticate, ctrl.enableTwoFactor);
 router.post('/settings/two-factor/disable', authenticate, ctrl.disableTwoFactor);
+router.get('/settings/push/public-key', authenticate, ctrl.getPushPublicKey);
+router.post('/settings/push/subscribe', authenticate, ctrl.subscribePush);
+router.post('/settings/push/unsubscribe', authenticate, ctrl.unsubscribePush);
+router.get(
+  '/settings/two-factor/recovery-codes',
+  authenticate,
+  ctrl.getTwoFactorRecoveryStatus
+);
+router.post(
+  '/settings/two-factor/recovery-codes',
+  authenticate,
+  ctrl.generateTwoFactorRecoveryCodes
+);
+router.delete(
+  '/settings/two-factor/recovery-codes',
+  authenticate,
+  ctrl.revokeTwoFactorRecoveryCodes
+);
 router.put(
   '/settings/app-lock/password',
   authenticate,

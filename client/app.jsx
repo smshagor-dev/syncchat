@@ -10,12 +10,16 @@ import socket from './helpers/socket';
 import config from './config';
 import { getSetting } from './api/services/setting.api';
 import { showLocalNotification } from './pwa/notifications';
+import { ensurePushSubscription } from './pwa/push';
 
 const authDebug = (...args) => {
   if (config.isDev) console.log('[AuthDebug]', ...args);
 };
 
 const getAppLockSessionKey = (userId) => `app-lock-unlocked:${userId}`;
+
+// Ensure API base URL is set before any request is made.
+axios.defaults.baseURL = config.apiBaseUrl;
 
 function App() {
   const dispatch = useDispatch();
@@ -247,6 +251,17 @@ function App() {
       socket.off('system');
     };
   }, [master, setting]);
+
+  useEffect(() => {
+    if (!master?._id || !setting) return undefined;
+    const enabled = setting?.showPushNotification !== false;
+    ensurePushSubscription({ enabled }).catch((error0) => {
+      if (config.isDev) {
+        console.warn('Push subscription failed:', error0?.message || error0);
+      }
+    });
+    return undefined;
+  }, [master?._id, setting?.showPushNotification]);
 
   useEffect(() => {
     if (master?.verified && setting?.appLockEnabled) {

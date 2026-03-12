@@ -10,12 +10,20 @@ const ProfileModel = require('../db/models/profile');
 const AccountExportModel = require('../db/models/accountExport');
 const UserSessionModel = require('../db/models/userSession');
 const DeviceLinkRequestModel = require('../db/models/deviceLinkRequest');
+const PushSubscriptionModel = require('../db/models/pushSubscription');
 const Inbox = require('../helpers/models/inbox');
 const {
   buildOtpAuthUrl,
   generateSecret,
   verifyToken,
 } = require('../helpers/totp');
+const {
+  RECOVERY_CODE_COUNT,
+  generateRecoveryCodes,
+  hashRecoveryCodes,
+  consumeRecoveryCode,
+  countRemainingRecoveryCodes,
+} = require('../helpers/recoveryCodes');
 const {
   normalizePrivacyChoice,
   normalizePrivacySettingPayload,
@@ -36,6 +44,7 @@ const {
   revokeSession,
   serializeSession,
 } = require('../helpers/userSessions');
+const { getPublicVapidKey } = require('../helpers/pushNotifications');
 
 const DEVICE_LINK_TTL_MS = 10 * 60 * 1000;
 
@@ -68,9 +77,17 @@ const getSafeSetting = (setting) => {
 
   delete plain.appLockHash;
   delete plain.twoFactorSecret;
+  delete plain.twoFactorRecoveryCodes;
+  const recoveryCodes = Array.isArray(setting?.twoFactorRecoveryCodes)
+    ? setting.twoFactorRecoveryCodes
+    : [];
+  const remaining = countRemainingRecoveryCodes(recoveryCodes);
   return normalizePrivacySettingPayload(plain) && {
     ...plain,
     ...normalizePrivacySettingPayload(plain),
+    twoFactorRecoveryRemaining: remaining,
+    twoFactorRecoveryGeneratedAt: plain.twoFactorRecoveryGeneratedAt || null,
+    twoFactorRecoveryRevokedAt: plain.twoFactorRecoveryRevokedAt || null,
   };
 };
 
@@ -881,6 +898,9 @@ exports.setupTwoFactor = async (req, res) => {
     await setting.update({
       twoFactorSecret: secret,
       twoFactorEnabled: false,
+      twoFactorRecoveryCodes: [],
+      twoFactorRecoveryGeneratedAt: null,
+      twoFactorRecoveryRevokedAt: new Date(),
     });
 
     response({
@@ -952,6 +972,160 @@ exports.disableTwoFactor = async (req, res) => {
     const user = await UserModel.findOne({ where: { _id: req.user._id } });
     const password = String(req.body?.password || '');
     const code = String(req.body?.code || '');
+    const recoveryCode = String(req.body?.recoveryCode || '');
+
+    if (!setting.twoFactorEnabled || !setting.twoFactorSecret) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Two-factor authentication is not enabled',
+      });
+      return;
+    }
+
+    decrypt(password, user.password);
+
+    let verified = false;
+    if (recoveryCode) {
+      const consumed = consumeRecoveryCode(
+        Array.isArray(setting.twoFactorRecoveryCodes)
+          ? setting.twoFactorRecoveryCodes
+          : [],
+        recoveryCode
+      );
+      if (consumed.matched) {
+        await setting.update({
+          twoFactorRecoveryCodes: consumed.codes,
+        });
+        verified = true;
+      }
+    }
+
+    if (!verified && verifyToken({ secret: setting.twoFactorSecret, token: code })) {
+      verified = true;
+    }
+
+    if (!verified) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid authentication code',
+      });
+      return;
+    }
+
+    await setting.update({
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+      twoFactorRecoveryCodes: [],
+      twoFactorRecoveryGeneratedAt: null,
+      twoFactorRecoveryRevokedAt: new Date(),
+    });
+
+    response({
+      res,
+      message: 'Two-factor authentication disabled',
+      payload: getSafeSetting(setting),
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.getTwoFactorRecoveryStatus = async (req, res) => {
+  try {
+    const setting = await ensureSetting(req.user._id);
+    const codes = Array.isArray(setting.twoFactorRecoveryCodes)
+      ? setting.twoFactorRecoveryCodes
+      : [];
+    response({
+      res,
+      payload: {
+        enabled: !!setting.twoFactorEnabled,
+        remaining: countRemainingRecoveryCodes(codes),
+        generatedAt: setting.twoFactorRecoveryGeneratedAt || null,
+        revokedAt: setting.twoFactorRecoveryRevokedAt || null,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.generateTwoFactorRecoveryCodes = async (req, res) => {
+  try {
+    const setting = await ensureSetting(req.user._id);
+    const user = await UserModel.findOne({ where: { _id: req.user._id } });
+    const password = String(req.body?.password || '');
+    const code = String(req.body?.code || '');
+
+    if (!setting.twoFactorEnabled || !setting.twoFactorSecret) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Two-factor authentication is not enabled',
+      });
+      return;
+    }
+
+    decrypt(password, user.password);
+
+    if (!verifyToken({ secret: setting.twoFactorSecret, token: code })) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid authentication code',
+      });
+      return;
+    }
+
+    const codes = generateRecoveryCodes(RECOVERY_CODE_COUNT);
+    const generatedAt = new Date();
+    await setting.update({
+      twoFactorRecoveryCodes: hashRecoveryCodes(codes),
+      twoFactorRecoveryGeneratedAt: generatedAt,
+      twoFactorRecoveryRevokedAt: null,
+    });
+
+    response({
+      res,
+      message: 'Recovery codes generated',
+      payload: {
+        codes,
+        remaining: codes.length,
+        generatedAt,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.revokeTwoFactorRecoveryCodes = async (req, res) => {
+  try {
+    const setting = await ensureSetting(req.user._id);
+    const user = await UserModel.findOne({ where: { _id: req.user._id } });
+    const password = String(req.body?.password || '');
+    const code = String(req.body?.code || '');
 
     if (!setting.twoFactorEnabled || !setting.twoFactorSecret) {
       response({
@@ -976,14 +1150,138 @@ exports.disableTwoFactor = async (req, res) => {
     }
 
     await setting.update({
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
+      twoFactorRecoveryCodes: [],
+      twoFactorRecoveryGeneratedAt: null,
+      twoFactorRecoveryRevokedAt: new Date(),
     });
 
     response({
       res,
-      message: 'Two-factor authentication disabled',
+      message: 'Recovery codes revoked',
       payload: getSafeSetting(setting),
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.getPushPublicKey = async (req, res) => {
+  try {
+    const publicKey = getPublicVapidKey();
+    response({
+      res,
+      payload: {
+        publicKey: publicKey || null,
+        configured: !!publicKey,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.subscribePush = async (req, res) => {
+  try {
+    const subscription = req.body?.subscription || null;
+    const endpoint = String(subscription?.endpoint || '').trim();
+    const p256dh = String(subscription?.keys?.p256dh || '').trim();
+    const auth = String(subscription?.keys?.auth || '').trim();
+
+    if (!endpoint || !p256dh || !auth) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Invalid push subscription payload',
+      });
+      return;
+    }
+
+    const userAgent = String(
+      req.body?.userAgent || req.get('user-agent') || ''
+    ).slice(0, 255);
+    const deviceLabel = String(req.body?.deviceLabel || '').slice(0, 64);
+    const expirationTime =
+      subscription?.expirationTime === undefined
+        ? null
+        : Number(subscription.expirationTime) || null;
+
+    const existing = await PushSubscriptionModel.findOne({
+      where: { endpoint },
+    });
+
+    if (existing) {
+      await existing.update({
+        userId: req.user._id,
+        p256dh,
+        auth,
+        expirationTime,
+        userAgent,
+        deviceLabel,
+        lastSeenAt: new Date(),
+      });
+    } else {
+      await PushSubscriptionModel.create({
+        userId: req.user._id,
+        endpoint,
+        p256dh,
+        auth,
+        expirationTime,
+        userAgent,
+        deviceLabel,
+        lastSeenAt: new Date(),
+      });
+    }
+
+    response({
+      res,
+      message: 'Push subscription saved',
+      payload: { endpoint },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.unsubscribePush = async (req, res) => {
+  try {
+    const endpoint = String(
+      req.body?.endpoint || req.body?.subscription?.endpoint || ''
+    ).trim();
+
+    if (!endpoint) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Push subscription endpoint is required',
+      });
+      return;
+    }
+
+    await PushSubscriptionModel.destroy({
+      where: { userId: req.user._id, endpoint },
+    });
+
+    response({
+      res,
+      message: 'Push subscription removed',
+      payload: { endpoint },
     });
   } catch (error0) {
     response({

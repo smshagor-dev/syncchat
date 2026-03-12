@@ -54,3 +54,65 @@ self.addEventListener('message', event => {
     vibrate: [200, 100, 200],
   });
 });
+
+self.addEventListener('push', event => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error0) {
+    payload = { body: event.data ? event.data.text() : '' };
+  }
+
+  const title = payload.title || 'SyncChat';
+  const body = payload.body || 'You have a new message';
+  const url = payload.url || '/';
+
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+      const hasFocused = clientsList.some(
+        (client) =>
+          client.visibilityState === 'visible' &&
+          client.url &&
+          client.url.startsWith(self.location.origin)
+      );
+      if (hasFocused) return;
+
+      await self.registration.showNotification(title, {
+        body,
+        icon: 'pwa-192x192.png',
+        badge: 'pwa-72x72.png',
+        data: { url },
+      });
+    })()
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  const targetUrl = event.notification?.data?.url || '/';
+  event.notification.close();
+
+  event.waitUntil(
+    (async () => {
+      const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+      const clientsList = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+
+      for (const client of clientsList) {
+        if (client.url === absoluteUrl && 'focus' in client) {
+          await client.focus();
+          return;
+        }
+      }
+
+      if (self.clients.openWindow) {
+        await self.clients.openWindow(absoluteUrl);
+      }
+    })()
+  );
+});
