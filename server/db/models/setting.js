@@ -94,6 +94,26 @@ const SettingModel = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    chatSentBubbleBg: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '#ccecff',
+    },
+    chatSentTextColor: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '#0f172a',
+    },
+    chatReceivedBubbleBg: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '#ffffff',
+    },
+    chatReceivedTextColor: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '#0f172a',
+    },
     autoDownloadPhotos: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -211,6 +231,21 @@ const SettingModel = sequelize.define(
     },
     twoFactorSecret: {
       type: DataTypes.STRING(128),
+      allowNull: true,
+      defaultValue: null,
+    },
+    twoFactorRecoveryCodes: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    twoFactorRecoveryGeneratedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    twoFactorRecoveryRevokedAt: {
+      type: DataTypes.DATE,
       allowNull: true,
       defaultValue: null,
     },

@@ -3,14 +3,21 @@ import { Helmet } from 'react-helmet';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import config from '../../config';
+import QrScanner from './qrScanner';
 
-function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
+function LinkDevice({
+  setRespond,
+  initialToken = '',
+  onBack = () => {},
+  autoScan = false,
+}) {
   const [process, setProcess] = useState(false);
   const [lookup, setLookup] = useState({
     token: initialToken || '',
     shortCode: '',
     info: null,
   });
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [codes, setCodes] = useState({
     emailCode: '',
     supportCode: '',
@@ -22,6 +29,45 @@ function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
       shortCode,
     });
     return data?.payload || null;
+  };
+
+  const extractToken = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      const param = url.searchParams.get('link');
+      if (param) return param;
+      return url.pathname?.split('/').pop() || raw;
+    } catch (error0) {
+      return raw;
+    }
+  };
+
+  const lookupByToken = async ({ token = '', shortCode = '' }) => {
+    try {
+      setProcess(true);
+      const info = await fetchInfo({ token, shortCode });
+      setLookup((prev) => ({
+        ...prev,
+        token: info?.token || token || prev.token,
+        shortCode: info?.shortCode || shortCode || prev.shortCode,
+        info,
+      }));
+      setRespond({
+        success: true,
+        message: 'Device link found. Enter the email code and the SyncChat Support chat code.',
+      });
+    } catch (error0) {
+      setRespond({
+        success: false,
+        message:
+          error0?.response?.data?.message ||
+          'Unable to find that device link request.',
+      });
+    } finally {
+      setProcess(false);
+    }
   };
 
   useEffect(() => {
@@ -63,27 +109,11 @@ function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
   const handleLookup = async (e) => {
     try {
       e.preventDefault();
-      setProcess(true);
-      const info = await fetchInfo({
+      await lookupByToken({
         token: lookup.token,
         shortCode: lookup.shortCode,
       });
-      setLookup((prev) => ({
-        ...prev,
-        token: info?.token || prev.token,
-        shortCode: info?.shortCode || prev.shortCode,
-        info,
-      }));
-      setRespond({
-        success: true,
-        message: 'Device link found. Enter the email code and the SyncChat Support chat code.',
-      });
     } catch (error0) {
-      setRespond({
-        success: false,
-        message: error0?.response?.data?.message || 'Unable to find that device link request.',
-      });
-    } finally {
       setProcess(false);
     }
   };
@@ -115,6 +145,12 @@ function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
     }
   };
 
+  useEffect(() => {
+    if (autoScan) {
+      setScannerOpen(true);
+    }
+  }, [autoScan]);
+
   return (
     <div className="grid gap-4 font-auth">
       <Helmet>
@@ -127,6 +163,14 @@ function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
 
       {!lookup.info ? (
         <form className="grid gap-4" onSubmit={handleLookup}>
+          <button
+            type="button"
+            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            onClick={() => setScannerOpen(true)}
+          >
+            <bi.BiQrScan size={18} />
+            Scan QR code
+          </button>
           <label className="relative flex items-center">
             <i className="absolute left-4 text-slate-500">
               <bi.BiQrScan size={20} />
@@ -233,6 +277,28 @@ function LinkDevice({ setRespond, initialToken = '', onBack = () => {} }) {
       >
         Back
       </button>
+
+      <QrScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onDetected={(value) => {
+          const token = extractToken(value);
+          setScannerOpen(false);
+          if (token) {
+            setLookup((prev) => ({
+              ...prev,
+              token,
+              shortCode: '',
+            }));
+            lookupByToken({ token });
+          } else {
+            setRespond({
+              success: false,
+              message: 'QR code is invalid or empty.',
+            });
+          }
+        }}
+      />
     </div>
   );
 }

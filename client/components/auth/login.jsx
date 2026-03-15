@@ -5,7 +5,7 @@ import * as bi from 'react-icons/bi';
 import config from '../../config';
 import SocialAuth from './socialAuth';
 
-function Login({ setRespond, onForgotPass }) {
+function Login({ setRespond, onForgotPass, onLoginWithQr }) {
   const cache = JSON.parse(localStorage.getItem('cache'));
 
   const [process, setProcess] = useState(false);
@@ -14,6 +14,7 @@ function Login({ setRespond, onForgotPass }) {
     required: false,
     code: '',
     tempToken: '',
+    method: 'totp',
   });
   const [form, setForm] = useState({
     me: false,
@@ -41,6 +42,7 @@ function Login({ setRespond, onForgotPass }) {
           required: true,
           code: '',
           tempToken: data.payload.tempToken,
+          method: 'totp',
         });
         setProcess(false);
         setRespond({
@@ -81,10 +83,16 @@ function Login({ setRespond, onForgotPass }) {
     try {
       e.preventDefault();
       setProcess(true);
-      const { data } = await axios.post('/users/login/2fa-verify', {
+      const payload = {
         tempToken: twoFactor.tempToken,
-        code: twoFactor.code,
-      });
+      };
+      if (twoFactor.method === 'recovery') {
+        payload.recoveryCode = twoFactor.code;
+      } else {
+        payload.code = twoFactor.code;
+      }
+
+      const { data } = await axios.post('/users/login/2fa-verify', payload);
 
       localStorage.setItem('token', data.payload.token);
       localStorage.setItem(
@@ -105,19 +113,30 @@ function Login({ setRespond, onForgotPass }) {
         success: false,
         message:
           error0?.response?.data?.message ||
-          'Invalid authenticator code. Please try again.',
+          'Invalid verification code. Please try again.',
       });
     }
   };
 
   if (twoFactor.required) {
+    const formatRecoveryCode = (value) => {
+      const raw = String(value || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 8);
+      if (raw.length <= 4) return raw;
+      return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+    };
+
     return (
       <form method="post" className="grid gap-4 font-auth" onSubmit={submitTwoFactor}>
         <Helmet>
           <title>{`Two-Factor Verification - ${config.brandName}`}</title>
         </Helmet>
         <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-          Google Authenticator code is required after password verification.
+          {twoFactor.method === 'recovery'
+            ? 'Enter one of your recovery codes to continue.'
+            : 'Google Authenticator code is required after password verification.'}
         </div>
         <label htmlFor="login-2fa-code" className="relative flex items-center">
           <i className="absolute left-4 text-slate-500">
@@ -125,34 +144,63 @@ function Login({ setRespond, onForgotPass }) {
           </i>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode={twoFactor.method === 'recovery' ? 'text' : 'numeric'}
             id="login-2fa-code"
             autoComplete="one-time-code"
-            placeholder="6-digit code"
-            minLength={6}
-            maxLength={6}
+            placeholder={
+              twoFactor.method === 'recovery'
+                ? 'Recovery code (ABCD-EFGH)'
+                : '6-digit code'
+            }
+            minLength={twoFactor.method === 'recovery' ? 9 : 6}
+            maxLength={twoFactor.method === 'recovery' ? 9 : 6}
             className="w-full rounded-xl border-2 border-slate-400 bg-slate-50 px-11 py-3 text-sm text-slate-800 shadow-sm transition focus:border-sky-500 focus:bg-white focus:ring-4 focus:ring-sky-100"
             value={twoFactor.code}
             onChange={(e) =>
               setTwoFactor((prev) => ({
                 ...prev,
-                code: e.target.value.replace(/\D+/g, '').slice(0, 6),
+                code:
+                  prev.method === 'recovery'
+                    ? formatRecoveryCode(e.target.value)
+                    : e.target.value.replace(/\D+/g, '').slice(0, 6),
               }))
             }
             required
           />
         </label>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <button
             type="button"
-            className="text-sm font-semibold text-slate-600 hover:text-slate-900"
+            className="font-semibold text-slate-600 hover:text-slate-900"
+            onClick={() =>
+              setTwoFactor((prev) => ({
+                ...prev,
+                method: prev.method === 'recovery' ? 'totp' : 'recovery',
+                code: '',
+              }))
+            }
+          >
+            {twoFactor.method === 'recovery'
+              ? 'Use authenticator code'
+              : 'Use recovery code'}
+          </button>
+          <button
+            type="button"
+            className="font-semibold text-slate-600 hover:text-slate-900"
             onClick={() => {
-              setTwoFactor({ required: false, code: '', tempToken: '' });
+              setTwoFactor({
+                required: false,
+                code: '',
+                tempToken: '',
+                method: 'totp',
+              });
               setRespond({ success: true, message: null });
             }}
           >
             Back
           </button>
+        </div>
+        <div className="flex items-center justify-between gap-3">
           <button
             type="submit"
             className="flex justify-center rounded-xl bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-500 px-5 py-3 font-semibold text-white shadow-lg shadow-sky-200 transition hover:brightness-110"
@@ -274,6 +322,14 @@ function Login({ setRespond, onForgotPass }) {
           <p>Sign in to your account</p>
         )}
       </button>
+      <button
+        type="button"
+        className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        onClick={() => onLoginWithQr?.()}
+      >
+        <bi.BiQrScan size={18} />
+        Login via QR code
+      </button>
 
       <SocialAuth
         setRespond={setRespond}
@@ -283,6 +339,7 @@ function Login({ setRespond, onForgotPass }) {
             required: true,
             code: '',
             tempToken,
+            method: 'totp',
           });
           setRespond({ success: true, message });
         }}

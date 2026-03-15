@@ -13,6 +13,8 @@ export const DEFAULT_ROOM_APPEARANCE = {
   wallpaperImage: '',
   sentBubbleBg: '#ccecff',
   receivedBubbleBg: '#ffffff',
+  sentBubbleText: '#0f172a',
+  receivedBubbleText: '#0f172a',
 };
 
 export const getWallpaperStyle = (appearance = DEFAULT_ROOM_APPEARANCE) => {

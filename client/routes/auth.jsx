@@ -11,6 +11,7 @@ function Auth() {
   const [login, setLogin] = useState(true);
   const [forgotPass, setForgotPass] = useState(false);
   const [linkDevice, setLinkDevice] = useState(!!linkToken);
+  const [linkDeviceScan, setLinkDeviceScan] = useState(false);
   let title = 'Sign up';
   let badgeLabel = 'Create account';
   if (linkDevice) title = 'Link device';
@@ -26,8 +27,10 @@ function Auth() {
       <comp.linkDevice
         setRespond={setRespond}
         initialToken={linkToken}
+        autoScan={linkDeviceScan}
         onBack={() => {
           setLinkDevice(false);
+          setLinkDeviceScan(false);
           setRespond({ success: true, message: null });
           if (window.history?.replaceState) {
             window.history.replaceState({}, '', window.location.pathname);
@@ -51,6 +54,11 @@ function Auth() {
         setRespond={setRespond}
         onForgotPass={() => {
           setForgotPass(true);
+          setRespond({ success: true, message: null });
+        }}
+        onLoginWithQr={() => {
+          setLinkDevice(true);
+          setLinkDeviceScan(true);
           setRespond({ success: true, message: null });
         }}
       />

@@ -109,6 +109,15 @@ function Setting() {
     loading: false,
     error: '',
   });
+  const [recoveryDialog, setRecoveryDialog] = React.useState({
+    open: false,
+    password: '',
+    code: '',
+    codes: [],
+    loading: '',
+    error: '',
+    copied: false,
+  });
   const [privacyDialog, setPrivacyDialog] = React.useState({
     open: false,
     loading: false,
@@ -179,6 +188,7 @@ function Setting() {
     qrImage: '',
     linkUrl: '',
   });
+  const [deviceLinkCopied, setDeviceLinkCopied] = React.useState(false);
   const chatWallpaperInputRef = React.useRef(null);
   const restoreArchiveInputRef = React.useRef(null);
   const googleTokenClientRef = React.useRef(null);
@@ -293,6 +303,14 @@ function Setting() {
           hide: !setting?.appLockEnabled,
           icon: <bi.BiKey />,
         },
+        {
+          target: 'twoFactorRecovery',
+          title: 'Recovery codes',
+          desc: 'Generate or revoke backup codes for 2FA.',
+          toggle: false,
+          hide: !setting?.twoFactorEnabled,
+          icon: <bi.BiShieldAlt2 />,
+        },
       ],
     },
     {
@@ -371,6 +389,18 @@ function Setting() {
       qrCode: '',
       loading: false,
       error: '',
+    });
+  };
+
+  const closeRecoveryDialog = () => {
+    setRecoveryDialog({
+      open: false,
+      password: '',
+      code: '',
+      codes: [],
+      loading: '',
+      error: '',
+      copied: false,
     });
   };
 
@@ -589,6 +619,29 @@ function Setting() {
         ...prev,
         loading: false,
         error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const copyDeviceLinkToken = async () => {
+    try {
+      const tokenValue =
+        deviceLinkDialog.token ||
+        String(deviceLinkDialog.linkUrl || '').split('link=').slice(1).join('') ||
+        '';
+      if (!tokenValue) {
+        throw new Error('Token is not ready yet.');
+      }
+      await navigator.clipboard.writeText(tokenValue);
+      setDeviceLinkCopied(true);
+      setTimeout(() => setDeviceLinkCopied(false), 1600);
+    } catch (error0) {
+      setDeviceLinkCopied(false);
+      setDeviceLinkDialog((prev) => ({
+        ...prev,
+        error:
+          error0?.message ||
+          'Unable to copy token right now. Please try again.',
       }));
     }
   };
@@ -1336,6 +1389,18 @@ function Setting() {
     }
   };
 
+  const openRecoveryDialog = () => {
+    setRecoveryDialog({
+      open: true,
+      password: '',
+      code: '',
+      codes: [],
+      loading: '',
+      error: '',
+      copied: false,
+    });
+  };
+
   const submitAppLockDialog = async () => {
     try {
       setAppLockDialog((prev) => ({
@@ -1409,6 +1474,103 @@ function Setting() {
     }
   };
 
+  const ensureTwoFactorRecoveryAuth = () => {
+    if (!recoveryDialog.password) {
+      throw new Error('Password is required');
+    }
+    if (!recoveryDialog.code || recoveryDialog.code.length < 6) {
+      throw new Error('Authenticator code is required');
+    }
+  };
+
+  const downloadRecoveryCodes = (codes = []) => {
+    const content = codes.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const name = `syncchat-recovery-codes-${Date.now()}.txt`;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const copyRecoveryCodes = async (codes = []) => {
+    try {
+      await navigator.clipboard.writeText(codes.join('\n'));
+      setRecoveryDialog((prev) => ({ ...prev, copied: true }));
+      setTimeout(
+        () => setRecoveryDialog((prev) => ({ ...prev, copied: false })),
+        2000
+      );
+    } catch (error0) {
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        error: 'Clipboard permission denied',
+      }));
+    }
+  };
+
+  const generateRecoveryCodes = async () => {
+    try {
+      ensureTwoFactorRecoveryAuth();
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: 'generate',
+        error: '',
+      }));
+      const { data } = await axios.post('/settings/two-factor/recovery-codes', {
+        password: recoveryDialog.password,
+        code: recoveryDialog.code,
+      });
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: '',
+        codes: data?.payload?.codes || [],
+        error: '',
+      }));
+      await refreshSettings();
+    } catch (error0) {
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: '',
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const revokeRecoveryCodes = async () => {
+    try {
+      ensureTwoFactorRecoveryAuth();
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: 'revoke',
+        error: '',
+      }));
+      await axios.delete('/settings/two-factor/recovery-codes', {
+        data: {
+          password: recoveryDialog.password,
+          code: recoveryDialog.code,
+        },
+      });
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: '',
+        codes: [],
+        error: '',
+      }));
+      await refreshSettings();
+    } catch (error0) {
+      setRecoveryDialog((prev) => ({
+        ...prev,
+        loading: '',
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
   const getHiddenChatTitle = React.useCallback(
     (inbox) => {
       if (inbox?.roomType === 'group') {
@@ -1460,7 +1622,7 @@ function Setting() {
             >
               <div
                 aria-hidden
-                className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-spill-700 dark:bg-spill-900"
+                className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl dark:border-spill-700 dark:bg-spill-900 dark:text-white/90"
                 onClick={(e) => e.stopPropagation()}
               >
                 <h3 className="text-base font-semibold">
@@ -1469,7 +1631,7 @@ function Setting() {
                   {appLockDialog.mode === 'change' &&
                     'Change App Lock Password'}
                 </h3>
-                <p className="mt-1 text-sm opacity-70">
+                <p className="mt-1 text-sm text-slate-600 dark:text-white/60">
                   {appLockDialog.mode === 'enable' &&
                     'Set a password to unlock app after login.'}
                   {appLockDialog.mode === 'remove' &&
@@ -1480,7 +1642,7 @@ function Setting() {
                 <div className="mt-3 grid gap-2">
                   {(appLockDialog.mode === 'enable' ||
                     appLockDialog.mode === 'remove') && (
-                    <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                    <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
                       <input
                         id="app-lock-password"
                         name="app_lock_password"
@@ -1498,13 +1660,13 @@ function Setting() {
                             ? 'New password'
                             : 'Current password'
                         }
-                        className="w-full bg-transparent text-sm"
+                        className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
                       />
                     </label>
                   )}
                   {appLockDialog.mode === 'change' && (
                     <>
-                      <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                      <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
                         <input
                           id="app-lock-old-password"
                           name="app_lock_old_password"
@@ -1518,10 +1680,10 @@ function Setting() {
                             }))
                           }
                           placeholder="Current password"
-                          className="w-full bg-transparent text-sm"
+                          className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
                         />
                       </label>
-                      <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                      <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
                         <input
                           id="app-lock-new-password"
                           name="app_lock_new_password"
@@ -1535,7 +1697,7 @@ function Setting() {
                             }))
                           }
                           placeholder="New password"
-                          className="w-full bg-transparent text-sm"
+                          className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
                         />
                       </label>
                     </>
@@ -1577,7 +1739,7 @@ function Setting() {
             >
               <div
                 aria-hidden
-                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-spill-700 dark:bg-spill-900"
+                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl dark:border-spill-700 dark:bg-spill-900 dark:text-white/90"
                 onClick={(e) => e.stopPropagation()}
               >
                 <h3 className="text-base font-semibold">
@@ -1585,13 +1747,13 @@ function Setting() {
                     ? 'Enable Google 2FA'
                     : 'Disable Google 2FA'}
                 </h3>
-                <p className="mt-1 text-sm opacity-70">
+                <p className="mt-1 text-sm text-slate-600 dark:text-white/60">
                   {twoFactorDialog.mode === 'enable'
                     ? 'Scan the QR code with Google Authenticator and enter the 6-digit code.'
                     : 'Enter your password and current authenticator code to disable 2FA.'}
                 </p>
                 {twoFactorDialog.mode === 'enable' && (
-                  <div className="mt-3 grid gap-3 rounded-xl border border-spill-200 p-3 dark:border-spill-700">
+                  <div className="mt-3 grid gap-3 rounded-xl border border-spill-200 bg-slate-50 p-3 dark:border-spill-700 dark:bg-spill-950">
                     {twoFactorDialog.qrCode && (
                       <img
                         src={twoFactorDialog.qrCode}
@@ -1599,14 +1761,44 @@ function Setting() {
                         className="mx-auto h-44 w-44 rounded-xl bg-white p-2"
                       />
                     )}
-                    <div className="rounded-lg bg-spill-100 px-3 py-2 text-xs dark:bg-spill-800">
-                      Secret key: {twoFactorDialog.secret}
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-spill-100 px-3 py-2 text-xs text-slate-700 dark:bg-spill-800 dark:text-white/80">
+                      <span>Secret key: {twoFactorDialog.secret}</span>
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-spill-700 dark:bg-spill-950 dark:text-white/80 dark:hover:bg-spill-900"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              twoFactorDialog.secret || ''
+                            );
+                            setTwoFactorDialog((prev) => ({
+                              ...prev,
+                              error: 'Secret key copied',
+                            }));
+                            setTimeout(
+                              () =>
+                                setTwoFactorDialog((prev) => ({
+                                  ...prev,
+                                  error: '',
+                                })),
+                              2000
+                            );
+                          } catch (error0) {
+                            setTwoFactorDialog((prev) => ({
+                              ...prev,
+                              error: 'Unable to copy secret key',
+                            }));
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
                     </div>
                   </div>
                 )}
                 <div className="mt-3 grid gap-2">
                   {twoFactorDialog.mode === 'disable' && (
-                    <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                    <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
                       <input
                         id="two-factor-password"
                         name="two_factor_password"
@@ -1620,11 +1812,11 @@ function Setting() {
                           }))
                         }
                         placeholder="Current account password"
-                        className="w-full bg-transparent text-sm"
+                        className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
                       />
                     </label>
                   )}
-                  <label className="h-10 px-3 rounded-lg border border-spill-300 dark:border-spill-700 bg-white dark:bg-spill-900 flex items-center">
+                  <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
                     <input
                       id="two-factor-code"
                       name="two_factor_code"
@@ -1639,7 +1831,7 @@ function Setting() {
                         }))
                       }
                       placeholder="6-digit code"
-                      className="w-full bg-transparent text-sm"
+                      className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
                     />
                   </label>
                 </div>
@@ -1664,6 +1856,163 @@ function Setting() {
                     disabled={twoFactorDialog.loading}
                   >
                     {twoFactorDialog.loading ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+        {recoveryDialog.open &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[980] grid place-items-center bg-slate-900/45 px-4"
+              aria-hidden
+              onClick={closeRecoveryDialog}
+            >
+              <div
+                aria-hidden
+                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl dark:border-spill-700 dark:bg-spill-900 dark:text-white/90"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-base font-semibold">Recovery codes</h3>
+                <p className="mt-1 text-sm text-slate-600 dark:text-white/60">
+                  Use these codes if you lose access to your authenticator app.
+                </p>
+                <div className="mt-3 grid gap-2">
+                  <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
+                    <input
+                      id="recovery-password"
+                      name="recovery_password"
+                      type="password"
+                      value={recoveryDialog.password}
+                      onChange={(e) =>
+                        setRecoveryDialog((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                          error: '',
+                        }))
+                      }
+                      placeholder="Current account password"
+                      className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="h-10 px-3 rounded-lg border border-spill-300 bg-white text-slate-900 dark:border-spill-700 dark:bg-spill-950 dark:text-white/90 flex items-center">
+                    <input
+                      id="recovery-code"
+                      name="recovery_code"
+                      type="text"
+                      inputMode="numeric"
+                      value={recoveryDialog.code}
+                      onChange={(e) =>
+                        setRecoveryDialog((prev) => ({
+                          ...prev,
+                          code: e.target.value.replace(/\D+/g, '').slice(0, 6),
+                          error: '',
+                        }))
+                      }
+                      placeholder="6-digit authenticator code"
+                      className="w-full bg-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-spill-700 dark:bg-spill-950">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">Backup codes</p>
+                      <p className="text-xs text-slate-500 dark:text-white/60">
+                        Each code can be used once.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-spill-800 dark:text-white/70">
+                      {Number(setting?.twoFactorRecoveryRemaining || 0)} left
+                    </span>
+                  </div>
+                  {setting?.twoFactorRecoveryGeneratedAt && (
+                    <p className="mt-2 text-xs text-slate-500 dark:text-white/60">
+                      Last generated:{' '}
+                      {new Date(
+                        setting.twoFactorRecoveryGeneratedAt
+                      ).toLocaleString()}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-slate-500 dark:text-white/60">
+                    Regenerating will invalidate any previous codes.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-spill-700 dark:hover:bg-spill-600"
+                      onClick={generateRecoveryCodes}
+                      disabled={recoveryDialog.loading === 'generate'}
+                    >
+                      {Number(setting?.twoFactorRecoveryRemaining || 0) > 0
+                        ? 'Regenerate'
+                        : 'Generate'}
+                    </button>
+                    {Number(setting?.twoFactorRecoveryRemaining || 0) > 0 && (
+                      <button
+                        type="button"
+                        className="h-9 rounded-lg border border-rose-300 px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-rose-600 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                        onClick={revokeRecoveryCodes}
+                        disabled={recoveryDialog.loading === 'revoke'}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {recoveryDialog.codes.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">
+                        Save these recovery codes
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
+                          onClick={() => copyRecoveryCodes(recoveryDialog.codes)}
+                        >
+                          {recoveryDialog.copied ? 'Copied' : 'Copy'}
+                        </button>
+                        <button
+                          type="button"
+                          className="h-8 rounded-lg border border-emerald-400 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+                          onClick={() =>
+                            downloadRecoveryCodes(recoveryDialog.codes)
+                          }
+                        >
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs">
+                      Each code can be used once. Keep them in a safe place.
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold">
+                      {recoveryDialog.codes.map((item) => (
+                        <span
+                          key={item}
+                          className="rounded-lg border border-emerald-200 bg-white px-2 py-1 text-center font-mono text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-950 dark:text-emerald-100"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {recoveryDialog.error && (
+                  <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                    {recoveryDialog.error}
+                  </p>
+                )}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="h-9 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800"
+                    onClick={closeRecoveryDialog}
+                  >
+                    Close
                   </button>
                 </div>
               </div>
@@ -1853,21 +2202,21 @@ function Setting() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-spill-800 sm:px-5">
-                    <div>
-                      <h1 className="text-xl font-bold sm:text-2xl">
-                        Link a device
-                      </h1>
+                      <div>
+                        <h1 className="text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
+                          Link a device
+                        </h1>
                       <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
                         QR scan + email code + SyncChat Support chat code
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100 dark:hover:bg-spill-800"
-                      onClick={closeDeviceLinkDialog}
-                    >
-                      <bi.BiX className="text-2xl" />
-                    </button>
+                      <button
+                        type="button"
+                        className="grid h-10 w-10 place-items-center rounded-full text-slate-700 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-spill-800"
+                        onClick={closeDeviceLinkDialog}
+                      >
+                        <bi.BiX className="text-2xl" />
+                      </button>
                   </div>
                   <div className="max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-100 px-3 py-4 dark:bg-spill-950 sm:px-4">
                     <div className="mx-auto grid max-w-4xl gap-4">
@@ -1876,55 +2225,85 @@ function Setting() {
                           {deviceLinkDialog.error}
                         </div>
                       )}
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
-                        <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-900 text-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
-                          <div className="px-5 py-5">
-                            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-300">
-                              Companion login
-                            </p>
-                            <h2 className="mt-2 text-3xl font-semibold leading-tight">
-                              Scan QR on the new device
-                            </h2>
-                            <p className="mt-3 max-w-xl text-[15px] leading-6 text-white/75">
-                              Open SyncChat on the new device, scan this QR,
-                              then finish verification with one email code and
-                              one support-chat code.
-                            </p>
-                            <div className="mt-6 flex justify-center rounded-[28px] bg-white p-4">
-                              {deviceLinkDialog.loading ? (
-                                <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
-                                  <bi.BiLoaderAlt className="animate-spin text-2xl" />
-                                </div>
-                              ) : deviceLinkDialog.qrImage ? (
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
+                          <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-900 text-white shadow-sm dark:border-spill-800 dark:bg-[#101821]">
+                            <div className="px-5 py-5">
+                              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-300 dark:text-sky-200">
+                                Companion login
+                              </p>
+                              <h2 className="mt-2 text-3xl font-semibold leading-tight">
+                                Scan QR on the new device
+                              </h2>
+                              <p className="mt-3 max-w-xl text-[15px] leading-6 text-white/75 dark:text-white/80">
+                                Open SyncChat on the new device, scan this QR,
+                                then finish verification with one email code and
+                                one support-chat code.
+                              </p>
+                              <div className="mt-6 flex flex-col items-center gap-3 rounded-[28px] bg-white p-4">
+                                {deviceLinkDialog.loading ? (
+                                  <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
+                                    <bi.BiLoaderAlt className="animate-spin text-2xl" />
+                                  </div>
+                                ) : deviceLinkDialog.qrImage ? (
                                 <img
                                   src={deviceLinkDialog.qrImage}
                                   alt="Link device QR"
                                   className="h-[220px] w-[220px] rounded-2xl sm:h-[260px] sm:w-[260px]"
                                 />
-                              ) : (
-                                <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
-                                  QR unavailable
+                                ) : (
+                                  <div className="grid h-[220px] w-[220px] place-items-center text-slate-500 sm:h-[260px] sm:w-[260px]">
+                                    QR unavailable
+                                  </div>
+                                )}
+                                <div className="flex flex-wrap items-center justify-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    onClick={copyDeviceLinkToken}
+                                    disabled={deviceLinkDialog.loading}
+                                  >
+                                    <bi.BiCopy />
+                                    {deviceLinkCopied ? 'Copied token' : 'Copy QR token'}
+                                  </button>
+                                  <div className="rounded-full bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                                    {deviceLinkDialog.token || 'Token pending'}
+                                  </div>
                                 </div>
-                              )}
+                              </div>
                             </div>
                           </div>
-                        </div>
                         <div className="grid gap-4">
                           <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
-                            <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
-                              <p className="text-lg font-semibold">
-                                Verification steps
-                              </p>
-                            </div>
+                              <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
+                                <p className="text-lg font-semibold text-slate-900 dark:text-white/90">
+                                  Verification steps
+                                </p>
+                              </div>
                             <div className="grid gap-4 px-5 py-4 text-sm text-slate-600 dark:text-white/65">
                               <div>
                                 <p className="font-semibold text-slate-900 dark:text-white/90">
                                   1. Scan or open the QR link
                                 </p>
-                                <p className="mt-1 break-all">
+                              <div className="mt-1 grid gap-2">
+                                <p className="break-all">
                                   {deviceLinkDialog.linkUrl ||
                                     'Preparing secure link...'}
                                 </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-spill-700 dark:text-white/80 dark:hover:bg-spill-800"
+                                    onClick={copyDeviceLinkToken}
+                                    disabled={deviceLinkDialog.loading}
+                                  >
+                                    <bi.BiCopy />
+                                    {deviceLinkCopied ? 'Copied token' : 'Copy token'}
+                                  </button>
+                                  <span className="text-xs text-slate-500 dark:text-white/60">
+                                    {deviceLinkDialog.token || 'Token pending'}
+                                  </span>
+                                </div>
+                              </div>
                               </div>
                               <div>
                                 <p className="font-semibold text-slate-900 dark:text-white/90">
@@ -1949,11 +2328,11 @@ function Setting() {
                             </div>
                           </div>
                           <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
-                            <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
-                              <p className="text-lg font-semibold">
-                                Short code
-                              </p>
-                            </div>
+                              <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
+                                <p className="text-lg font-semibold text-slate-900 dark:text-white/90">
+                                  Short code
+                                </p>
+                              </div>
                             <div className="px-5 py-5">
                               <div className="rounded-2xl bg-slate-100 px-4 py-4 text-center dark:bg-spill-950">
                                 <p className="text-2xl font-bold tracking-[0.22em] text-slate-900 dark:text-white/90 sm:text-3xl sm:tracking-[0.28em]">
@@ -1968,12 +2347,12 @@ function Setting() {
                                     ).toLocaleString()
                                   : '...'}
                               </p>
-                              <button
-                                type="button"
-                                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-semibold hover:bg-slate-50 dark:border-spill-700 dark:hover:bg-spill-800"
-                                onClick={openDeviceLinkDialog}
-                                disabled={deviceLinkDialog.loading}
-                              >
+                                <button
+                                  type="button"
+                                  className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-spill-700 dark:text-white/80 dark:hover:bg-spill-800"
+                                  onClick={openDeviceLinkDialog}
+                                  disabled={deviceLinkDialog.loading}
+                                >
                                 {deviceLinkDialog.loading ? (
                                   <bi.BiLoaderAlt className="animate-spin" />
                                 ) : (
@@ -3047,6 +3426,75 @@ function Setting() {
 
               <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
                 <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
+                  <p className="text-lg font-semibold">Message bubble colors</p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
+                    Customize sender and receiver bubble text and background colors.
+                  </p>
+                </div>
+                <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+                  {[
+                    {
+                      title: 'Sender bubble',
+                      bgKey: 'chatSentBubbleBg',
+                      textKey: 'chatSentTextColor',
+                      defaultBg: '#ccecff',
+                      defaultText: '#0f172a',
+                    },
+                    {
+                      title: 'Receiver bubble',
+                      bgKey: 'chatReceivedBubbleBg',
+                      textKey: 'chatReceivedTextColor',
+                      defaultBg: '#ffffff',
+                      defaultText: '#0f172a',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-spill-700 dark:bg-spill-950"
+                    >
+                      <p className="text-sm font-semibold">{item.title}</p>
+                      <div className="mt-3 grid gap-3">
+                        <label className="grid grid-cols-[1fr_auto] items-center gap-3 text-sm text-slate-600 dark:text-white/70">
+                          <span>Background</span>
+                          <input
+                            type="color"
+                            value={setting?.[item.bgKey] || item.defaultBg}
+                            className="h-9 w-12 rounded-md border border-slate-200 bg-white p-1 dark:border-spill-700 dark:bg-spill-900"
+                            onChange={(e) =>
+                              updateChatSetting({ [item.bgKey]: e.target.value })
+                            }
+                            disabled={chatsDialog.saving === item.bgKey}
+                          />
+                        </label>
+                        <label className="grid grid-cols-[1fr_auto] items-center gap-3 text-sm text-slate-600 dark:text-white/70">
+                          <span>Text</span>
+                          <input
+                            type="color"
+                            value={setting?.[item.textKey] || item.defaultText}
+                            className="h-9 w-12 rounded-md border border-slate-200 bg-white p-1 dark:border-spill-700 dark:bg-spill-900"
+                            onChange={(e) =>
+                              updateChatSetting({ [item.textKey]: e.target.value })
+                            }
+                            disabled={chatsDialog.saving === item.textKey}
+                          />
+                        </label>
+                      </div>
+                      <div
+                        className="mt-4 rounded-xl px-3 py-2 text-sm shadow-sm"
+                        style={{
+                          backgroundColor: setting?.[item.bgKey] || item.defaultBg,
+                          color: setting?.[item.textKey] || item.defaultText,
+                        }}
+                      >
+                        Preview message text
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-spill-800 dark:bg-spill-900">
+                <div className="border-b border-slate-200 px-5 py-4 dark:border-spill-800">
                   <p className="text-lg font-semibold">Media quality</p>
                   <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
                     Standard compresses sent images. HD keeps higher image quality.
@@ -3364,6 +3812,8 @@ function Setting() {
                       openTwoFactorDialog(
                         setting.twoFactorEnabled ? 'disable' : 'enable'
                       );
+                    } else if (child.target === 'twoFactorRecovery') {
+                      openRecoveryDialog();
                     } else if (child.target === 'appLockPassword') {
                       openAppLockDialog('change');
                     } else if (child.target === 'media') {

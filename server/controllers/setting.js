@@ -1,5 +1,6 @@
 const SettingModel = require('../db/models/setting');
 const fs = require('fs');
+const crypto = require('crypto');
 const { toPlain } = require('../db/utils');
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
@@ -45,6 +46,7 @@ const {
   serializeSession,
 } = require('../helpers/userSessions');
 const { getPublicVapidKey } = require('../helpers/pushNotifications');
+const { Op } = require('sequelize');
 
 const DEVICE_LINK_TTL_MS = 10 * 60 * 1000;
 
@@ -135,6 +137,10 @@ exports.update = async (req, res) => {
       'mediaQuality',
       'chatWallpaperPreset',
       'chatWallpaperImage',
+      'chatSentBubbleBg',
+      'chatSentTextColor',
+      'chatReceivedBubbleBg',
+      'chatReceivedTextColor',
       'autoDownloadPhotos',
       'autoDownloadAudio',
       'autoDownloadVideos',
@@ -1207,6 +1213,11 @@ exports.subscribePush = async (req, res) => {
       return;
     }
 
+    const endpointHash = crypto
+      .createHash('sha256')
+      .update(endpoint)
+      .digest('hex');
+
     const userAgent = String(
       req.body?.userAgent || req.get('user-agent') || ''
     ).slice(0, 255);
@@ -1217,7 +1228,9 @@ exports.subscribePush = async (req, res) => {
         : Number(subscription.expirationTime) || null;
 
     const existing = await PushSubscriptionModel.findOne({
-      where: { endpoint },
+      where: {
+        [Op.or]: [{ endpointHash }, { endpoint }],
+      },
     });
 
     if (existing) {
@@ -1229,11 +1242,13 @@ exports.subscribePush = async (req, res) => {
         userAgent,
         deviceLabel,
         lastSeenAt: new Date(),
+        endpointHash,
       });
     } else {
       await PushSubscriptionModel.create({
         userId: req.user._id,
         endpoint,
+        endpointHash,
         p256dh,
         auth,
         expirationTime,
@@ -1274,8 +1289,16 @@ exports.unsubscribePush = async (req, res) => {
       return;
     }
 
+    const endpointHash = crypto
+      .createHash('sha256')
+      .update(endpoint)
+      .digest('hex');
+
     await PushSubscriptionModel.destroy({
-      where: { userId: req.user._id, endpoint },
+      where: {
+        userId: req.user._id,
+        [Op.or]: [{ endpointHash }, { endpoint }],
+      },
     });
 
     response({

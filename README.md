@@ -142,6 +142,83 @@ syncchat/
   - user settings read/update pipeline
   - privacy/notification/chat-preference persistence at account level
 
+## SyncChat Admin Panel Checklist (`/syncchat/admin`)
+
+Everything here should be dynamic (DB-driven + API-controlled) and not hardcoded.
+
+- [ ] Admin access & roles
+- [ ] Admin login and session management
+- [ ] Super admin vs moderator roles
+- [ ] Role-based permission matrix (read/write/ban/delete/export)
+- [ ] Audit log for admin actions
+- [ ] Admin profile and access keys
+
+- [ ] User management
+- [ ] Search/filter users (status, verification, last seen)
+- [ ] View user profile and activity summary
+- [ ] Block/unblock user (global)
+- [ ] Force logout user sessions
+- [ ] Reset user 2FA / recovery codes
+- [ ] Account export request review
+- [ ] Delete user account (soft delete + hard delete)
+
+- [ ] Group management
+- [ ] Search groups and view group profile
+- [ ] Promote/demote group admins
+- [ ] Remove members
+- [ ] Update group permissions
+- [ ] Update group moderation (slow mode, banned words, blocked media)
+- [ ] Join request approval flow
+
+- [ ] Channel management
+- [ ] Search channels and view channel profile
+- [ ] Promote/demote channel admins
+- [ ] Remove subscribers
+- [ ] Update channel permissions
+- [ ] Update channel moderation (slow mode, banned words, blocked media)
+- [ ] Join request approval flow
+
+- [ ] Report & moderation center
+- [ ] Review user reports (chat, group, channel, status)
+- [ ] Action on reports (warn, mute, ban, delete content)
+- [ ] Auto-moderation rule editor
+- [ ] Banned words list
+- [ ] Media-type blocking rules
+- [ ] Slow mode presets
+- [ ] Moderation history + outcomes
+
+- [ ] Content controls
+- [ ] Delete messages (single/multi)
+- [ ] Remove media (image/video/audio/document)
+- [ ] Disable link previews for abusive domains
+- [ ] Status/story takedown
+- [ ] Pinned message removal
+- [ ] Poll/quiz takedown
+
+- [ ] Security & compliance
+- [ ] Device/session manager (per user)
+- [ ] Suspicious login review
+- [ ] IP/device blacklist
+- [ ] Rate limit settings
+- [ ] Web push/VAPID status
+- [ ] GDPR-style data export + erase tracking
+
+- [ ] App config (dynamic settings)
+- [ ] Toggle features (feature flags)
+- [ ] Default privacy settings
+- [ ] Default chat settings
+- [ ] Notification settings defaults
+- [ ] Upload limits (size, type)
+- [ ] Media processing profile (HD/SD)
+- [ ] Maintenance mode
+
+- [ ] Analytics & monitoring
+- [ ] User growth and active users
+- [ ] Message/voice/video usage
+- [ ] Storage usage (uploads)
+- [ ] Report volume and resolution time
+- [ ] System health widgets
+
 ## Recent Changes (2026-03-03)
 
 - Added private chat lock (per-user) with lock/unlock/change-password flow.
@@ -402,7 +479,13 @@ syncchat/
   - service-worker push + click handling
   - server-side push dispatch on new messages
 
+## Recent Changes (2026-03-15)
 
+- Added SyncChat admin panel checklist in README for `/syncchat/admin`.
+- Added login via QR code with built-in QR scanner flow.
+- Added device link QR scan improvements + QR token display/copy + dark mode fixes.
+- Added sender/receiver message bubble background + text color settings.
+- Fixed MySQL push subscription unique index by using endpoint hash.
 
 
 
