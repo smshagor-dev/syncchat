@@ -1,0 +1,509 @@
+const router = require('express').Router();
+const admin = require('../controllers/admin');
+const adminAuth = require('../middleware/adminAuth');
+const { requirePermission } = require('../middleware/adminPermission');
+const { PERMISSIONS } = require('../helpers/adminPermissions');
+
+router.get('/admin/bootstrap', admin.bootstrap);
+router.post('/admin/register', admin.register);
+router.post('/admin/login', admin.login);
+router.post('/admin/logout', adminAuth, admin.logout);
+router.get('/admin/me', adminAuth, admin.me);
+router.patch('/admin/profile', adminAuth, admin.updateProfile);
+
+router.get(
+  '/admin/roles',
+  adminAuth,
+  requirePermission(PERMISSIONS.ROLE_READ),
+  admin.listRoles
+);
+router.post(
+  '/admin/roles',
+  adminAuth,
+  requirePermission(PERMISSIONS.ROLE_MANAGE),
+  admin.createRole
+);
+router.patch(
+  '/admin/roles/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.ROLE_MANAGE),
+  admin.updateRole
+);
+router.get(
+  '/admin/permissions',
+  adminAuth,
+  requirePermission(PERMISSIONS.ROLE_READ),
+  admin.listPermissions
+);
+
+router.get(
+  '/admin/admins',
+  adminAuth,
+  requirePermission(PERMISSIONS.ADMIN_READ),
+  admin.listAdmins
+);
+router.post(
+  '/admin/admins',
+  adminAuth,
+  requirePermission(PERMISSIONS.ADMIN_MANAGE),
+  admin.createAdmin
+);
+router.patch(
+  '/admin/admins/:id/role',
+  adminAuth,
+  requirePermission(PERMISSIONS.ADMIN_MANAGE),
+  admin.updateAdminRole
+);
+
+router.get(
+  '/admin/sessions',
+  adminAuth,
+  requirePermission(PERMISSIONS.SESSION_READ),
+  admin.listSessions
+);
+router.delete(
+  '/admin/sessions/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.SESSION_MANAGE),
+  admin.revokeSession
+);
+
+router.get(
+  '/admin/access-keys',
+  adminAuth,
+  requirePermission(PERMISSIONS.ACCESS_KEY_READ),
+  admin.listAccessKeys
+);
+router.post(
+  '/admin/access-keys',
+  adminAuth,
+  requirePermission(PERMISSIONS.ACCESS_KEY_MANAGE),
+  admin.createAccessKey
+);
+router.delete(
+  '/admin/access-keys/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.ACCESS_KEY_MANAGE),
+  admin.revokeAccessKey
+);
+
+
+router.get(
+  '/admin/users',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_READ),
+  admin.listUsers
+);
+router.get(
+  '/admin/users/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_READ),
+  admin.getUser
+);
+router.get(
+  '/admin/users/:id/sessions',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_READ),
+  admin.listUserSessions
+);
+router.post(
+  '/admin/users/:id/sessions/:sessionId/revoke',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_WRITE),
+  admin.revokeUserSession
+);
+router.post(
+  '/admin/users/:id/block',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_BAN),
+  admin.blockUser
+);
+router.post(
+  '/admin/users/:id/unblock',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_BAN),
+  admin.unblockUser
+);
+router.post(
+  '/admin/users/:id/ban',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_BAN),
+  admin.banUser
+);
+router.post(
+  '/admin/users/:id/unban',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_BAN),
+  admin.unbanUser
+);
+router.post(
+  '/admin/users/:id/force-logout',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_WRITE),
+  admin.forceLogoutUser
+);
+router.post(
+  '/admin/users/:id/reset-2fa',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_WRITE),
+  admin.resetUserTwoFactor
+);
+router.delete(
+  '/admin/users/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.USER_WRITE),
+  admin.deleteUser
+);
+
+router.get(
+  '/admin/groups',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_READ),
+  admin.listGroups
+);
+router.get(
+  '/admin/groups/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_READ),
+  admin.getGroup
+);
+router.patch(
+  '/admin/groups/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.updateGroup
+);
+router.patch(
+  '/admin/groups/:id/permissions',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.updateGroupPermissions
+);
+router.patch(
+  '/admin/groups/:id/moderation',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.updateGroupModeration
+);
+router.post(
+  '/admin/groups/:id/promote-admin',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.promoteGroupAdmin
+);
+router.post(
+  '/admin/groups/:id/demote-admin',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.demoteGroupAdmin
+);
+router.post(
+  '/admin/groups/:id/remove-member',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.removeGroupMember
+);
+router.post(
+  '/admin/groups/:id/approve-member',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.approveGroupMember
+);
+router.post(
+  '/admin/groups/:id/reject-member',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.rejectGroupMember
+);
+router.post(
+  '/admin/groups/:id/ban',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_BAN),
+  admin.banGroup
+);
+router.post(
+  '/admin/groups/:id/unban',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_BAN),
+  admin.unbanGroup
+);
+router.delete(
+  '/admin/groups/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.GROUP_WRITE),
+  admin.deleteGroup
+);
+
+router.get(
+  '/admin/channels',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_READ),
+  admin.listChannels
+);
+router.get(
+  '/admin/channels/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_READ),
+  admin.getChannel
+);
+router.patch(
+  '/admin/channels/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.updateChannel
+);
+router.patch(
+  '/admin/channels/:id/permissions',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.updateChannelPermissions
+);
+router.patch(
+  '/admin/channels/:id/moderation',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.updateChannelModeration
+);
+router.post(
+  '/admin/channels/:id/promote-admin',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.promoteChannelAdmin
+);
+router.post(
+  '/admin/channels/:id/demote-admin',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.demoteChannelAdmin
+);
+router.post(
+  '/admin/channels/:id/remove-subscriber',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.removeChannelSubscriber
+);
+router.post(
+  '/admin/channels/:id/approve-subscriber',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.approveChannelSubscriber
+);
+router.post(
+  '/admin/channels/:id/reject-subscriber',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.rejectChannelSubscriber
+);
+router.post(
+  '/admin/channels/:id/ban',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_BAN),
+  admin.banChannel
+);
+router.post(
+  '/admin/channels/:id/unban',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_BAN),
+  admin.unbanChannel
+);
+router.delete(
+  '/admin/channels/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.deleteChannel
+);
+router.get(
+  '/admin/channels/:id/reviews',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_READ),
+  admin.listChannelReviews
+);
+router.patch(
+  '/admin/channels/:id/reviews/:reviewId',
+  adminAuth,
+  requirePermission(PERMISSIONS.CHANNEL_WRITE),
+  admin.updateChannelReview
+);
+
+router.get(
+  '/admin/reports',
+  adminAuth,
+  requirePermission(PERMISSIONS.REPORT_READ),
+  admin.listReports
+);
+router.post(
+  '/admin/reports/:id/action',
+  adminAuth,
+  requirePermission(PERMISSIONS.REPORT_WRITE),
+  admin.actOnReport
+);
+router.get(
+  '/admin/moderation/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.REPORT_READ),
+  admin.getModerationConfig
+);
+router.patch(
+  '/admin/moderation/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.REPORT_WRITE),
+  admin.updateModerationConfig
+);
+router.get(
+  '/admin/moderation/actions',
+  adminAuth,
+  requirePermission(PERMISSIONS.REPORT_READ),
+  admin.listModerationActions
+);
+
+router.get(
+  '/admin/security/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_READ),
+  admin.getSecurityConfig
+);
+router.patch(
+  '/admin/security/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_WRITE),
+  admin.updateSecurityConfig
+);
+router.get(
+  '/admin/app-config',
+  adminAuth,
+  requirePermission(PERMISSIONS.APP_CONFIG_READ),
+  admin.getAppConfig
+);
+router.patch(
+  '/admin/app-config',
+  adminAuth,
+  requirePermission(PERMISSIONS.APP_CONFIG_WRITE),
+  admin.updateAppConfig
+);
+router.get(
+  '/admin/security/suspicious-sessions',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_READ),
+  admin.listSuspiciousSessions
+);
+router.post(
+  '/admin/security/suspicious-sessions/:sessionId/review',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_WRITE),
+  admin.reviewSuspiciousSession
+);
+router.get(
+  '/admin/security/push-status',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_READ),
+  admin.getPushStatus
+);
+router.get(
+  '/admin/gdpr/erase-requests',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_READ),
+  admin.listAccountEraseRequests
+);
+router.post(
+  '/admin/gdpr/erase-requests',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_WRITE),
+  admin.createAccountEraseRequest
+);
+router.patch(
+  '/admin/gdpr/erase-requests/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.SECURITY_WRITE),
+  admin.updateAccountEraseRequest
+);
+
+router.get(
+  '/admin/content/chats',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.listContentChats
+);
+router.delete(
+  '/admin/content/chats',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.deleteContentChats
+);
+router.get(
+  '/admin/content/statuses',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.listContentStatuses
+);
+router.delete(
+  '/admin/content/statuses/:id',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.deleteContentStatus
+);
+router.post(
+  '/admin/content/pins/remove',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.removePinnedMessage
+);
+router.post(
+  '/admin/content/polls/remove',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.takedownPoll
+);
+router.get(
+  '/admin/content/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.getContentConfig
+);
+router.patch(
+  '/admin/content/config',
+  adminAuth,
+  requirePermission(PERMISSIONS.CONTENT_DELETE),
+  admin.updateContentConfig
+);
+
+router.get(
+  '/admin/account-exports',
+  adminAuth,
+  requirePermission(PERMISSIONS.DATA_EXPORT),
+  admin.listAccountExports
+);
+router.post(
+  '/admin/account-exports/:id/mark-delivered',
+  adminAuth,
+  requirePermission(PERMISSIONS.DATA_EXPORT),
+  admin.markAccountExportDelivered
+);
+router.get(
+  '/admin/audit-logs',
+  adminAuth,
+  requirePermission(PERMISSIONS.AUDIT_READ),
+  admin.listAuditLogs
+);
+router.post('/admin/permission-check', adminAuth, admin.checkPermission);
+
+router.get(
+  '/admin/analytics/summary',
+  adminAuth,
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  admin.getAnalyticsSummary
+);
+router.get(
+  '/admin/analytics/range',
+  adminAuth,
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  admin.getAnalyticsRange
+);
+router.post(
+  '/admin/system/restart',
+  adminAuth,
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  admin.restartServer
+);
+
+module.exports = router;
+

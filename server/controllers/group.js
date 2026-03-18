@@ -39,6 +39,16 @@ const ensureGroupAccess = (group, userId) => {
     err.statusCode = 404;
     throw err;
   }
+  if (group.status === 'banned') {
+    const err = new Error('Group is banned');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (group.status === 'deleted') {
+    const err = new Error('Group is unavailable');
+    err.statusCode = 404;
+    throw err;
+  }
 
   if (!asArray(group.participantsId).includes(userId)) {
     const err = new Error('You are not a participant of this group');
@@ -369,7 +379,7 @@ exports.linkMeta = async (req, res) => {
 
     const group = await GroupModel.findOne({
       where: { link: asGroupLink(token) },
-      attributes: ['_id', 'name', 'avatar', 'accessType', 'permissions'],
+      attributes: ['_id', 'name', 'avatar', 'accessType', 'permissions', 'status'],
     });
     if (!group) {
       response({
@@ -377,6 +387,24 @@ exports.linkMeta = async (req, res) => {
         statusCode: 404,
         success: false,
         message: 'Group not found',
+      });
+      return;
+    }
+    if (group.status === 'banned') {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Group is banned',
+      });
+      return;
+    }
+    if (group.status === 'deleted') {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Group is unavailable',
       });
       return;
     }
@@ -415,6 +443,8 @@ exports.joinByLink = async (req, res) => {
       where: { link: asGroupLink(token) },
     });
     if (!group) throw new Error('Group not found');
+    if (group.status === 'banned') throw new Error('Group is banned');
+    if (group.status === 'deleted') throw new Error('Group is unavailable');
     const permissions = getGroupPermissions(group);
 
     const participants = asArray(group.participantsId);

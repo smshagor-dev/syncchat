@@ -11,6 +11,6 @@ module.exports = {
   },
   output: {
     path: path.resolve(__dirname, 'client/public'),
-    filename: '[fullhash].js',
+    filename: '[name].[fullhash].js',
   },
 };

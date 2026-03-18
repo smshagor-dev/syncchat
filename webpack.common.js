@@ -1,8 +1,13 @@
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const path = require('path');
+const webpack = require('webpack');
+require('dotenv').config({ path: './.env' });
 
 module.exports = {
-  entry: './client/index.jsx',
+  entry: {
+    app: './client/index.jsx',
+    admin: './admin/index.jsx',
+  },
   cache: {
     type: 'filesystem',
     cacheDirectory: path.resolve(__dirname, '.webpack-cache'),
@@ -42,9 +47,28 @@ module.exports = {
       },
     ],
   },
+  output: {
+    publicPath: '/',
+  },
   plugins: [
+    new webpack.DefinePlugin({
+      __APP_IS_DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
+      __CHAT_UPLOAD_LIMIT_MB__: JSON.stringify(
+        Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100)
+      ),
+      __AVATAR_UPLOAD_LIMIT_MB__: JSON.stringify(
+        Number(process.env.AVATAR_UPLOAD_LIMIT_MB || 10)
+      ),
+    }),
     new HtmlWebpackPlugin({
       template: './client/index.html',
+      chunks: ['app'],
+      filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/index.html',
+      chunks: ['admin'],
+      filename: 'admin/index.html',
     }),
   ],
 };

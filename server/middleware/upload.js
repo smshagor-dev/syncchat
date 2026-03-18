@@ -2,6 +2,13 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { uploadRootDir } = require('../helpers/storage');
+const hardLimitMb = Number(
+  process.env.CHAT_UPLOAD_HARD_LIMIT_MB || process.env.CHAT_UPLOAD_LIMIT_MB || 250
+);
+const chatUploadLimitBytes =
+  Number.isFinite(hardLimitMb) && hardLimitMb > 0
+    ? hardLimitMb * 1024 * 1024
+    : 250 * 1024 * 1024;
 
 const makeDir = (dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -26,5 +33,10 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: chatUploadLimitBytes,
+  },
+});
 module.exports = upload;

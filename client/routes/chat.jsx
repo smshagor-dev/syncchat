@@ -22,6 +22,14 @@ function Chat() {
   const master = useSelector((state) => state.user.master);
   const showCallUiPreview =
     new URLSearchParams(window.location.search).get('preview') === 'call-ui';
+  const seo = config.seo || {};
+  const seoTitle = seo.title || config.brandName;
+  const seoDescription = seo.description || '';
+  const seoKeywords = seo.keywords || '';
+  const seoImage = seo.image || config.brandLogo || '';
+  const seoOgType = seo.ogType || 'website';
+  const seoTwitterCard =
+    seo.twitterCard || (seoImage ? 'summary_large_image' : 'summary');
 
   const requestNotification = async () => {
     if (Notification.permission !== 'granted') {
@@ -72,7 +80,19 @@ function Chat() {
       </div>
 
       <Helmet>
-        <title>{config.brandName}</title>
+        <title>{seoTitle}</title>
+        {seoDescription && <meta name="description" content={seoDescription} />}
+        {seoKeywords && <meta name="keywords" content={seoKeywords} />}
+        <meta property="og:title" content={seoTitle} />
+        {seoDescription && <meta property="og:description" content={seoDescription} />}
+        <meta property="og:type" content={seoOgType} />
+        {seoImage && <meta property="og:image" content={seoImage} />}
+        <meta name="twitter:card" content={seoTwitterCard} />
+        <meta name="twitter:title" content={seoTitle} />
+        {seoDescription && (
+          <meta name="twitter:description" content={seoDescription} />
+        )}
+        {seoImage && <meta name="twitter:image" content={seoImage} />}
       </Helmet>
 
       <modal.signout />

@@ -8,6 +8,7 @@ const {
   saveBufferFile,
   deleteLocalFileByUrl,
 } = require('../helpers/storage');
+const { loadAppConfig } = require('../helpers/appConfig');
 
 exports.upload = async (req, res) => {
   try {
@@ -19,6 +20,20 @@ exports.upload = async (req, res) => {
       isChannel = false,
     } = req.body;
     const { buffer } = parseDataUri(avatar);
+    const appConfig = await loadAppConfig();
+    const maxAvatarBytes =
+      Math.max(1, Number(appConfig?.uploadLimits?.avatarMb || 10)) *
+      1024 *
+      1024;
+    if (buffer.length > maxAvatarBytes) {
+      response({
+        res,
+        statusCode: 413,
+        success: false,
+        message: `Avatar too large. Max ${appConfig?.uploadLimits?.avatarMb || 10} MB allowed.`,
+      });
+      return;
+    }
     const image = sharp(buffer);
     const metadata = await image.metadata();
 

@@ -3,7 +3,7 @@ const { colors: defaultColors } = require('tailwindcss/defaultTheme');
 const scrollbar = require('tailwind-scrollbar');
 
 module.exports = {
-  content: ['./client/**/*.{js,jsx,tsx}'],
+  content: ['./client/**/*.{js,jsx,tsx}', './admin/**/*.{js,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {

@@ -63,6 +63,26 @@ const UserModel = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    status: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'active',
+    },
+    blockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    bannedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
   },
   {
     timestamps: true,

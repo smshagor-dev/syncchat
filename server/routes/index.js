@@ -12,6 +12,9 @@ const avatar = require('./avatar');
 const status = require('./status');
 const community = require('./community');
 const report = require('./report');
+const contentControls = require('./contentControls');
+const appConfig = require('./appConfig');
+const admin = require('./admin');
 
 router.use(user);
 router.use(chat);
@@ -25,5 +28,8 @@ router.use(avatar);
 router.use(status);
 router.use(community);
 router.use(report);
+router.use(contentControls);
+router.use(appConfig);
+router.use(admin);
 
 module.exports = router;

@@ -83,6 +83,16 @@ const UserSessionModel = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    reviewedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    reviewedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
   },
   {
     timestamps: true,

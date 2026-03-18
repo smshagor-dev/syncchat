@@ -6,6 +6,7 @@ const chat = require('./events/chat');
 const room = require('./events/room');
 const group = require('./events/group');
 const channel = require('./events/channel');
+const admin = require('./events/admin');
 
 io.on('connection', (socket) => {
   logger.info('SOCKET_CONNECT', {
@@ -43,4 +44,5 @@ io.on('connection', (socket) => {
   chat(socket);
   group(socket);
   channel(socket);
+  admin(socket);
 });

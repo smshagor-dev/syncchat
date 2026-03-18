@@ -7,6 +7,7 @@ import { setPage } from '../redux/features/page';
 import base64Encode from '../helpers/base64Encode';
 import resolveUploadUrl from '../helpers/resolveUploadUrl';
 import socket from '../helpers/socket';
+import config from '../config';
 
 const TEXT_BG_COLORS = [
   '#0ea5e9',
@@ -52,6 +53,7 @@ function Status() {
   });
 
   const closePage = () => dispatch(setPage({ target: 'status', data: false }));
+  const statusEnabled = config.featureFlags?.status !== false;
 
   const loadStatuses = async (signal) => {
     if (!page.status) {
@@ -98,8 +100,11 @@ function Status() {
   useEffect(() => {
     const handleStatusUpdate = (payload) => {
       if (!payload?.statusId) return;
-      setStatuses((prev) =>
-        prev.map((item) => {
+      setStatuses((prev) => {
+        if (payload.type === 'delete') {
+          return prev.filter((item) => item._id !== payload.statusId);
+        }
+        return prev.map((item) => {
           if (item._id !== payload.statusId) return item;
 
           const nextItem = { ...item };
@@ -117,8 +122,8 @@ function Status() {
             nextItem.myReaction = payload.myReaction;
           }
           return nextItem;
-        })
-      );
+        });
+      });
     };
 
     const handleStatusNew = (payload) => {
@@ -322,6 +327,26 @@ function Status() {
       console.error(error0?.response?.data?.message || error0.message);
     }
   };
+
+  if (!statusEnabled) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-spill-900">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-slate-700 shadow-sm dark:border-spill-700 dark:bg-spill-800 dark:text-spill-100">
+          <h2 className="text-lg font-semibold">Status is disabled</h2>
+          <p className="mt-2 text-sm text-slate-500 dark:text-spill-300">
+            This feature is currently turned off by the admin.
+          </p>
+          <button
+            type="button"
+            className="mt-4 h-10 rounded-full bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700"
+            onClick={() => dispatch(setPage({ target: 'status', data: false }))}
+          >
+            Back to chat
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

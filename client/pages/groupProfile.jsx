@@ -106,6 +106,18 @@ function GroupProfile({ mode = 'group' }) {
   const [channelAnalytics, setChannelAnalytics] = useState(null);
   const [channelAnalyticsLoading, setChannelAnalyticsLoading] = useState(false);
   const [analyticsPageOpen, setAnalyticsPageOpen] = useState(false);
+  const [channelReviews, setChannelReviews] = useState([]);
+  const [channelReviewStats, setChannelReviewStats] = useState({
+    ratingAvg: 0,
+    ratingCount: 0,
+  });
+  const [channelReviewLoading, setChannelReviewLoading] = useState(false);
+  const [channelMyReview, setChannelMyReview] = useState({
+    rating: 0,
+    review: '',
+  });
+  const [channelReviewSaving, setChannelReviewSaving] = useState(false);
+  const [channelReviewMessage, setChannelReviewMessage] = useState('');
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [encryptionPopupOpen, setEncryptionPopupOpen] = useState(false);
   const [inboxPrefs, setInboxPrefs] = useState({
@@ -345,6 +357,64 @@ function GroupProfile({ mode = 'group' }) {
     }
   };
 
+  const handleGetChannelReviews = async (signal) => {
+    if (!isChannelView || !groupProfileId) {
+      setChannelReviews([]);
+      setChannelReviewStats({ ratingAvg: 0, ratingCount: 0 });
+      setChannelMyReview({ rating: 0, review: '' });
+      return;
+    }
+    setChannelReviewLoading(true);
+    try {
+      const { data } = await axios.get(`/channels/${groupProfileId}/reviews`, {
+        params: { limit: 20 },
+        signal,
+      });
+      const payload = data?.payload || {};
+      setChannelReviews(Array.isArray(payload.reviews) ? payload.reviews : []);
+      setChannelReviewStats({
+        ratingAvg: Number(payload.ratingAvg || 0),
+        ratingCount: Number(payload.ratingCount || 0),
+      });
+      if (payload.myReview) {
+        setChannelMyReview({
+          rating: Number(payload.myReview.rating || 0),
+          review: payload.myReview.review || '',
+        });
+      }
+    } catch (error0) {
+      setChannelReviewMessage(
+        error0?.response?.data?.message || error0.message || 'Failed to load reviews'
+      );
+    } finally {
+      setChannelReviewLoading(false);
+    }
+  };
+
+  const submitChannelReview = async () => {
+    if (!isChannelView || !groupProfileId) return;
+    if (!channelMyReview.rating) {
+      setChannelReviewMessage('Please select a rating.');
+      return;
+    }
+    setChannelReviewSaving(true);
+    setChannelReviewMessage('');
+    try {
+      await axios.post(`/channels/${groupProfileId}/reviews`, {
+        rating: channelMyReview.rating,
+        review: channelMyReview.review,
+      });
+      setChannelReviewMessage('Review saved.');
+      await handleGetChannelReviews();
+    } catch (error0) {
+      setChannelReviewMessage(
+        error0?.response?.data?.message || error0.message || 'Failed to save review'
+      );
+    } finally {
+      setChannelReviewSaving(false);
+    }
+  };
+
   const updateInboxPreference = async (action, value) => {
     const roomId = groupProfileRoomIdFromPage || group?.roomId;
     if (!roomId) return false;
@@ -394,6 +464,7 @@ function GroupProfile({ mode = 'group' }) {
     handleGetRoomMedia(abortCtrl.signal);
     handleGetInboxPreference(abortCtrl.signal);
     handleGetChannelAnalytics(abortCtrl.signal);
+    handleGetChannelReviews(abortCtrl.signal);
 
     return () => {
       abortCtrl.abort();
@@ -1562,6 +1633,114 @@ function GroupProfile({ mode = 'group' }) {
                 >
                   {inviteCopied ? 'Copied' : 'Copy'}
                 </button>
+              </div>
+            )}
+            {isChannelView && (
+              <div className="py-3 px-4 grid gap-3 border-0 border-b border-solid border-spill-100 dark:border-spill-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Ratings & Reviews</p>
+                    <p className="text-xs opacity-70">
+                      {channelReviewStats.ratingCount || 0} reviews · avg{' '}
+                      {Number(channelReviewStats.ratingAvg || 0).toFixed(1)}/5
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="h-8 px-3 rounded-lg border border-spill-300 dark:border-spill-700 hover:bg-spill-100 dark:hover:bg-spill-800 text-xs font-semibold"
+                    onClick={() => handleGetChannelReviews()}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs opacity-70">Your rating</span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => {
+                      const active = channelMyReview.rating >= value;
+                      return (
+                        <button
+                          key={`rating-${value}`}
+                          type="button"
+                          className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                            active
+                              ? 'text-amber-500 bg-amber-100 dark:bg-amber-900/40'
+                              : 'text-slate-400 hover:bg-spill-100 dark:hover:bg-spill-800'
+                          }`}
+                          onClick={() =>
+                            setChannelMyReview((prev) => ({
+                              ...prev,
+                              rating: value,
+                            }))
+                          }
+                        >
+                          {active ? <bi.BiStar /> : <bi.BiStar />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-xs opacity-70">
+                    {channelMyReview.rating || 0}/5
+                  </span>
+                </div>
+                <textarea
+                  rows={3}
+                  value={channelMyReview.review}
+                  onChange={(e) =>
+                    setChannelMyReview((prev) => ({
+                      ...prev,
+                      review: e.target.value,
+                    }))
+                  }
+                  placeholder="Write a short review (optional)"
+                  className="w-full rounded-xl border border-spill-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-spill-700 dark:bg-spill-900"
+                />
+                <button
+                  type="button"
+                  className="h-10 rounded-lg bg-sky-600 text-white font-semibold hover:bg-sky-700 disabled:opacity-60"
+                  onClick={submitChannelReview}
+                  disabled={channelReviewSaving}
+                >
+                  {channelReviewSaving ? 'Saving...' : 'Submit review'}
+                </button>
+                {channelReviewMessage && (
+                  <p className="text-xs text-sky-600 dark:text-sky-400">
+                    {channelReviewMessage}
+                  </p>
+                )}
+                <div className="grid gap-2">
+                  {channelReviewLoading && (
+                    <p className="text-xs opacity-70">Loading reviews...</p>
+                  )}
+                  {!channelReviewLoading && channelReviews.length === 0 && (
+                    <p className="text-xs opacity-70">No reviews yet.</p>
+                  )}
+                  {channelReviews.map((review) => (
+                    <div
+                      key={review._id}
+                      className="rounded-xl border border-spill-200 bg-white px-3 py-2 text-sm dark:border-spill-700 dark:bg-spill-900"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">
+                          {review.profile?.fullname ||
+                            review.profile?.username ||
+                            'Subscriber'}
+                        </span>
+                        <span className="text-xs opacity-70">
+                          {review.rating}/5
+                        </span>
+                      </div>
+                      {review.review && (
+                        <p className="mt-1 text-sm opacity-90">{review.review}</p>
+                      )}
+                      <p className="mt-1 text-xs opacity-60">
+                        {review.createdAt
+                          ? new Date(review.createdAt).toLocaleString()
+                          : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -21,6 +21,11 @@ const ContactModel = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
     },
+    labels: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
   },
   {
     timestamps: false,

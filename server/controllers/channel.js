@@ -1,5 +1,6 @@
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const ChannelModel = require('../db/models/channel');
+const ChannelReviewModel = require('../db/models/channelReview');
 const ProfileModel = require('../db/models/profile');
 const InboxModel = require('../db/models/inbox');
 const ChatModel = require('../db/models/chat');
@@ -31,12 +32,23 @@ const {
 } = require('../helpers/privacy');
 const { trackChannelEvent } = require('../helpers/channelAnalytics');
 const response = require('../helpers/response');
+const { toAbsoluteUploadUrl } = require('../helpers/storage');
 
 const asChannelLink = (token = '') => `/channel/+${String(token || '').trim()}`;
 
 const ensureChannelAccess = (channel, userId) => {
   if (!channel) {
     const err = new Error('Channel not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (channel.status === 'banned') {
+    const err = new Error('Channel is banned');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (channel.status === 'deleted') {
+    const err = new Error('Channel is unavailable');
     err.statusCode = 404;
     throw err;
   }
@@ -72,6 +84,41 @@ const sanitizeChannelForUser = (channel, requesterId) => {
   }
   plain.requiresPassword = plain.accessType === 'private';
   return plain;
+};
+
+const normalizeRatingValue = (value) => {
+  const rating = Math.round(Number(value || 0));
+  if (!Number.isFinite(rating)) return 0;
+  return Math.max(1, Math.min(5, rating));
+};
+
+const buildProfileMap = (profiles = []) =>
+  new Map(
+    profiles.map((profile) => [
+      profile.userId,
+      {
+        userId: profile.userId,
+        fullname: profile.fullname || '',
+        username: profile.username || '',
+        avatar: toAbsoluteUploadUrl(profile.avatar || null),
+      },
+    ])
+  );
+
+const serializeReview = (review, profileMap) => {
+  const plain = toPlain(review);
+  if (!plain) return null;
+  return {
+    _id: plain._id,
+    channelId: plain.channelId,
+    userId: plain.userId,
+    rating: plain.rating,
+    review: plain.review || '',
+    status: plain.status || 'visible',
+    createdAt: plain.createdAt,
+    updatedAt: plain.updatedAt,
+    profile: profileMap.get(plain.userId) || null,
+  };
 };
 
 const toDayKey = (value) => {
@@ -704,7 +751,7 @@ exports.linkMeta = async (req, res) => {
     if (!token) throw new Error('Invalid invite token');
     const channel = await ChannelModel.findOne({
       where: { link: asChannelLink(token) },
-      attributes: ['_id', 'name', 'avatar', 'accessType', 'permissions'],
+      attributes: ['_id', 'name', 'avatar', 'accessType', 'permissions', 'status'],
     });
     if (!channel) {
       response({
@@ -712,6 +759,24 @@ exports.linkMeta = async (req, res) => {
         statusCode: 404,
         success: false,
         message: 'Channel not found',
+      });
+      return;
+    }
+    if (channel.status === 'banned') {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Channel is banned',
+      });
+      return;
+    }
+    if (channel.status === 'deleted') {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'Channel is unavailable',
       });
       return;
     }
@@ -748,6 +813,8 @@ exports.joinByLink = async (req, res) => {
       where: { link: asChannelLink(token) },
     });
     if (!channel) throw new Error('Channel not found');
+    if (channel.status === 'banned') throw new Error('Channel is banned');
+    if (channel.status === 'deleted') throw new Error('Channel is unavailable');
     const permissions = getGroupPermissions(channel);
 
     if (asArray(channel.participantsId).includes(userId)) {
@@ -861,6 +928,113 @@ exports.verifyPassword = async (req, res) => {
       res,
       message: 'Password verified',
       payload: { verified: true },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.listReviews = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { channelId } = req.params;
+    const skip = Math.max(0, Number(req.query.skip || 0));
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+
+    const channel = await ChannelModel.findOne({ where: { _id: channelId } });
+    ensureChannelAccess(channel, userId);
+
+    const [rows, statsRow, myReview] = await Promise.all([
+      ChannelReviewModel.findAll({
+        where: { channelId, status: 'visible' },
+        order: [['createdAt', 'DESC']],
+        offset: skip,
+        limit,
+      }),
+      ChannelReviewModel.findOne({
+        where: { channelId, status: 'visible' },
+        attributes: [[fn('AVG', col('rating')), 'avg'], [fn('COUNT', col('*')), 'count']],
+        raw: true,
+      }),
+      ChannelReviewModel.findOne({ where: { channelId, userId } }),
+    ]);
+
+    const reviewerIds = [
+      ...new Set(
+        rows.map((row) => row.userId).concat(myReview ? [myReview.userId] : [])
+      ),
+    ];
+    const profiles = reviewerIds.length
+      ? await ProfileModel.findAll({
+          where: { userId: { [Op.in]: reviewerIds } },
+          attributes: ['userId', 'fullname', 'username', 'avatar'],
+        })
+      : [];
+    const profileMap = buildProfileMap(toPlainMany(profiles));
+
+    response({
+      res,
+      payload: {
+        ratingAvg: Number(statsRow?.avg || 0),
+        ratingCount: Number(statsRow?.count || 0),
+        reviews: rows
+          .map((row) => serializeReview(row, profileMap))
+          .filter(Boolean),
+        myReview: myReview ? serializeReview(myReview, profileMap) : null,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.createReview = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { channelId } = req.params;
+    const rating = normalizeRatingValue(req.body?.rating);
+    const review = String(req.body?.review || '').trim().slice(0, 500);
+    if (!rating) throw new Error('Rating is required');
+
+    const channel = await ChannelModel.findOne({ where: { _id: channelId } });
+    ensureChannelAccess(channel, userId);
+
+    const existing = await ChannelReviewModel.findOne({ where: { channelId, userId } });
+    let next = existing;
+    if (existing) {
+      await existing.update({
+        rating,
+        review,
+      });
+    } else {
+      next = await ChannelReviewModel.create({
+        channelId,
+        userId,
+        rating,
+        review,
+      });
+    }
+
+    const profiles = await ProfileModel.findAll({
+      where: { userId: { [Op.in]: [userId] } },
+      attributes: ['userId', 'fullname', 'username', 'avatar'],
+    });
+    const profileMap = buildProfileMap(toPlainMany(profiles));
+
+    response({
+      res,
+      message: existing ? 'Review updated' : 'Review submitted',
+      payload: serializeReview(next, profileMap),
     });
   } catch (error0) {
     response({

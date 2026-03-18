@@ -233,21 +233,21 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
   return (
     <div className="mt-3 grid gap-3">
       <div className="relative">
-        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200" />
-        <p className="relative mx-auto w-fit bg-white px-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
+        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-spill-700" />
+        <p className="relative mx-auto w-fit bg-white px-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 dark:bg-spill-900 dark:text-white/50">
           Continue with
         </p>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2">
+        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2 dark:border-spill-700 dark:bg-spill-900">
           {googleEnabled ? (
             <div className="flex justify-center" ref={googleButtonRef} />
           ) : (
             <button
               type="button"
               disabled
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400 dark:border-spill-700 dark:bg-spill-950 dark:text-white/40"
             >
               <ri.RiGoogleFill size={18} />
               <span>Google</span>
@@ -257,7 +257,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
 
         <button
           type="button"
-          className="shrink-0 min-w-[122px] flex h-[54px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="shrink-0 min-w-[122px] flex h-[54px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
           onClick={() => {
             if (!window.FB) return;
             window.FB.login(
@@ -285,14 +285,14 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
           <span>{loadingProvider === 'facebook' ? 'Connecting...' : 'Facebook'}</span>
         </button>
 
-        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2">
+        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2 dark:border-spill-700 dark:bg-spill-900">
           {telegramEnabled ? (
             <div ref={telegramButtonRef} className="grid place-items-center" />
           ) : (
             <button
               type="button"
               disabled
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400 dark:border-spill-700 dark:bg-spill-950 dark:text-white/40"
             >
               <ri.RiTelegramFill size={18} />
               <span>Telegram</span>
@@ -302,7 +302,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
       </div>
 
       {loadingProvider && (
-        <p className="flex items-center justify-center gap-2 text-xs text-slate-500">
+        <p className="flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-white/60">
           <i className="animate-spin">
             <bi.BiLoaderAlt />
           </i>

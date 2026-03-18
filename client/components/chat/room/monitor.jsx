@@ -116,9 +116,34 @@ const getFacebookEmbedUrl = (rawUrl) => {
   }
 };
 
-const getVideoEmbedData = (text) => {
+const normalizeDomain = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  try {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return new URL(raw).hostname.toLowerCase().replace(/^www\./, '');
+    }
+  } catch (error0) {
+    // ignore
+  }
+  return raw.replace(/^https?:\/\//, '').split('/')[0].split('?')[0].split('#')[0].replace(/^www\./, '');
+};
+
+const isBlockedPreviewUrl = (rawUrl, blockedDomains = []) => {
+  if (!rawUrl) return false;
+  const host = normalizeDomain(rawUrl);
+  if (!host) return false;
+  return blockedDomains.some((domain) => {
+    const normalized = normalizeDomain(domain);
+    if (!normalized) return false;
+    return host === normalized || host.endsWith(`.${normalized}`);
+  });
+};
+
+const getVideoEmbedData = (text, blockedDomains = []) => {
   const url = extractFirstUrl(text);
   if (!url) return null;
+  if (isBlockedPreviewUrl(url, blockedDomains)) return null;
   const youtube = getYoutubeEmbedUrl(url);
   if (youtube) {
     return {
@@ -185,6 +210,7 @@ function Monitor({
   const [localAttachmentUrls, setLocalAttachmentUrls] = useState({});
   const [videoQuality, setVideoQuality] = useState({});
   const [nowTs, setNowTs] = useState(Date.now());
+  const [blockedPreviewDomains, setBlockedPreviewDomains] = useState([]);
   const downloadedMediaRef = useRef(new Set());
   const audioMetadataProbeRef = useRef(new Set());
   const quickEmojis = [
@@ -209,6 +235,26 @@ function Monitor({
       })
     );
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadPreviewConfig = async () => {
+      try {
+        const { data } = await axios.get('/content-controls');
+        if (!active) return;
+        const domains = Array.isArray(data?.payload?.blockedPreviewDomains)
+          ? data.payload.blockedPreviewDomains
+          : [];
+        setBlockedPreviewDomains(domains);
+      } catch (error0) {
+        if (active) setBlockedPreviewDomains([]);
+      }
+    };
+    loadPreviewConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const openDeleteFor = (chatId) => {
     dispatch(setSelectedChats([chatId]));
@@ -1546,7 +1592,7 @@ function Monitor({
             !isPoll &&
             !isEvent &&
             !isGroupInfo
-              ? getVideoEmbedData(lead?.text)
+              ? getVideoEmbedData(lead?.text, blockedPreviewDomains)
               : null;
 
           return (

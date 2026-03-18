@@ -22,6 +22,8 @@ const {
   toAbsoluteUploadUrl,
   uploadRootDir,
 } = require('../helpers/storage');
+const { processUploadedVideo } = require('../helpers/videoPipeline');
+const { loadAppConfig } = require('../helpers/appConfig');
 const {
   canReceiveUnknownMessage,
   getSettingMap,
@@ -56,6 +58,25 @@ const sanitizeFolderName = (value, fallback = 'unknown') => {
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, '');
   return safe || fallback;
+};
+
+const getFileCleanupUrls = (file) =>
+  [
+    file?.url,
+    file?.thumbnailUrl,
+    file?.streamUrl,
+    file?.streamHdUrl,
+  ].filter(Boolean);
+
+const getInboxPreviewText = (chatText, file) => {
+  const safeText = String(chatText || '').trim();
+  if (safeText) return safeText;
+
+  const safeFile = toPlain(file);
+  if (safeFile?.type === 'image') return 'Photo';
+  if (safeFile?.type === 'video') return 'Video';
+  if (safeFile?.type === 'audio') return 'Voice';
+  return safeFile?.originalname || '';
 };
 
 const isCallLogText = (text) => {
@@ -356,6 +377,35 @@ exports.upload = async (req, res) => {
       return;
     }
 
+    const appConfig = await loadAppConfig();
+    if (appConfig?.featureFlags?.uploads === false) {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Uploads are disabled right now.',
+      });
+      return;
+    }
+    const maxChatBytes =
+      Math.max(1, Number(appConfig?.uploadLimits?.chatMb || 100)) *
+      1024 *
+      1024;
+    if (Number(uploadFile.size || 0) > maxChatBytes) {
+      try {
+        await fs.promises.unlink(uploadFile.path);
+      } catch (error0) {
+        // ignore
+      }
+      response({
+        res,
+        statusCode: 413,
+        success: false,
+        message: `File too large. Max ${appConfig?.uploadLimits?.chatMb || 100} MB allowed.`,
+      });
+      return;
+    }
+
     let normalizedPath = path.resolve(String(uploadFile.path || ''));
 
     // Ensure chat uploads are stored by username: uploads/chat/<username>/...
@@ -390,9 +440,42 @@ exports.upload = async (req, res) => {
       .replace('.', '')
       .toLowerCase();
     const mime = String(uploadFile.mimetype || '').toLowerCase();
-    let type = 'raw';
+    let type = 'document';
     if (mime.startsWith('image/')) type = 'image';
     if (mime.startsWith('video/')) type = 'video';
+    if (mime.startsWith('audio/')) type = 'audio';
+
+    const allowedTypes = Array.isArray(appConfig?.uploadLimits?.allowedTypes)
+      ? appConfig.uploadLimits.allowedTypes
+      : ['image', 'video', 'audio', 'document'];
+    if (Array.isArray(allowedTypes) && allowedTypes.length === 0) {
+      try {
+        await fs.promises.unlink(normalizedPath);
+      } catch (error0) {
+        // ignore
+      }
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'All uploads are disabled.',
+      });
+      return;
+    }
+    if (allowedTypes.length > 0 && !allowedTypes.includes(type)) {
+      try {
+        await fs.promises.unlink(normalizedPath);
+      } catch (error0) {
+        // ignore
+      }
+      response({
+        res,
+        statusCode: 415,
+        success: false,
+        message: `Uploads for ${type} files are disabled.`,
+      });
+      return;
+    }
 
     const relativePath = path
       .relative(path.resolve(uploadRootDir), normalizedPath)
@@ -411,6 +494,21 @@ exports.upload = async (req, res) => {
       size: Number(uploadFile.size || 0),
     });
 
+    let videoPayload = {};
+    if (type === 'video') {
+      try {
+        videoPayload = await processUploadedVideo({
+          absolutePath: normalizedPath,
+        });
+      } catch (error0) {
+        logger.warn('CHAT_VIDEO_PROCESSING_FAILED', {
+          userId: req.user?._id || null,
+          path: normalizedPath,
+          message: error0.message,
+        });
+      }
+    }
+
     response({
       res,
       message: 'File uploaded successfully',
@@ -420,6 +518,7 @@ exports.upload = async (req, res) => {
         size: Number(uploadFile.size || 0),
         type,
         format: ext || 'bin',
+        ...videoPayload,
       },
     });
   } catch (error0) {
@@ -439,6 +538,16 @@ exports.upload = async (req, res) => {
 
 exports.sendFile = async (req, res) => {
   try {
+    const appConfig = await loadAppConfig();
+    if (appConfig?.featureFlags?.uploads === false) {
+      response({
+        res,
+        statusCode: 403,
+        success: false,
+        message: 'Uploads are disabled right now.',
+      });
+      return;
+    }
     const {
       roomId,
       roomType = 'private',
@@ -565,6 +674,12 @@ exports.sendFile = async (req, res) => {
       type: filePayload.type || 'raw',
       format: filePayload.format || inferredFormat || 'bin',
       size: Number(filePayload.size || 0),
+      duration: Math.max(0, Math.round(Number(filePayload.duration) || 0)),
+      thumbnailUrl: filePayload.thumbnailUrl || '',
+      streamUrl: filePayload.streamUrl || '',
+      streamHdUrl: filePayload.streamHdUrl || '',
+      width: Math.max(0, Number(filePayload.width) || 0),
+      height: Math.max(0, Number(filePayload.height) || 0),
     });
 
     const chatDoc = await ChatModel.create({
@@ -615,9 +730,7 @@ exports.sendFile = async (req, res) => {
           : '1-time message'
       : isSecretEnabled(secretRoom)
         ? getSecretPreviewText({ text, file: toPlain(file) })
-        : chat.text && chat.text.length > 0
-          ? chat.text
-          : file.originalname;
+        : getInboxPreviewText(chat.text, file);
 
     const existingInbox = await InboxModel.findOne({ where: { roomId } });
     if (existingInbox) {
@@ -1394,10 +1507,16 @@ exports.deleteByRoomId = async (req, res) => {
       if (filesId.length > 0) {
         const files = await FileModel.findAll({
           where: { fileId: { [Op.in]: filesId } },
-          attributes: ['url', 'fileId'],
+          attributes: ['url', 'fileId', 'thumbnailUrl', 'streamUrl', 'streamHdUrl'],
         });
 
-        await Promise.all(files.map((file) => deleteLocalFileByUrl(file.url)));
+        await Promise.all(
+          files.flatMap((file) =>
+            getFileCleanupUrls(file).map((targetUrl) =>
+              deleteLocalFileByUrl(targetUrl)
+            )
+          )
+        );
         await FileModel.destroy({ where: { fileId: { [Op.in]: filesId } } });
       }
     }

@@ -9,6 +9,7 @@ import { setModal } from '../redux/features/modal';
 import { setChatRoom } from '../redux/features/room';
 
 import { setSetting } from '../redux/features/user';
+import { setRefreshContact } from '../redux/features/chore';
 import { getPresenceMeta } from '../helpers/presence';
 
 function Contact() {
@@ -27,6 +28,26 @@ function Contact() {
   const [phoneMatched, setPhoneMatched] = useState([]);
   const [phoneInvite, setPhoneInvite] = useState([]);
   const [respond, setRespond] = useState('');
+  const [labels, setLabels] = useState([]);
+  const [labelError, setLabelError] = useState('');
+  const [labelForm, setLabelForm] = useState({
+    open: false,
+    name: '',
+    color: '#2563eb',
+    saving: false,
+    error: '',
+  });
+  const [labelPickerFor, setLabelPickerFor] = useState(null);
+  const labelPalette = [
+    '#2563eb',
+    '#16a34a',
+    '#ef4444',
+    '#f59e0b',
+    '#8b5cf6',
+    '#0ea5e9',
+    '#14b8a6',
+    '#64748b',
+  ];
 
   const handleGetContacts = async (signal) => {
     try {
@@ -40,6 +61,22 @@ function Contact() {
       }
     } catch (error0) {
       console.error(error0.message);
+    }
+  };
+
+  const handleGetLabels = async (signal) => {
+    try {
+      if (!page.contact) {
+        setLabels([]);
+        return;
+      }
+      const { data } = await axios.get('/contacts/labels', { signal });
+      setLabels(Array.isArray(data?.payload) ? data.payload : []);
+      setLabelError('');
+    } catch (error0) {
+      const message = error0?.response?.data?.message || error0.message;
+      setLabelError(message);
+      console.error(message);
     }
   };
 
@@ -61,6 +98,81 @@ function Contact() {
     } catch (error0) {
       console.error(error0.message);
     }
+  };
+
+  const createLabel = async () => {
+    if (!labelForm.name.trim() || labelForm.saving) return;
+    try {
+      setLabelForm((prev) => ({ ...prev, saving: true, error: '' }));
+      const { data } = await axios.post('/contacts/labels', {
+        name: labelForm.name.trim(),
+        color: labelForm.color,
+      });
+      if (data?.payload) {
+        setLabels((prev) => [...prev, data.payload]);
+      }
+      dispatch(setRefreshContact(Date.now()));
+      setLabelForm((prev) => ({
+        ...prev,
+        open: false,
+        name: '',
+        saving: false,
+        error: '',
+      }));
+    } catch (error0) {
+      setLabelForm((prev) => ({
+        ...prev,
+        saving: false,
+        error: error0?.response?.data?.message || error0.message,
+      }));
+    }
+  };
+
+  const deleteLabel = async (labelId) => {
+    try {
+      await axios.delete(`/contacts/labels/${labelId}`);
+      setLabels((prev) => prev.filter((item) => item._id !== labelId));
+      setContacts((prev) =>
+        (prev || []).map((item) => ({
+          ...item,
+          labels: Array.isArray(item.labels)
+            ? item.labels.filter((id) => id !== labelId)
+            : [],
+        }))
+      );
+      dispatch(setRefreshContact(Date.now()));
+    } catch (error0) {
+      setRespond(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const updateContactLabels = async (contact, nextLabels) => {
+    if (!contact?.friendId) return;
+    try {
+      const { data } = await axios.put(
+        `/contacts/${contact.friendId}/labels`,
+        { labels: nextLabels }
+      );
+      const updated = data?.payload?.labels || nextLabels;
+      setContacts((prev) =>
+        (prev || []).map((item) =>
+          item.friendId === contact.friendId
+            ? { ...item, labels: updated }
+            : item
+        )
+      );
+      dispatch(setRefreshContact(Date.now()));
+    } catch (error0) {
+      setRespond(error0?.response?.data?.message || error0.message);
+    }
+  };
+
+  const toggleContactLabel = async (contact, labelId) => {
+    const current = Array.isArray(contact?.labels) ? contact.labels : [];
+    const next = current.includes(labelId)
+      ? current.filter((id) => id !== labelId)
+      : [...current, labelId];
+    await updateContactLabels(contact, next);
   };
 
   const openPrivateChat = (profile, roomId) => {
@@ -213,6 +325,7 @@ function Contact() {
   useEffect(() => {
     const ctrl = new AbortController();
     handleGetContacts(ctrl.signal);
+    handleGetLabels(ctrl.signal);
 
     return () => {
       ctrl.abort();
@@ -429,6 +542,110 @@ function Contact() {
           </div>
         )}
 
+        <div className="border-0 border-b border-solid border-spill-200 dark:border-spill-800">
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Labels</p>
+              <p className="text-xs opacity-70">
+                Work, family, or custom folders
+              </p>
+            </div>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full border border-slate-200 text-xs font-semibold hover:bg-slate-100 dark:border-spill-700 dark:hover:bg-spill-800"
+              onClick={() =>
+                setLabelForm((prev) => ({ ...prev, open: !prev.open }))
+              }
+            >
+              {labelForm.open ? 'Close' : 'New label'}
+            </button>
+          </div>
+          {labelForm.open && (
+            <div className="px-4 pb-3 grid gap-2">
+              <label className="h-10 px-3 rounded-lg border border-slate-200 bg-white flex items-center dark:border-spill-700 dark:bg-spill-900">
+                <input
+                  type="text"
+                  placeholder="Label name"
+                  className="w-full bg-transparent text-sm"
+                  value={labelForm.name}
+                  onChange={(e) =>
+                    setLabelForm((prev) => ({
+                      ...prev,
+                      name: e.target.value,
+                      error: '',
+                    }))
+                  }
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {labelPalette.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`h-7 w-7 rounded-full border-2 ${
+                      labelForm.color === color
+                        ? 'border-slate-900 dark:border-white'
+                        : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() =>
+                      setLabelForm((prev) => ({ ...prev, color }))
+                    }
+                    aria-label={`Pick ${color}`}
+                  />
+                ))}
+              </div>
+              {labelForm.error && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">
+                  {labelForm.error}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="h-9 px-4 rounded-full bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-60"
+                  onClick={createLabel}
+                  disabled={labelForm.saving}
+                >
+                  {labelForm.saving ? 'Saving...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="px-4 pb-3 flex flex-wrap gap-2">
+            {labels.length === 0 && (
+              <p className="text-xs opacity-60">No labels yet.</p>
+            )}
+            {labelError && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">
+                {labelError}
+              </p>
+            )}
+            {labels.map((label) => (
+              <span
+                key={label._id}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold"
+                style={{
+                  borderColor: label.color,
+                  color: label.color,
+                }}
+              >
+                {label.name}
+                {!label.isSystem && (
+                  <button
+                    type="button"
+                    className="ml-1 text-[10px]"
+                    onClick={() => deleteLabel(label._id)}
+                    aria-label={`Delete ${label.name}`}
+                  >
+                    <bi.BiX />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+
         <div className="grid">
           {[
             {
@@ -561,6 +778,93 @@ function Contact() {
                     <p className="truncate opacity-60 mt-0.5">
                       {elem.profile.bio}
                     </p>
+                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    {Array.isArray(elem.labels) &&
+                      elem.labels
+                        .map((labelId) =>
+                          labels.find((label) => label._id === labelId)
+                        )
+                        .filter(Boolean)
+                        .map((label) => (
+                          <span
+                            key={`${elem._id}-${label._id}`}
+                            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                            style={{
+                              borderColor: label.color,
+                              color: label.color,
+                            }}
+                          >
+                            {label.name}
+                          </span>
+                        ))}
+                    <button
+                      type="button"
+                      className="ml-1 inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-100 dark:border-spill-700 dark:text-spill-300 dark:hover:bg-spill-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLabelPickerFor((prev) =>
+                          prev === elem.friendId ? null : elem.friendId
+                        );
+                      }}
+                    >
+                      <bi.BiTag />
+                      <span className="ml-1">Labels</span>
+                    </button>
+                  </div>
+                  {labelPickerFor === elem.friendId && (
+                    <div
+                      className="mt-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-spill-700 dark:bg-spill-900"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {labels.length === 0 ? (
+                        <div className="grid gap-2 text-xs">
+                          <p className="opacity-70">No labels yet.</p>
+                          <button
+                            type="button"
+                            className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold hover:bg-slate-50 dark:border-spill-700 dark:hover:bg-spill-800"
+                            onClick={() =>
+                              setLabelForm((prev) => ({ ...prev, open: true }))
+                            }
+                          >
+                            Create a label
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid gap-1">
+                          {labels.map((label) => {
+                            const active =
+                              Array.isArray(elem.labels) &&
+                              elem.labels.includes(label._id);
+                            return (
+                              <button
+                                key={`${elem.friendId}-${label._id}`}
+                                type="button"
+                                className={`flex items-center justify-between rounded-lg px-2 py-1 text-xs transition ${
+                                  active
+                                    ? 'bg-slate-100 dark:bg-spill-800'
+                                    : 'hover:bg-slate-50 dark:hover:bg-spill-800/60'
+                                }`}
+                                onClick={() =>
+                                  toggleContactLabel(elem, label._id)
+                                }
+                              >
+                                <span className="inline-flex items-center gap-2">
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full"
+                                    style={{ backgroundColor: label.color }}
+                                  />
+                                  <span className="font-medium">
+                                    {label.name}
+                                  </span>
+                                </span>
+                                {active && <bi.BiCheck />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </span>
                     </>

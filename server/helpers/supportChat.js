@@ -8,6 +8,7 @@ const ChatModel = require('../db/models/chat');
 const Inbox = require('./models/inbox');
 const encrypt = require('./encrypt');
 const { toPlain, asArray } = require('../db/utils');
+const { applyDefaultSettings } = require('./appConfig');
 
 const SUPPORT_EMAIL = 'support@syncchat.local';
 const SUPPORT_USERNAME = 'syncchat_support';
@@ -31,7 +32,7 @@ const ensureSupportUser = async () => {
       otp: null,
     });
 
-    await SettingModel.create({ userId: user._id });
+    await SettingModel.create(await applyDefaultSettings({ userId: user._id }));
     await ProfileModel.create({
       userId: user._id,
       username: SUPPORT_USERNAME,

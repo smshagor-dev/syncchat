@@ -37,6 +37,36 @@ const FileModel = sequelize.define(
       allowNull: false,
       defaultValue: '0',
     },
+    duration: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    thumbnailUrl: {
+      type: DataTypes.STRING(700),
+      allowNull: false,
+      defaultValue: '',
+    },
+    streamUrl: {
+      type: DataTypes.STRING(700),
+      allowNull: false,
+      defaultValue: '',
+    },
+    streamHdUrl: {
+      type: DataTypes.STRING(700),
+      allowNull: false,
+      defaultValue: '',
+    },
+    width: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    height: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
   },
   {
     timestamps: false,

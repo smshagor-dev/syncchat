@@ -104,7 +104,7 @@ syncchat/
 - App version: `1.0.0`
 - Node.js: `24.14.0`
 - npm: `11.9.0`
-- Last updated: `2026-03-12`
+- Last updated: `2026-03-18`
 
 ## Core System Features
 
@@ -153,71 +153,71 @@ Everything here should be dynamic (DB-driven + API-controlled) and not hardcoded
 - [ ] Audit log for admin actions
 - [ ] Admin profile and access keys
 
-- [ ] User management
-- [ ] Search/filter users (status, verification, last seen)
-- [ ] View user profile and activity summary
-- [ ] Block/unblock user (global)
-- [ ] Force logout user sessions
-- [ ] Reset user 2FA / recovery codes
-- [ ] Account export request review
-- [ ] Delete user account (soft delete + hard delete)
+- [x] User management
+- [x] Search/filter users (status, verification, last seen)
+- [x] View user profile and activity summary
+- [x] Block/unblock user (global)
+- [x] Force logout user sessions
+- [x] Reset user 2FA / recovery codes
+- [x] Account export request review
+- [x] Delete user account (soft delete + hard delete)
 
-- [ ] Group management
-- [ ] Search groups and view group profile
-- [ ] Promote/demote group admins
-- [ ] Remove members
-- [ ] Update group permissions
-- [ ] Update group moderation (slow mode, banned words, blocked media)
-- [ ] Join request approval flow
+- [x] Group management
+- [x] Search groups and view group profile
+- [x] Promote/demote group admins
+- [x] Remove members
+- [x] Update group permissions
+- [x] Update group moderation (slow mode, banned words, blocked media)
+- [x] Join request approval flow
 
-- [ ] Channel management
-- [ ] Search channels and view channel profile
-- [ ] Promote/demote channel admins
-- [ ] Remove subscribers
-- [ ] Update channel permissions
-- [ ] Update channel moderation (slow mode, banned words, blocked media)
-- [ ] Join request approval flow
+- [x] Channel management
+- [x] Search channels and view channel profile
+- [x] Promote/demote channel admins
+- [x] Remove subscribers
+- [x] Update channel permissions
+- [x] Update channel moderation (slow mode, banned words, blocked media)
+- [x] Join request approval flow
 
-- [ ] Report & moderation center
-- [ ] Review user reports (chat, group, channel, status)
-- [ ] Action on reports (warn, mute, ban, delete content)
-- [ ] Auto-moderation rule editor
-- [ ] Banned words list
-- [ ] Media-type blocking rules
-- [ ] Slow mode presets
-- [ ] Moderation history + outcomes
+- [x] Report & moderation center
+- [x] Review user reports (chat, group, channel, status)
+- [x] Action on reports (warn, mute, ban, delete content)
+- [x] Auto-moderation rule editor
+- [x] Banned words list
+- [x] Media-type blocking rules
+- [x] Slow mode presets
+- [x] Moderation history + outcomes
 
-- [ ] Content controls
-- [ ] Delete messages (single/multi)
-- [ ] Remove media (image/video/audio/document)
-- [ ] Disable link previews for abusive domains
-- [ ] Status/story takedown
-- [ ] Pinned message removal
-- [ ] Poll/quiz takedown
+- [x] Content controls
+- [x] Delete messages (single/multi)
+- [x] Remove media (image/video/audio/document)
+- [x] Disable link previews for abusive domains
+- [x] Status/story takedown
+- [x] Pinned message removal
+- [x] Poll/quiz takedown
 
-- [ ] Security & compliance
-- [ ] Device/session manager (per user)
-- [ ] Suspicious login review
-- [ ] IP/device blacklist
-- [ ] Rate limit settings
-- [ ] Web push/VAPID status
-- [ ] GDPR-style data export + erase tracking
+- [x] Security & compliance
+- [x] Device/session manager (per user)
+- [x] Suspicious login review
+- [x] IP/device blacklist
+- [x] Rate limit settings
+- [x] Web push/VAPID status
+- [x] GDPR-style data export + erase tracking
 
-- [ ] App config (dynamic settings)
-- [ ] Toggle features (feature flags)
-- [ ] Default privacy settings
-- [ ] Default chat settings
-- [ ] Notification settings defaults
-- [ ] Upload limits (size, type)
-- [ ] Media processing profile (HD/SD)
-- [ ] Maintenance mode
+- [x] App config (dynamic settings)
+- [x] Toggle features (feature flags)
+- [x] Default privacy settings
+- [x] Default chat settings
+- [x] Notification settings defaults
+- [x] Upload limits (size, type)
+- [x] Media processing profile (HD/SD)
+- [x] Maintenance mode
 
-- [ ] Analytics & monitoring
-- [ ] User growth and active users
-- [ ] Message/voice/video usage
-- [ ] Storage usage (uploads)
-- [ ] Report volume and resolution time
-- [ ] System health widgets
+- [x] Analytics & monitoring
+- [x] User growth and active users
+- [x] Message/voice/video usage
+- [x] Storage usage (uploads)
+- [x] Report volume and resolution time
+- [x] System health widgets
 
 ## Recent Changes (2026-03-03)
 
@@ -228,10 +228,17 @@ Everything here should be dynamic (DB-driven + API-controlled) and not hardcoded
 - Improved chat list unread behavior:
   - unread filters now count unread chats
   - per-chat unread badge shows unread message count
-  - unread rows show bold visual state
-- Fixed popup/modal layering and clipping using centered portal rendering.
-- Improved sidebar unread badge counting to match unread chat count logic.
-- Improved webpack compile performance with filesystem + babel caching and faster dev sourcemap.
+
+## Recent Changes (2026-03-18)
+
+- Admin Analytics & Monitoring dashboard with summary cards and Chart.js charts.
+- Real-time analytics updates via Socket.IO with refresh controls and last-refreshed indicator.
+- Server Status panel with uptime, load average, memory usage, Node version, and reset action.
+- Full Analytics tab with date range filters, stacked bar chart, and report-status donut chart.
+- App Config enhancements: app logo + SEO image upload/clear, SEO meta settings, SMTP settings.
+- Client branding/SEO: app name/logo and SEO tags applied to login/auth and chat pages.
+- Channel rating & review system (client submission + admin moderation).
+- App Config UI refresh: equal-height cards, two-column layout, and responsive styling.
 
 ## Recent Changes (2026-03-04)
 
@@ -486,6 +493,4 @@ Everything here should be dynamic (DB-driven + API-controlled) and not hardcoded
 - Added device link QR scan improvements + QR token display/copy + dark mode fixes.
 - Added sender/receiver message bubble background + text color settings.
 - Fixed MySQL push subscription unique index by using endpoint hash.
-
-
 

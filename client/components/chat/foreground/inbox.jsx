@@ -25,11 +25,20 @@ import notification from '../../../helpers/notification';
 
 const EVENT_PREFIX = '__event__::';
 const POLL_PREFIX = '__poll__::';
+const isLocationMessage = (text) => {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  return /maps\.google\.com\/\?q=[-\d.]+,[-\d.]+/i.test(raw) || /live location/i.test(raw);
+};
 
 function Inbox({
   inboxes,
   setInboxes,
   chatFilter = 'all',
+  labelFilter = '',
+  setLabelFilter = () => {},
+  contactLabels = [],
+  contactLabelsByRoom = {},
   searchState = null,
 }) {
   const dispatch = useDispatch();
@@ -525,8 +534,11 @@ function Inbox({
   useEffect(() => {
     const handleStatusUpdate = (payload) => {
       if (!payload?.statusId) return;
-      setStatuses((prev) =>
-        prev.map((item) => {
+      setStatuses((prev) => {
+        if (payload.type === 'delete') {
+          return prev.filter((item) => item._id !== payload.statusId);
+        }
+        return prev.map((item) => {
           if (item._id !== payload.statusId) return item;
 
           const nextItem = { ...item };
@@ -544,8 +556,8 @@ function Inbox({
             nextItem.myReaction = payload.myReaction;
           }
           return nextItem;
-        })
-      );
+        });
+      });
     };
 
     const handleStatusNew = (payload) => {
@@ -1058,6 +1070,12 @@ function Inbox({
       if (chatFilter === 'favourite') return isFavouriteInbox(elem);
       if (chatFilter === 'group') return elem.roomType === 'group';
       return true;
+    })
+    .filter((elem) => {
+      if (!labelFilter) return true;
+      if (elem.roomType !== 'private') return false;
+      const labels = contactLabelsByRoom?.[elem.roomId] || [];
+      return labels.includes(labelFilter);
     })
     .filter((elem) => {
       if (!hasActiveSearch) return true;
@@ -1848,6 +1866,54 @@ function Inbox({
           </div>
         </div>
       )}
+      {!page.calls && !page.starred && (
+        <div className="border-b border-slate-200 px-3 py-2 dark:border-spill-700">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-700 dark:text-spill-100">
+              Labels
+            </p>
+            {labelFilter && (
+              <button
+                type="button"
+                className="text-xs font-semibold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+                onClick={() => setLabelFilter('')}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {contactLabels.length === 0 && (
+              <span className="text-xs text-slate-500 dark:text-spill-400">
+                No labels yet
+              </span>
+            )}
+            {contactLabels.map((label) => (
+              <button
+                key={label._id}
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  labelFilter === label._id
+                    ? 'border-sky-500 bg-sky-600 text-white'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-spill-700 dark:text-spill-200 dark:hover:bg-spill-800'
+                }`}
+                style={
+                  labelFilter === label._id
+                    ? {}
+                    : { borderColor: label.color, color: label.color }
+                }
+                onClick={() =>
+                  setLabelFilter((prev) =>
+                    prev === label._id ? '' : label._id
+                  )
+                }
+              >
+                {label.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {page.calls &&
         callLogs.map((elem) => {
           const meta = getCallListMeta(elem.text, elem.userId);
@@ -2098,6 +2164,7 @@ function Inbox({
           const callStatus = getCallStatusMeta(elem.content?.text);
           const eventStatus = isEventMessage(elem.content?.text);
           const pollStatus = isPollMessage(elem.content?.text);
+          const locationStatus = isLocationMessage(elem.content?.text);
           const oneTimeMatch = String(elem.content?.text || '').match(
             /^1-time (photo|video|message)$/i
           );
@@ -2148,6 +2215,17 @@ function Inbox({
                 <p className="truncate">Poll</p>
               </span>
             );
+          } else if (locationStatus) {
+            previewContent = (
+              <span
+                className={`truncate text-sm flex items-center gap-1 text-emerald-600 dark:text-emerald-400 ${
+                  hasUnreadForMe ? 'font-semibold' : ''
+                }`}
+              >
+                <bi.BiMapPin />
+                <p className="truncate">Location</p>
+              </span>
+            );
           } else if (oneTimeType) {
             const OneTimeIcon =
               oneTimeType === 'photo'
@@ -2176,6 +2254,8 @@ function Inbox({
               >
                 {elem.file && isAudioFile(elem.file)
                   ? 'Voice'
+                  : elem.file?.type === 'video'
+                    ? 'Video'
                   : elem.content.text}
               </p>
             );
@@ -2373,6 +2453,11 @@ function Inbox({
                       {elem.file && isAudioFile(elem.file) && !oneTimeType && (
                         <i>
                           <ri.RiMicFill size={20} />
+                        </i>
+                      )}
+                      {elem.file && elem.file.type === 'video' && !oneTimeType && (
+                        <i>
+                          <bi.BiVideo size={18} />
                         </i>
                       )}
                       {elem.file &&

@@ -5,6 +5,7 @@ import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
 import bytesToSize from '../../helpers/bytesToSize';
 import { setReplyingChat } from '../../redux/features/chore';
+import config from '../../config';
 import {
   getPendingUploadFile,
   removePendingUploadFile,
@@ -12,12 +13,13 @@ import {
 import { replaceTextTokensWithEmoji } from '../../helpers/emojiText';
 
 const IMAGE_MIME_PREFIX = 'image/';
+const GOOGLE_DRIVE_URL = 'https://drive.google.com/drive/my-drive';
 
 const toServerFileType = (sendType) => {
   if (sendType === 'photo') return 'image';
   if (sendType === 'video') return 'video';
   if (sendType === 'audio') return 'audio';
-  return 'raw';
+  return 'document';
 };
 
 const inferStatusType = (sendType) => {
@@ -100,6 +102,12 @@ function SendFile() {
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [sendStatus, setSendStatus] = useState('');
+  const [transferProgress, setTransferProgress] = useState({
+    stage: '',
+    current: 0,
+    total: 0,
+    progress: 0,
+  });
   const [previewIndex, setPreviewIndex] = useState(0);
   const [postToStatus, setPostToStatus] = useState(false);
   const [viewOnce, setViewOnce] = useState(false);
@@ -108,6 +116,15 @@ function SendFile() {
   const hasStatusEligibleItem = items.some(
     (item) => inferStatusType(item?.type) !== null
   );
+  const oversizedItems = useMemo(
+    () =>
+      items.filter(
+        (item) => Number(item?.size || 0) > Number(config.chatUploadLimit || 0)
+      ),
+    [items]
+  );
+  const hasOversizedItems = oversizedItems.length > 0;
+  const maxUploadSizeLabel = bytesToSize(config.chatUploadLimit);
 
   useEffect(() => {
     setCaption(sendFile?.caption || '');
@@ -116,6 +133,12 @@ function SendFile() {
     setViewOnce(false);
     setSendError('');
     setSendStatus('');
+    setTransferProgress({
+      stage: '',
+      current: 0,
+      total: 0,
+      progress: 0,
+    });
   }, [sendFile]);
 
   const closeModal = () => {
@@ -128,15 +151,48 @@ function SendFile() {
     setCaption('');
     setSendError('');
     setSendStatus('');
+    setTransferProgress({
+      stage: '',
+      current: 0,
+      total: 0,
+      progress: 0,
+    });
     setPreviewIndex(0);
     setPostToStatus(false);
     setViewOnce(false);
     dispatch(setModal({ target: 'sendFile', data: false }));
   };
 
+  const openGoogleDrive = () => {
+    window.open(GOOGLE_DRIVE_URL, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyDriveReminder = async () => {
+    const fileNames = oversizedItems
+      .map((item) => item?.originalname)
+      .filter(Boolean)
+      .join(', ');
+    const reminder = fileNames
+      ? `This file is larger than SyncChat's ${maxUploadSizeLabel} limit. Upload ${fileNames} to Google Drive and paste the share link here.`
+      : `This file is larger than SyncChat's ${maxUploadSizeLabel} limit. Upload it to Google Drive and paste the share link here.`;
+
+    try {
+      await navigator.clipboard.writeText(reminder);
+      setSendStatus('Google Drive reminder copied. Paste it in chat after you get the share link.');
+    } catch (error0) {
+      setSendError('Could not copy the reminder. Open Google Drive and share the link manually.');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSending || !chatRoom?.data || items.length === 0) return;
+    if (hasOversizedItems) {
+      setSendError(
+        `This file is larger than the ${maxUploadSizeLabel} upload limit. Upload it to Google Drive and share the link instead.`
+      );
+      return;
+    }
 
     const isGroup = chatRoom.data.roomType === 'group';
     const canSend =
@@ -184,9 +240,27 @@ function SendFile() {
         const formData = new FormData();
         formData.append('file', preparedFile, selectedName);
         setSendStatus(`Uploading ${index + 1}/${items.length}...`);
+        setTransferProgress({
+          stage: 'upload',
+          current: index + 1,
+          total: items.length,
+          progress: 0,
+        });
 
         const uploadRes = await axios.post('/chats/upload', formData, {
           headers,
+          onUploadProgress: (event) => {
+            const total = Number(event?.total || 0);
+            const loaded = Number(event?.loaded || 0);
+            const progress =
+              total > 0 ? Math.round((loaded / total) * 100) : 0;
+            setTransferProgress({
+              stage: 'upload',
+              current: index + 1,
+              total: items.length,
+              progress: Math.max(0, Math.min(100, progress)),
+            });
+          },
         });
         const uploaded = uploadRes?.data?.payload || null;
         if (!uploaded?.url) {
@@ -194,6 +268,12 @@ function SendFile() {
         }
 
         setSendStatus(`Sending ${index + 1}/${items.length}...`);
+        setTransferProgress({
+          stage: 'send',
+          current: index + 1,
+          total: items.length,
+          progress: 100,
+        });
         await axios.post(
           '/chats/send-file',
           {
@@ -230,15 +310,32 @@ function SendFile() {
       }
 
       setSendStatus('Sent successfully');
+      setTransferProgress({
+        stage: 'done',
+        current: items.length,
+        total: items.length,
+        progress: 100,
+      });
       dispatch(setReplyingChat(null));
       closeModal();
     } catch (error0) {
       const statusCode = error0?.response?.status;
       const backendMessage = error0?.response?.data?.message;
-      const message = backendMessage || error0.message || 'Upload failed';
+      const tooLarge =
+        statusCode === 413 ||
+        /too large|file too large|payload too large|limit/i.test(
+          String(backendMessage || error0.message || '')
+        );
+      const message = tooLarge
+        ? `This file is larger than the ${maxUploadSizeLabel} upload limit. Upload it to Google Drive and share the link instead.`
+        : backendMessage || error0.message || 'Upload failed';
       setSendError(message);
       setSendStatus(
-        statusCode ? `Failed with HTTP ${statusCode}` : 'Failed before response'
+        tooLarge
+          ? 'Upload blocked by file size limit'
+          : statusCode
+            ? `Failed with HTTP ${statusCode}`
+            : 'Failed before response'
       );
       // eslint-disable-next-line no-console
       console.error('[sendFile]', message);
@@ -263,20 +360,20 @@ function SendFile() {
         aria-hidden
         className={`${
           !sendFile && 'scale-0'
-        } transition relative w-[520px] m-6 rounded-md overflow-hidden bg-white dark:bg-spill-800`}
+        } transition relative w-[560px] max-w-[calc(100vw-1.5rem)] m-3 rounded-[28px] overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-spill-700 dark:bg-spill-800`}
         onClick={(e) => {
           e.stopPropagation();
         }}
       >
-        <div className="h-14 pl-4 pr-2 flex gap-4 justify-between items-center">
-          <h1 className="text-lg font-bold">
+        <div className="h-16 pl-5 pr-3 flex gap-4 justify-between items-center border-b border-slate-200/80 dark:border-spill-700">
+          <h1 className="text-lg font-semibold tracking-tight">
             {items.length > 1
               ? `Send ${items.length} files`
               : `Send ${activeItem?.type || 'file'}`}
           </h1>
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-spill-100 dark:hover:bg-spill-700"
+            className="grid h-10 w-10 place-items-center rounded-full hover:bg-spill-100 dark:hover:bg-spill-700"
             onClick={(e) => {
               e.stopPropagation();
               closeModal();
@@ -289,28 +386,28 @@ function SendFile() {
         </div>
 
         {activeItem && (
-          <div className="p-2">
+          <div className="p-3">
             {activeItem.type === 'photo' && (
-              <div className="p-2 flex justify-center items-center bg-spill-100 dark:bg-spill-950 rounded">
-                <img src={activeItem.url} alt="" className="max-h-80" />
+              <div className="flex justify-center items-center rounded-[22px] bg-spill-100 p-3 dark:bg-spill-950">
+                <img src={activeItem.url} alt="" className="max-h-80 rounded-[18px]" />
               </div>
             )}
             {activeItem.type === 'video' && (
-              <div className="p-2 flex justify-center items-center bg-spill-100 dark:bg-spill-950 rounded">
-                <video src={activeItem.url} controls className="max-h-80 max-w-full">
+              <div className="flex justify-center items-center rounded-[22px] bg-spill-100 p-3 dark:bg-spill-950">
+                <video src={activeItem.url} controls className="max-h-80 max-w-full rounded-[18px] bg-black">
                   <track kind="captions" />
                 </video>
               </div>
             )}
             {activeItem.type === 'audio' && (
-              <div className="py-4 px-4 bg-spill-100 dark:bg-spill-950 rounded">
+              <div className="rounded-[22px] bg-spill-100 px-4 py-4 dark:bg-spill-950">
                 <audio src={activeItem.url} controls className="w-full">
                   <track kind="captions" />
                 </audio>
               </div>
             )}
             {activeItem.type === 'document' && (
-              <div className="py-3 px-4 flex gap-4 items-center bg-spill-100 dark:bg-spill-950 rounded">
+              <div className="flex items-center gap-4 rounded-[22px] bg-spill-100 px-4 py-4 dark:bg-spill-950">
                 <i>
                   <bi.BiFile size={40} />
                 </i>
@@ -326,7 +423,7 @@ function SendFile() {
         )}
 
         {items.length > 1 && (
-          <div className="px-4 pb-1 flex items-center justify-between text-sm">
+          <div className="px-5 pb-1 flex items-center justify-between text-sm">
             <button
               type="button"
               className="px-2 py-1 rounded hover:bg-spill-100 dark:hover:bg-spill-700 disabled:opacity-50"
@@ -363,7 +460,7 @@ function SendFile() {
             id="caption"
             autoComplete="off"
             placeholder="Type a message"
-            className="w-full p-2 rounded border border-slate-200 dark:border-spill-700 bg-white dark:bg-spill-900"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-spill-700 dark:bg-spill-900"
             value={caption}
             onChange={(e) => {
               setCaption(e.target.value);
@@ -395,8 +492,8 @@ function SendFile() {
           </label>
           <button
             type="submit"
-            disabled={isSending}
-            className="p-2 rounded-full w-10 h-10 grid place-items-center hover:bg-spill-100 dark:hover:bg-spill-700 disabled:opacity-60"
+            disabled={isSending || hasOversizedItems}
+            className="grid h-11 w-11 place-items-center rounded-full bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-60"
           >
             <i>
               {isSending ? (
@@ -407,6 +504,49 @@ function SendFile() {
             </i>
           </button>
         </form>
+        {hasOversizedItems && (
+          <div className="mx-4 mb-4 rounded-[22px] border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 dark:border-amber-700/70 dark:bg-amber-900/20 dark:text-amber-100">
+            <div className="flex items-start gap-3">
+              <i className="mt-0.5 text-amber-600 dark:text-amber-300">
+                <bi.BiCloudUpload size={20} />
+              </i>
+              <span className="min-w-0 flex-1">
+                <p className="font-semibold">
+                  File exceeds the SyncChat upload limit ({maxUploadSizeLabel})
+                </p>
+                <p className="mt-1 text-xs text-amber-800/90 dark:text-amber-100/80">
+                  Upload it to Google Drive, set sharing, then paste the share link in chat.
+                </p>
+                <div className="mt-2 space-y-1">
+                  {oversizedItems.map((item) => (
+                    <p
+                      key={`${item.fileToken || item.originalname}-${item.size}`}
+                      className="truncate text-xs"
+                    >
+                      {item.originalname} • {bytesToSize(item.size)}
+                    </p>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                    onClick={openGoogleDrive}
+                  >
+                    Open Google Drive
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                    onClick={copyDriveReminder}
+                  >
+                    Copy Reminder
+                  </button>
+                </div>
+              </span>
+            </div>
+          </div>
+        )}
         {sendError && (
           <p className="px-4 pb-3 text-xs text-rose-600 dark:text-rose-400">
             {sendError}
@@ -416,6 +556,23 @@ function SendFile() {
           <p className="px-4 pb-3 text-xs text-slate-600 dark:text-spill-300">
             {sendStatus}
           </p>
+        )}
+        {isSending && ['photo', 'video'].includes(String(activeItem?.type || '')) && (
+          <div className="px-5 pb-5">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-spill-700">
+              <div
+                className="h-full rounded-full bg-sky-500 transition-all"
+                style={{ width: `${transferProgress.progress || 0}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-spill-300">
+              {transferProgress.stage === 'upload'
+                ? `Uploading ${transferProgress.current}/${transferProgress.total}: ${transferProgress.progress}%`
+                : transferProgress.stage === 'send'
+                  ? `Finalizing message ${transferProgress.current}/${transferProgress.total}...`
+                  : 'Processing...'}
+            </p>
+          </div>
         )}
       </div>
     </div>

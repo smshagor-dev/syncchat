@@ -10,8 +10,11 @@ import { setEditingChat, setReplyingChat } from '../../../redux/features/chore';
 import { isGroupAdmin } from '../../../helpers/groupAdmins';
 import { replaceTextTokensWithEmoji } from '../../../helpers/emojiText';
 import { playOutgoingMessageSound } from '../../../helpers/sound';
+import { rememberVoiceNoteDuration } from '../../../helpers/voiceNoteDurationCache';
 
 import AttachMenu from '../../modals/attachMenu';
+
+const RECORD_WAVEFORM_BARS = 24;
 
 function Send({ setChats, setNewMessage, control }) {
   const dispatch = useDispatch();
@@ -53,8 +56,12 @@ function Send({ setChats, setNewMessage, control }) {
   });
   const [isUnblocking, setIsUnblocking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isSendingVoice, setIsSendingVoice] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordWaveform, setRecordWaveform] = useState(() =>
+    Array.from({ length: RECORD_WAVEFORM_BARS }, () => 0.2)
+  );
   const [showSchedulePanel, setShowSchedulePanel] = useState(false);
   const [scheduledItems, setScheduledItems] = useState([]);
   const [scheduleForm, setScheduleForm] = useState({
@@ -66,11 +73,17 @@ function Send({ setChats, setNewMessage, control }) {
   const [isScheduling, setIsScheduling] = useState(false);
   const [viewOnceText, setViewOnceText] = useState(false);
   const [moderationNotice, setModerationNotice] = useState('');
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const recorderRef = useRef(null);
   const recordStreamRef = useRef(null);
   const recordChunksRef = useRef([]);
   const recordTimerRef = useRef(null);
   const sendRecordedVoiceRef = useRef(false);
+  const recordSecondsRef = useRef(0);
+  const recordAudioContextRef = useRef(null);
+  const recordAnalyserRef = useRef(null);
+  const recordSourceRef = useRef(null);
+  const recordAnimationFrameRef = useRef(null);
 
   const canSendInCurrentRoom = () => {
     const { group = null, profile = null } = chatRoom.data;
@@ -101,6 +114,32 @@ function Send({ setChats, setNewMessage, control }) {
     }
   };
 
+  const resetRecordWaveform = () => {
+    setRecordWaveform(
+      Array.from({ length: RECORD_WAVEFORM_BARS }, () => 0.2)
+    );
+  };
+
+  const stopWaveformAnalysis = () => {
+    if (recordAnimationFrameRef.current) {
+      cancelAnimationFrame(recordAnimationFrameRef.current);
+      recordAnimationFrameRef.current = null;
+    }
+    if (recordSourceRef.current) {
+      recordSourceRef.current.disconnect();
+      recordSourceRef.current = null;
+    }
+    if (recordAnalyserRef.current) {
+      recordAnalyserRef.current.disconnect();
+      recordAnalyserRef.current = null;
+    }
+    if (recordAudioContextRef.current) {
+      recordAudioContextRef.current.close().catch(() => {});
+      recordAudioContextRef.current = null;
+    }
+    resetRecordWaveform();
+  };
+
   const stopRecordTracks = () => {
     if (recordStreamRef.current) {
       recordStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -108,7 +147,70 @@ function Send({ setChats, setNewMessage, control }) {
     }
   };
 
-  const uploadAndSendVoice = async (audioBlob) => {
+  const startRecordTimer = () => {
+    clearRecordTimer();
+    recordTimerRef.current = setInterval(() => {
+      setRecordSeconds((prev) => {
+        const next = prev + 1;
+        recordSecondsRef.current = next;
+        return next;
+      });
+    }, 1000);
+  };
+
+  const startWaveformAnalysis = (stream) => {
+    const AudioContextClass =
+      window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      resetRecordWaveform();
+      return;
+    }
+
+    const context = new AudioContextClass();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.82;
+
+    const source = context.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    recordAudioContextRef.current = context;
+    recordAnalyserRef.current = analyser;
+    recordSourceRef.current = source;
+
+    const samples = new Uint8Array(analyser.frequencyBinCount);
+    const draw = () => {
+      if (!recordAnalyserRef.current) return;
+
+      if (recorderRef.current?.state === 'paused') {
+        setRecordWaveform((prev) => prev.map(() => 0.2));
+        recordAnimationFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
+      analyser.getByteFrequencyData(samples);
+      const bucketSize = Math.max(
+        1,
+        Math.floor(samples.length / RECORD_WAVEFORM_BARS)
+      );
+      const nextWaveform = Array.from(
+        { length: RECORD_WAVEFORM_BARS },
+        (_, index) => {
+          const start = index * bucketSize;
+          const bucket = samples.slice(start, start + bucketSize);
+          const total = bucket.reduce((sum, value) => sum + value, 0);
+          const avg = bucket.length ? total / bucket.length : 0;
+          return Math.max(0.18, Math.min(1, avg / 255));
+        }
+      );
+      setRecordWaveform(nextWaveform);
+      recordAnimationFrameRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+  };
+
+  const uploadAndSendVoice = async (audioBlob, durationSeconds = 0) => {
     const token = localStorage.getItem('token');
     const headers = token
       ? {
@@ -130,8 +232,9 @@ function Send({ setChats, setNewMessage, control }) {
     if (!uploaded?.url) {
       throw new Error('Voice upload failed');
     }
+    rememberVoiceNoteDuration(uploaded.url, durationSeconds);
 
-    await axios.post(
+    const sendRes = await axios.post(
       '/chats/send-file',
       {
         roomId: chatRoom.data.roomId,
@@ -142,10 +245,24 @@ function Send({ setChats, setNewMessage, control }) {
         file: {
           ...uploaded,
           type: 'audio',
+          duration: Math.max(0, Math.round(Number(durationSeconds) || 0)),
         },
       },
       { headers }
     );
+
+    const payload = sendRes?.data?.payload || null;
+    if (payload?.file) {
+      payload.file = {
+        ...payload.file,
+        type: 'audio',
+        duration: Math.max(
+          Number(payload.file.duration) || 0,
+          Math.round(Number(durationSeconds) || 0)
+        ),
+      };
+    }
+    return payload;
   };
 
   const startVoiceRecording = async () => {
@@ -159,12 +276,23 @@ function Send({ setChats, setNewMessage, control }) {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
       const recorder = new MediaRecorder(stream);
       recordStreamRef.current = stream;
       recorderRef.current = recorder;
       recordChunksRef.current = [];
       sendRecordedVoiceRef.current = false;
+      recordSecondsRef.current = 0;
+      setIsRecordingPaused(false);
+      resetRecordWaveform();
+      startWaveformAnalysis(stream);
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -174,8 +302,10 @@ function Send({ setChats, setNewMessage, control }) {
 
       recorder.onstop = async () => {
         clearRecordTimer();
+        stopWaveformAnalysis();
         stopRecordTracks();
         setIsRecording(false);
+        setIsRecordingPaused(false);
 
         const shouldSend = sendRecordedVoiceRef.current;
         sendRecordedVoiceRef.current = false;
@@ -196,8 +326,27 @@ function Send({ setChats, setNewMessage, control }) {
         }
 
         try {
+          const durationSeconds = recordSecondsRef.current;
           setIsSendingVoice(true);
-          await uploadAndSendVoice(audioBlob);
+          const sentPayload = await uploadAndSendVoice(
+            audioBlob,
+            durationSeconds
+          );
+          if (sentPayload?._id) {
+            setChats((prev) => {
+              const list = prev || [];
+              const exists = list.some((item) => item._id === sentPayload._id);
+              if (exists) {
+                return list.map((item) =>
+                  item._id === sentPayload._id ? sentPayload : item
+                );
+              }
+              if (list.length >= control.limit) {
+                return [...list.slice(1), sentPayload];
+              }
+              return [...list, sentPayload];
+            });
+          }
           dispatch(setReplyingChat(null));
         } catch (error0) {
           console.error(
@@ -216,19 +365,38 @@ function Send({ setChats, setNewMessage, control }) {
       };
 
       recorder.start(300);
+      recordSecondsRef.current = 0;
       setRecordSeconds(0);
       setIsRecording(true);
-      clearRecordTimer();
-      recordTimerRef.current = setInterval(() => {
-        setRecordSeconds((prev) => prev + 1);
-      }, 1000);
+      startRecordTimer();
     } catch (error0) {
       console.error(error0.message || error0);
       // eslint-disable-next-line no-alert
       alert('Microphone permission denied or unavailable.');
       clearRecordTimer();
+      stopWaveformAnalysis();
       stopRecordTracks();
       setIsRecording(false);
+      setIsRecordingPaused(false);
+      recordSecondsRef.current = 0;
+    }
+  };
+
+  const togglePauseVoiceRecording = () => {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+
+    if (recorder.state === 'recording') {
+      recorder.pause();
+      clearRecordTimer();
+      setIsRecordingPaused(true);
+      return;
+    }
+
+    if (recorder.state === 'paused') {
+      recorder.resume();
+      startRecordTimer();
+      setIsRecordingPaused(false);
     }
   };
 
@@ -238,8 +406,11 @@ function Send({ setChats, setNewMessage, control }) {
 
     if (!recorder) {
       clearRecordTimer();
+      stopWaveformAnalysis();
       stopRecordTracks();
       setIsRecording(false);
+      setIsRecordingPaused(false);
+      recordSecondsRef.current = 0;
       return;
     }
 
@@ -247,8 +418,11 @@ function Send({ setChats, setNewMessage, control }) {
       recorder.stop();
     } else {
       clearRecordTimer();
+      stopWaveformAnalysis();
       stopRecordTracks();
       setIsRecording(false);
+      setIsRecordingPaused(false);
+      recordSecondsRef.current = 0;
     }
   };
 
@@ -335,6 +509,60 @@ function Send({ setChats, setNewMessage, control }) {
       dispatch(setReplyingChat(null));
       dispatch(setEditingChat(null));
     }
+  };
+
+  const handleSendLiveLocation = () => {
+    if (isBlocked || isBlockedByFriend) return;
+    if (!canSendInCurrentRoom()) return;
+    if (!navigator.geolocation) {
+      // eslint-disable-next-line no-alert
+      alert('Location is not supported in this browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = Number(position?.coords?.latitude || 0);
+        const longitude = Number(position?.coords?.longitude || 0);
+        if (!latitude || !longitude) {
+          // eslint-disable-next-line no-alert
+          alert('Could not read your current location.');
+          return;
+        }
+
+        const mapUrl = `https://maps.google.com/?q=${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+        socket.emit('chat/insert', {
+          text: `📍 Live location\n${mapUrl}`,
+          file: null,
+          ownersId: chatRoom.data.ownersId,
+          roomType: chatRoom.data.roomType,
+          userId: master._id,
+          roomId: chatRoom.data.roomId,
+          replyTo: replyingChat?._id || null,
+          viewOnce: false,
+        });
+
+        setTimeout(() => setEmojiBoard(false), 150);
+        setForm({ text: '', file: null });
+        setViewOnceText(false);
+        setMobileActionsOpen(false);
+        dispatch(setReplyingChat(null));
+        dispatch(setEditingChat(null));
+      },
+      (error0) => {
+        const message =
+          error0?.code === 1
+            ? 'Location permission denied.'
+            : 'Could not get your current location.';
+        // eslint-disable-next-line no-alert
+        alert(message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 10000,
+      }
+    );
   };
 
   const loadScheduledMessages = async () => {
@@ -443,8 +671,30 @@ function Send({ setChats, setNewMessage, control }) {
         // push new chat to state.chats
         setChats((prev) => {
           if (prev) {
+            const exists = prev.some((item) => item._id === payload._id);
+            if (exists) {
+              return prev.map((item) =>
+                item._id === payload._id
+                  ? {
+                      ...item,
+                      ...payload,
+                      file:
+                        item?.file && payload?.file
+                          ? {
+                              ...item.file,
+                              ...payload.file,
+                              duration: Math.max(
+                                Number(item.file.duration) || 0,
+                                Number(payload.file.duration) || 0
+                              ),
+                            }
+                          : payload.file || item.file || null,
+                    }
+                  : item
+              );
+            }
             if (prev.length >= control.limit) {
-              prev.shift();
+              return [...prev.slice(1), payload];
             }
             return [...prev, payload];
           }
@@ -627,10 +877,12 @@ function Send({ setChats, setNewMessage, control }) {
   useEffect(
     () => () => {
       clearRecordTimer();
+      stopWaveformAnalysis();
       stopRecordTracks();
       recorderRef.current = null;
       recordChunksRef.current = [];
       sendRecordedVoiceRef.current = false;
+      recordSecondsRef.current = 0;
     },
     []
   );
@@ -660,6 +912,14 @@ function Send({ setChats, setNewMessage, control }) {
     );
   }, [showSchedulePanel]);
 
+  useEffect(() => {
+    if (isRecording) setMobileActionsOpen(false);
+  }, [isRecording]);
+
+  useEffect(() => {
+    setMobileActionsOpen(false);
+  }, [chatRoom?.data?.roomId]);
+
   const formatRecordTime = `${String(Math.floor(recordSeconds / 60)).padStart(
     2,
     '0'
@@ -674,6 +934,94 @@ function Send({ setChats, setNewMessage, control }) {
     return 'normal';
   })();
   const isEditing = !!editingChat?._id;
+  const isVoiceComposerLocked = isRecording || isSendingVoice;
+  const renderComposerActionButtons = () => (
+    <>
+      <button
+        type="button"
+        className={`grid h-9 w-9 place-items-center rounded-full border border-transparent text-slate-600 transition hover:bg-slate-100 dark:text-spill-200 dark:hover:bg-spill-700 ${
+          emojiBoard
+            ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+            : ''
+        }`}
+        disabled={isVoiceComposerLocked || isEditing}
+        onClick={() => {
+          if (isVoiceComposerLocked) return;
+          const { group, profile } = chatRoom.data;
+          const participant = group?.participantsId.includes(master._id);
+
+          if ((!isGroup && profile.active) || (isGroup && participant)) {
+            if (isBlocked || isBlockedByFriend) return;
+            setEmojiBoard((prev) => !prev);
+            setMobileActionsOpen(false);
+          }
+        }}
+      >
+        <i>{emojiBoard ? <bi.BiX /> : <bi.BiSmile />}</i>
+      </button>
+      <button
+        type="button"
+        className="grid h-9 w-9 place-items-center rounded-full border border-transparent text-slate-600 transition hover:bg-slate-100 dark:text-spill-200 dark:hover:bg-spill-700"
+        disabled={isVoiceComposerLocked || isEditing}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isVoiceComposerLocked) return;
+
+          const { group, profile } = chatRoom.data;
+          const participant = group?.participantsId.includes(master._id);
+
+          if ((!isGroup && profile.active) || (isGroup && participant)) {
+            if (isBlocked || isBlockedByFriend) return;
+            setMobileActionsOpen(false);
+            dispatch(setModal({ target: 'attachMenu' }));
+          }
+        }}
+      >
+        <i>
+          <bi.BiPaperclip />
+        </i>
+      </button>
+      <button
+        type="button"
+        className={`grid h-9 w-9 place-items-center rounded-full border border-transparent text-slate-600 transition hover:bg-slate-100 dark:text-spill-200 dark:hover:bg-spill-700 ${
+          viewOnceText
+            ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+            : ''
+        }`}
+        disabled={isVoiceComposerLocked || isGroup || isEditing}
+        onClick={() => {
+          if (isVoiceComposerLocked || isGroup) return;
+          if (isBlocked || isBlockedByFriend) return;
+          setViewOnceText((prev) => !prev);
+          setMobileActionsOpen(false);
+        }}
+        title={isGroup ? '1-time text is only available in private chat' : 'Send as one-time text'}
+      >
+        <i>
+          <bi.BiLowVision />
+        </i>
+      </button>
+      <button
+        type="button"
+        className={`grid h-9 w-9 place-items-center rounded-full border border-transparent text-slate-600 transition hover:bg-slate-100 dark:text-spill-200 dark:hover:bg-spill-700 ${
+          showSchedulePanel
+            ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+            : ''
+        }`}
+        disabled={isVoiceComposerLocked || isEditing}
+        onClick={() => {
+          if (isVoiceComposerLocked) return;
+          if (isBlocked || isBlockedByFriend) return;
+          setShowSchedulePanel((prev) => !prev);
+          setMobileActionsOpen(false);
+        }}
+      >
+        <i>
+          <bi.BiTimeFive />
+        </i>
+      </button>
+    </>
+  );
 
   return (
     <div className="bg-white border-t border-slate-200 text-slate-500 dark:bg-spill-800 dark:border-spill-700 dark:text-spill-300">
@@ -685,6 +1033,7 @@ function Send({ setChats, setNewMessage, control }) {
             text: '',
           }))
         }
+        onSendLocation={handleSendLiveLocation}
       />
       {replyingChat && (
         <div className="px-3 py-1 border-b border-slate-200 dark:border-spill-700 flex items-center justify-between bg-slate-50 dark:bg-spill-900/60">
@@ -927,7 +1276,7 @@ function Send({ setChats, setNewMessage, control }) {
           </div>
         </div>
       )}
-      <div className="px-2 h-16 grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+      <div className="overflow-visible px-2 h-16 grid grid-cols-[auto_1fr_auto] gap-2 items-center">
         {(() => {
           if (composerMode === 'blocked') {
             return (
@@ -973,106 +1322,82 @@ function Send({ setChats, setNewMessage, control }) {
 
           return (
             <>
-              <span className="flex">
-                <button
-                  type="button"
-                  className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
-                  disabled={isRecording || isSendingVoice || isEditing}
-                  onClick={() => {
-                    if (isRecording || isSendingVoice) return;
-                    const { group, profile } = chatRoom.data;
-                    const participant = group?.participantsId.includes(
-                      master._id
-                    );
-
-                    if (
-                      (!isGroup && profile.active) ||
-                      (isGroup && participant)
-                    ) {
-                      if (isBlocked || isBlockedByFriend) return;
-                      setEmojiBoard((prev) => !prev);
-                    }
-                  }}
+              <span className="hidden sm:flex">
+                {renderComposerActionButtons()}
+              </span>
+              <span className="relative flex sm:hidden">
+                <span
+                  className={`absolute left-11 top-1/2 z-20 flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-slate-200/90 bg-white/96 px-1.5 py-1 shadow-[0_16px_34px_rgba(15,23,42,0.16)] backdrop-blur-xl transition-all dark:border-spill-700 dark:bg-spill-800/96 ${
+                    mobileActionsOpen
+                      ? 'pointer-events-auto translate-x-0 opacity-100'
+                      : 'pointer-events-none -translate-x-2 opacity-0'
+                  }`}
                 >
-                  <i>{emojiBoard ? <bi.BiX /> : <bi.BiSmile />}</i>
-                </button>
+                  {renderComposerActionButtons()}
+                </span>
                 <button
                   type="button"
-                  className="p-2 rounded-full -rotate-90 hover:bg-slate-200 dark:hover:bg-spill-700"
-                  disabled={isRecording || isSendingVoice || isEditing}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isRecording || isSendingVoice) return;
-
-                    const { group, profile } = chatRoom.data;
-                    const participant = group?.participantsId.includes(
-                      master._id
-                    );
-
-                    if (
-                      (!isGroup && profile.active) ||
-                      (isGroup && participant)
-                    ) {
-                      if (isBlocked || isBlockedByFriend) return;
-                      dispatch(setModal({ target: 'attachMenu' }));
-                    }
-                  }}
-                >
-                  <i>
-                    <bi.BiPaperclip />
-                  </i>
-                </button>
-                <button
-                  type="button"
-                  className={`p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700 ${
-                    viewOnceText
-                      ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
+                  className={`grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-200 dark:hover:bg-spill-700 ${
+                    mobileActionsOpen
+                      ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
                       : ''
                   }`}
-                  disabled={isRecording || isSendingVoice || isGroup || isEditing}
+                  disabled={isVoiceComposerLocked || isEditing}
                   onClick={() => {
-                    if (isRecording || isSendingVoice || isGroup) return;
-                    if (isBlocked || isBlockedByFriend) return;
-                    setViewOnceText((prev) => !prev);
-                  }}
-                  title={isGroup ? '1-time text is only available in private chat' : 'Send as one-time text'}
-                >
-                  <i>
-                    <bi.BiLowVision />
-                  </i>
-                </button>
-                <button
-                  type="button"
-                  className={`p-2 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700 ${
-                    showSchedulePanel
-                      ? 'bg-slate-200 text-sky-700 dark:bg-spill-700 dark:text-sky-300'
-                      : ''
-                  }`}
-                  disabled={isRecording || isSendingVoice || isEditing}
-                  onClick={() => {
-                    if (isRecording || isSendingVoice) return;
-                    if (isBlocked || isBlockedByFriend) return;
-                    setShowSchedulePanel((prev) => !prev);
+                    if (isVoiceComposerLocked) return;
+                    setMobileActionsOpen((prev) => !prev);
                   }}
                 >
-                  <i>
-                    <bi.BiTimeFive />
-                  </i>
+                  <i>{mobileActionsOpen ? <bi.BiX /> : <bi.BiPlus />}</i>
                 </button>
               </span>
               <label
                 htmlFor="new-message"
-                className="h-11 px-4 rounded-full bg-slate-100 border border-slate-200 flex items-center dark:bg-spill-900 dark:border-spill-700"
+                className={`rounded-3xl border border-slate-200 bg-slate-100 px-4 py-2 flex items-center dark:bg-spill-900 dark:border-spill-700 ${
+                  isRecording ? 'min-h-[52px]' : 'h-11'
+                }`}
               >
                 {isRecording ? (
-                  <span className="w-full grid grid-cols-[1fr_auto] gap-2 items-center">
+                  <span className="w-full flex items-center gap-3">
                     <span className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                      Recording {formatRecordTime}
+                      <span
+                        className={`w-2 h-2 rounded-full bg-rose-500 ${
+                          isRecordingPaused ? '' : 'animate-pulse'
+                        }`}
+                      />
+                      {isRecordingPaused ? 'Paused' : 'Recording'} {formatRecordTime}
+                    </span>
+                    <span className="flex-1 flex items-end gap-[3px] h-8">
+                      {recordWaveform.map((level, index) => (
+                        <span
+                          key={`record-wave-${index + 1}`}
+                          className={`flex-1 rounded-full transition-all duration-150 ${
+                            isRecordingPaused
+                              ? 'bg-slate-300 dark:bg-spill-600'
+                              : 'bg-rose-400/90 dark:bg-rose-300/90'
+                          }`}
+                          style={{
+                            height: `${Math.max(22, Math.round(level * 100))}%`,
+                          }}
+                        />
+                      ))}
                     </span>
                     <button
                       type="button"
+                      className="p-1 rounded-full text-slate-600 hover:bg-slate-200 dark:text-spill-200 dark:hover:bg-spill-700"
+                      title={isRecordingPaused ? 'Resume recording' : 'Pause recording'}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        togglePauseVoiceRecording();
+                      }}
+                    >
+                      {isRecordingPaused ? <bi.BiPlay /> : <bi.BiPause />}
+                    </button>
+                    <button
+                      type="button"
                       className="p-1 rounded-full text-rose-600 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                      title="Discard recording"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();

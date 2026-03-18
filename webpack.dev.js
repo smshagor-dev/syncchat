@@ -24,7 +24,12 @@ module.exports = {
       directory: path.resolve(__dirname, 'client/public'),
     },
     port: 3000,
-    historyApiFallback: true,
+    historyApiFallback: {
+      rewrites: [
+        { from: /^\/admin(\/.*)?$/, to: '/admin/index.html' },
+        { from: /./, to: '/index.html' },
+      ],
+    },
     proxy: [
       {
         context: ['/api', '/socket.io', '/uploads'],

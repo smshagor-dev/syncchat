@@ -5,6 +5,8 @@ const ctrl = require('../controllers/channel');
 router.get('/channels', authenticate, ctrl.list);
 router.get('/channels/:channelId', authenticate, ctrl.findById);
 router.get('/channels/:channelId/analytics', authenticate, ctrl.analytics);
+router.get('/channels/:channelId/reviews', authenticate, ctrl.listReviews);
+router.post('/channels/:channelId/reviews', authenticate, ctrl.createReview);
 router.get('/channels/link/:token/meta', authenticate, ctrl.linkMeta);
 router.get(
   '/channels/:channelId/participants/name',

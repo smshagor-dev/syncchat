@@ -85,7 +85,16 @@ function Header({
                 <bi.BiMenu size={22} />
               </button>
               {/* brand name */}
-              <h1 className="text-xl font-bold">{config.brandName}</h1>
+              <div className="flex items-center gap-2">
+                {config.brandLogo ? (
+                  <img
+                    src={config.brandLogo}
+                    alt={config.brandName}
+                    className="h-8 w-8 rounded-lg object-cover"
+                  />
+                ) : null}
+                <h1 className="text-xl font-bold">{config.brandName}</h1>
+              </div>
             </div>
             <div className="flex">
               {[

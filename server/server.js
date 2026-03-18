@@ -5,10 +5,13 @@ const { Server: SocketServer } = require('socket.io');
 const http = require('http');
 const path = require('path');
 const cors = require('cors');
+const multer = require('multer');
 const routes = require('./routes');
 const config = require('./config');
 const { uploadRootDir } = require('./helpers/storage');
 const logger = require('./helpers/logger');
+const { loadSecurityConfig, getClientIp, getRequestFingerprint } = require('./helpers/securityConfig');
+const { loadAppConfig } = require('./helpers/appConfig');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +48,85 @@ app.use((req, res, next) => {
   next();
 });
 
+const rateBuckets = new Map();
+const getRateKey = (req) => `${getClientIp(req)}::${req.method}::${req.path}`;
+
+app.use(async (req, res, next) => {
+  try {
+    const config = await loadSecurityConfig();
+    const ip = getClientIp(req);
+    const fingerprint = getRequestFingerprint(req);
+
+    if (config.blockedIps.includes(ip)) {
+      res.status(403).json({
+        success: false,
+        message: 'Request blocked',
+      });
+      return;
+    }
+
+    if (config.blockedFingerprints.includes(fingerprint)) {
+      res.status(403).json({
+        success: false,
+        message: 'Request blocked',
+      });
+      return;
+    }
+
+    if (config.rateLimits.enabled) {
+      const windowMs = config.rateLimits.windowSeconds * 1000;
+      const key = getRateKey(req);
+      const now = Date.now();
+      const bucket = rateBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+      if (now > bucket.resetAt) {
+        bucket.count = 0;
+        bucket.resetAt = now + windowMs;
+      }
+      bucket.count += 1;
+      rateBuckets.set(key, bucket);
+      if (bucket.count > config.rateLimits.maxRequests) {
+        res.status(429).json({
+          success: false,
+          message: 'Rate limit exceeded',
+        });
+        return;
+      }
+    }
+
+    next();
+  } catch (error0) {
+    next();
+  }
+});
+
+app.use(async (req, res, next) => {
+  try {
+    const pathName = String(req.path || '');
+    if (!pathName.startsWith('/api')) {
+      next();
+      return;
+    }
+    const trimmed = pathName.replace(/^\/api\/?/, '');
+    if (trimmed.startsWith('admin') || trimmed.startsWith('app-config')) {
+      next();
+      return;
+    }
+
+    const appConfig = await loadAppConfig();
+    if (appConfig?.maintenance?.enabled) {
+      res.status(503).json({
+        success: false,
+        message: appConfig.maintenance.message || 'Maintenance in progress',
+      });
+      return;
+    }
+
+    next();
+  } catch (error0) {
+    next();
+  }
+});
+
 app.use(
   '/uploads',
   express.static(uploadRootDir, {
@@ -56,12 +138,62 @@ app.use(
   })
 );
 app.use('/api', routes);
+app.use((error, req, res, next) => {
+  if (!(error instanceof multer.MulterError)) {
+    next(error);
+    return;
+  }
+
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    const limitMb = Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100);
+    res.status(413).json({
+      success: false,
+      message: `File too large. Max ${limitMb} MB allowed.`,
+    });
+    return;
+  }
+
+  res.status(400).json({
+    success: false,
+    message: error.message || 'Upload failed',
+  });
+});
+
+const normalizeRoutePath = (value = '') =>
+  String(value || '').replace(/^\/+|\/+$/g, '');
+
+const matchesPath = (pathname = '', target = '') => {
+  if (!target) return false;
+  if (pathname === target) return true;
+  return pathname.startsWith(`${target}/`);
+};
 
 if (!config.isDev) {
-  app.use(express.static('client/public'));
-  const client = path.join(__dirname, '..', 'client', 'public', 'index.html');
+  const publicRoot = path.join(__dirname, '..', 'client', 'public');
+  const clientIndex = path.join(publicRoot, 'index.html');
+  const adminIndex = path.join(publicRoot, 'admin', 'index.html');
 
-  app.get('*', (req, res) => res.sendFile(client));
+  app.use(express.static(publicRoot));
+
+  app.get('*', async (req, res) => {
+    const pathname = normalizeRoutePath(req.path);
+
+    if (
+      matchesPath(pathname, 'api')
+      || matchesPath(pathname, 'uploads')
+      || matchesPath(pathname, 'socket.io')
+    ) {
+      res.status(404).send('Not found');
+      return;
+    }
+
+    if (matchesPath(pathname, 'admin')) {
+      res.sendFile(adminIndex);
+      return;
+    }
+
+    res.sendFile(clientIndex);
+  });
 }
 
 // store socket on global object

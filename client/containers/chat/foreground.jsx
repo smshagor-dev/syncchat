@@ -27,6 +27,7 @@ function ForeGround() {
   const master = useSelector((state) => state.user.master);
   const setting = useSelector((state) => state.user.setting);
   const refreshInbox = useSelector((state) => state.chore.refreshInbox);
+  const refreshContact = useSelector((state) => state.chore.refreshContact);
   const selectedInboxes = useSelector((state) => state.chore.selectedInboxes);
   const modal = useSelector((state) => state.modal);
   const pageState = useSelector((state) => state.page);
@@ -34,6 +35,9 @@ function ForeGround() {
   const [inboxes, setInboxes] = useState(null);
   const [searchState, setSearchState] = useState(getDefaultChatListSearch);
   const [chatFilter, setChatFilter] = useState('all');
+  const [labelFilter, setLabelFilter] = useState('');
+  const [contactLabels, setContactLabels] = useState([]);
+  const [contactLabelsByRoom, setContactLabelsByRoom] = useState({});
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [deepLink, setDeepLink] = useState({
     username: null,
@@ -119,17 +123,44 @@ function ForeGround() {
     }
   };
 
+  const handleGetContactLabels = async (signal) => {
+    try {
+      const [labelsRes, contactsRes] = await Promise.all([
+        axios.get('/contacts/labels', { signal }),
+        axios.get('/contacts', { signal }),
+      ]);
+      const labels = Array.isArray(labelsRes?.data?.payload)
+        ? labelsRes.data.payload
+        : [];
+      const contacts = Array.isArray(contactsRes?.data?.payload)
+        ? contactsRes.data.payload
+        : [];
+      const labelsByRoom = contacts.reduce((acc, item) => {
+        if (item?.roomId) {
+          acc[item.roomId] = Array.isArray(item.labels) ? item.labels : [];
+        }
+        return acc;
+      }, {});
+      setContactLabels(labels);
+      setContactLabelsByRoom(labelsByRoom);
+    } catch (error0) {
+      console.error(error0?.response?.data?.message || error0.message);
+    }
+  };
+
   useEffect(() => {
     const abortCtrl = new AbortController();
     handleGetInboxes(abortCtrl.signal);
+    handleGetContactLabels(abortCtrl.signal);
 
     return () => {
       abortCtrl.abort();
     };
-  }, [refreshInbox]);
+  }, [refreshInbox, refreshContact]);
 
   useEffect(() => {
     setChatFilter('all');
+    setLabelFilter('');
   }, [searchState.query]);
 
   useEffect(() => {
@@ -664,6 +695,10 @@ function ForeGround() {
           inboxes={inboxes}
           setInboxes={setInboxes}
           chatFilter={chatFilter}
+          labelFilter={labelFilter}
+          setLabelFilter={setLabelFilter}
+          contactLabels={contactLabels}
+          contactLabelsByRoom={contactLabelsByRoom}
           searchState={searchState}
         />
       </div>

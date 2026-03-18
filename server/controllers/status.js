@@ -21,12 +21,21 @@ const {
   canViewerSeeStatus,
   sanitizeProfileForViewer,
 } = require('../helpers/privacy');
+const { loadAppConfig } = require('../helpers/appConfig');
 
 const STATUS_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const toHttpError = (statusCode, message) => {
   const err = new Error(message);
   err.statusCode = statusCode;
   return err;
+};
+
+const ensureStatusEnabled = async () => {
+  const appConfig = await loadAppConfig();
+  if (appConfig?.featureFlags?.status === false) {
+    throw toHttpError(403, 'Status is disabled');
+  }
+  return appConfig;
 };
 
 const extByMime = {
@@ -304,6 +313,7 @@ const getVisibleStatus = async ({ statusId, userId }) => {
 
 exports.find = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const now = nowDate();
 
     const expired = await StatusModel.findAll({
@@ -409,6 +419,7 @@ exports.find = async (req, res) => {
 
 exports.insert = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const {
       type = 'text',
       text = '',
@@ -541,6 +552,7 @@ exports.insert = async (req, res) => {
 
 exports.markViewed = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const { statusId } = req.params;
     const statusDoc = await getVisibleStatus({
       statusId,
@@ -588,6 +600,7 @@ exports.markViewed = async (req, res) => {
 
 exports.react = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const { statusId } = req.params;
     const { emoji = '' } = req.body || {};
 
@@ -656,6 +669,7 @@ exports.react = async (req, res) => {
 
 exports.reply = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const { statusId } = req.params;
     const { text = '' } = req.body || {};
 
@@ -724,6 +738,7 @@ exports.reply = async (req, res) => {
 
 exports.activity = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const { statusId } = req.params;
 
     const statusDoc = await StatusModel.findOne({
@@ -822,6 +837,7 @@ exports.activity = async (req, res) => {
 
 exports.deleteById = async (req, res) => {
   try {
+    await ensureStatusEnabled();
     const { statusId } = req.params;
     const status = await StatusModel.findOne({
       where: { _id: statusId, userId: req.user._id },

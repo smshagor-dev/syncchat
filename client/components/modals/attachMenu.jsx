@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
 import { savePendingUploadFile } from '../../helpers/pendingUploadFile';
+import config from '../../config';
 
 const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z';
 const AUDIO_ACCEPT = 'audio/*';
@@ -17,7 +18,11 @@ const inferSendType = (file, forcedType = null) => {
   return 'document';
 };
 
-function AttachMenu({ composerText = '', onCaptionUsed = null }) {
+function AttachMenu({
+  composerText = '',
+  onCaptionUsed = null,
+  onSendLocation = null,
+}) {
   const dispatch = useDispatch();
   const {
     modal,
@@ -63,43 +68,76 @@ function AttachMenu({ composerText = '', onCaptionUsed = null }) {
     );
   };
 
+  const handleSendLocation = () => {
+    if (typeof onSendLocation !== 'function') return;
+    onSendLocation();
+    dispatch(setModal({ target: 'attachMenu', data: false }));
+  };
+
+  const uploadsEnabled = config.featureFlags?.uploads !== false;
+  const allowedTypes = Array.isArray(config.uploadAllowedTypes)
+    ? config.uploadAllowedTypes
+    : ['image', 'video', 'audio', 'document'];
+  const allowImage = uploadsEnabled && allowedTypes.includes('image');
+  const allowVideo = uploadsEnabled && allowedTypes.includes('video');
+  const allowAudio = uploadsEnabled && allowedTypes.includes('audio');
+  const allowDocument = uploadsEnabled && allowedTypes.includes('document');
+  const mediaAccept =
+    allowImage && allowVideo ? MEDIA_ACCEPT : allowImage ? 'image/*' : 'video/*';
+
   const actions = [
+    allowDocument
+      ? {
+          key: 'documents',
+          label: 'Documents',
+          icon: <bi.BiFile />,
+          iconClass:
+            'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+          input: { accept: DOC_ACCEPT },
+          forceType: 'document',
+          multiple: true,
+        }
+      : null,
+    allowImage || allowVideo
+      ? {
+          key: 'photos-videos',
+          label: 'Photos & Video',
+          icon: <bi.BiImageAlt />,
+          iconClass: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+          input: { accept: mediaAccept },
+          multiple: true,
+        }
+      : null,
+    allowImage
+      ? {
+          key: 'camera',
+          label: 'Camera',
+          icon: <bi.BiCamera />,
+          iconClass:
+            'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+          input: { accept: 'image/*', capture: 'environment' },
+          forceType: 'photo',
+        }
+      : null,
+    allowAudio
+      ? {
+          key: 'audio',
+          label: 'Audio',
+          icon: <bi.BiMicrophone />,
+          iconClass:
+            'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+          input: { accept: AUDIO_ACCEPT, capture: 'user' },
+          forceType: 'audio',
+          multiple: true,
+        }
+      : null,
     {
-      key: 'documents',
-      label: 'Documents',
-      icon: <bi.BiFile />,
-      iconClass:
-        'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
-      input: { accept: DOC_ACCEPT },
-      forceType: 'document',
-      multiple: true,
-    },
-    {
-      key: 'photos-videos',
-      label: 'Photos & Video',
-      icon: <bi.BiImageAlt />,
-      iconClass: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
-      input: { accept: MEDIA_ACCEPT },
-      multiple: true,
-    },
-    {
-      key: 'camera',
-      label: 'Camera',
-      icon: <bi.BiCamera />,
+      key: 'location',
+      label: 'Location',
+      icon: <bi.BiMapPin />,
       iconClass:
         'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-      input: { accept: 'image/*', capture: 'environment' },
-      forceType: 'photo',
-    },
-    {
-      key: 'audio',
-      label: 'Audio',
-      icon: <bi.BiMicrophone />,
-      iconClass:
-        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-      input: { accept: AUDIO_ACCEPT, capture: 'user' },
-      forceType: 'audio',
-      multiple: true,
+      onClick: handleSendLocation,
     },
     {
       key: 'contact',
@@ -135,16 +173,29 @@ function AttachMenu({ composerText = '', onCaptionUsed = null }) {
       onClick: () =>
         dispatch(setModal({ target: 'attachSticker', data: true })),
     },
-  ];
+  ].filter(Boolean);
 
   return (
     <div
       className={`${
         modal.attachMenu ? 'z-10' : 'scale-0 -z-10'
-      } transition absolute left-0 bottom-0 w-[280px] p-3 rounded-2xl shadow-2xl translate-x-3 -translate-y-16 bg-white dark:bg-spill-800 border border-slate-200 dark:border-spill-700`}
+      } transition absolute left-0 bottom-0 w-[292px] p-3 rounded-[28px] shadow-[0_20px_55px_rgba(15,23,42,0.18)] translate-x-3 -translate-y-16 border border-slate-200/90 bg-white/98 backdrop-blur-xl dark:border-spill-700 dark:bg-spill-800/96`}
       aria-hidden
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="mb-3 flex items-center justify-between px-1">
+        <span>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-spill-500">
+            Attach
+          </p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-spill-100">
+            Share something
+          </p>
+        </span>
+        <span className="grid h-9 w-9 place-items-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <bi.BiPlus />
+        </span>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {actions.map((action) => {
           if (action.input) {
@@ -152,16 +203,25 @@ function AttachMenu({ composerText = '', onCaptionUsed = null }) {
               <label
                 htmlFor={`attach-${action.key}`}
                 key={action.key}
-                className="p-2 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-spill-700"
+                className="cursor-pointer rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white dark:border-spill-700 dark:bg-spill-900/80 dark:hover:border-spill-500 dark:hover:bg-spill-900"
               >
-                <span className="grid grid-cols-[auto_1fr] gap-2 items-center">
+                <span className="grid grid-cols-[auto_1fr] gap-3 items-center">
                   <i
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${action.iconClass}`}
+                    className={`h-10 w-10 rounded-2xl flex items-center justify-center shadow-sm ${action.iconClass}`}
                   >
                     {action.icon}
                   </i>
-                  <span className="text-sm font-semibold leading-4">
-                    {action.label}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-4 text-slate-700 dark:text-spill-100">
+                      {action.label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-spill-400">
+                      {action.key === 'photos-videos'
+                        ? 'Gallery'
+                        : action.key === 'documents'
+                          ? 'PDF, ZIP, DOC'
+                          : action.key}
+                    </span>
                   </span>
                 </span>
                 <input
@@ -191,17 +251,26 @@ function AttachMenu({ composerText = '', onCaptionUsed = null }) {
             <button
               key={action.key}
               type="button"
-              className="p-2 rounded-xl text-left hover:bg-slate-100 dark:hover:bg-spill-700"
+              className="rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white dark:border-spill-700 dark:bg-spill-900/80 dark:hover:border-spill-500 dark:hover:bg-spill-900"
               onClick={action.onClick}
             >
-              <span className="grid grid-cols-[auto_1fr] gap-2 items-center">
+              <span className="grid grid-cols-[auto_1fr] gap-3 items-center">
                 <i
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${action.iconClass}`}
+                  className={`h-10 w-10 rounded-2xl flex items-center justify-center shadow-sm ${action.iconClass}`}
                 >
                   {action.icon}
                 </i>
-                <span className="text-sm font-semibold leading-4">
-                  {action.label}
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold leading-4 text-slate-700 dark:text-spill-100">
+                    {action.label}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-spill-400">
+                    {action.key === 'location'
+                      ? 'Live pin'
+                      : action.key === 'contact'
+                        ? 'Share card'
+                        : action.key}
+                  </span>
                 </span>
               </span>
             </button>

@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const ProfileModel = require('../db/models/profile');
 const ContactModel = require('../db/models/contact');
+const ContactLabelModel = require('../db/models/contactLabel');
 const SettingModel = require('../db/models/setting');
 const { toPlain, toPlainMany } = require('../db/utils');
 const {
@@ -10,6 +11,7 @@ const {
 } = require('../helpers/privacy');
 
 const response = require('../helpers/response');
+const { applyDefaultSettings } = require('../helpers/appConfig');
 
 const asHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -18,6 +20,13 @@ const asHttpError = (statusCode, message) => {
 };
 
 const normalizePhone = (value = '') => String(value).replace(/\D/g, '');
+const normalizeLabelName = (value = '') =>
+  String(value || '').trim().replace(/\s+/g, ' ');
+
+const DEFAULT_CONTACT_LABELS = [
+  { name: 'Work', color: '#2563eb', isSystem: true },
+  { name: 'Family', color: '#ef4444', isSystem: true },
+];
 
 const buildProfilePhones = (profile) => {
   const phone = normalizePhone(profile.phone);
@@ -323,7 +332,7 @@ const updateBlockedUsers = async (userId, friendId, shouldBlock) => {
     await setting.update({ blockedUserIds: [...blocked] });
   } else {
     await SettingModel.create({
-      userId,
+      ...(await applyDefaultSettings({ userId })),
       blockedUserIds: [...blocked],
     });
   }
@@ -505,6 +514,177 @@ exports.find = async (req, res) => {
       res,
       payload: merged,
     });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.listLabels = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    let labelsRaw = await ContactLabelModel.findAll({
+      where: { userId },
+      order: [['createdAt', 'ASC']],
+    });
+    let labels = toPlainMany(labelsRaw);
+
+    if (labels.length === 0) {
+      await ContactLabelModel.bulkCreate(
+        DEFAULT_CONTACT_LABELS.map((item) => ({
+          ...item,
+          userId,
+        }))
+      );
+      labelsRaw = await ContactLabelModel.findAll({
+        where: { userId },
+        order: [['createdAt', 'ASC']],
+      });
+      labels = toPlainMany(labelsRaw);
+    }
+
+    response({ res, payload: labels });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.createLabel = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const name = normalizeLabelName(req.body?.name || '');
+    const color = String(req.body?.color || '#3b82f6').trim();
+
+    if (!name) {
+      throw asHttpError(400, 'Label name is required');
+    }
+
+    const exists = await ContactLabelModel.findOne({
+      where: { userId, name },
+    });
+    if (exists) {
+      throw asHttpError(400, 'Label already exists');
+    }
+
+    const label = await ContactLabelModel.create({
+      userId,
+      name,
+      color,
+      isSystem: false,
+    });
+    response({ res, payload: toPlain(label) });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.updateLabel = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { labelId } = req.params;
+    const name = normalizeLabelName(req.body?.name || '');
+    const color = String(req.body?.color || '').trim();
+
+    const label = await ContactLabelModel.findOne({
+      where: { _id: labelId, userId },
+    });
+    if (!label) throw asHttpError(404, 'Label not found');
+
+    if (name) {
+      const exists = await ContactLabelModel.findOne({
+        where: { userId, name },
+      });
+      if (exists && String(exists._id) !== String(labelId)) {
+        throw asHttpError(400, 'Label already exists');
+      }
+      label.name = name;
+    }
+    if (color) label.color = color;
+    await label.save();
+
+    response({ res, payload: toPlain(label) });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.deleteLabel = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { labelId } = req.params;
+    const label = await ContactLabelModel.findOne({
+      where: { _id: labelId, userId },
+    });
+    if (!label) throw asHttpError(404, 'Label not found');
+
+    await ContactLabelModel.destroy({ where: { _id: labelId, userId } });
+
+    const contactsRaw = await ContactModel.findAll({ where: { userId } });
+    await Promise.all(
+      toPlainMany(contactsRaw).map(async (contact) => {
+        const labels = Array.isArray(contact.labels) ? contact.labels : [];
+        if (!labels.includes(labelId)) return;
+        await ContactModel.update(
+          { labels: labels.filter((id) => id !== labelId) },
+          { where: { _id: contact._id } }
+        );
+      })
+    );
+
+    response({ res, message: 'Label deleted' });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.updateContactLabels = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { friendId } = req.params;
+    const labels = Array.isArray(req.body?.labels) ? req.body.labels : [];
+
+    const contact = await ContactModel.findOne({
+      where: { userId, friendId },
+    });
+    if (!contact) throw asHttpError(404, 'Contact not found');
+
+    const allowed = await ContactLabelModel.findAll({
+      where: { userId },
+      attributes: ['_id'],
+    });
+    const allowedIds = new Set(toPlainMany(allowed).map((item) => item._id));
+    const nextLabels = labels.filter((id) => allowedIds.has(id));
+
+    await ContactModel.update(
+      { labels: nextLabels },
+      { where: { _id: contact._id } }
+    );
+
+    response({ res, payload: { labels: nextLabels } });
   } catch (error0) {
     response({
       res,

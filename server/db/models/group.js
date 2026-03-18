@@ -86,6 +86,26 @@ const GroupModel = sequelize.define(
       allowNull: false,
       defaultValue: DEFAULT_MODERATION_SETTINGS,
     },
+    mutedUserIds: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    status: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'active',
+    },
+    bannedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
   },
   {
     timestamps: true,

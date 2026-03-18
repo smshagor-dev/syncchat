@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const ChatModel = require('../db/models/chat');
 const ReportModel = require('../db/models/report');
+const AdminModerationConfigModel = require('../db/models/adminModerationConfig');
 const { asArray, toPlain } = require('../db/utils');
 const { isGroupAdminUser } = require('./groupAdmins');
 
@@ -27,6 +28,13 @@ const normalizeMediaTypes = (value) =>
       )
   )];
 
+const normalizePresetList = (value) =>
+  [...new Set(
+    asArray(value)
+      .map((item) => Math.max(0, Math.min(3600, Number(item) || 0)))
+      .filter((item) => Number.isFinite(item))
+  )].sort((a, b) => a - b);
+
 const normalizeModerationSettings = (raw) => {
   const source = raw && typeof raw === 'object' ? raw : {};
   const slowModeSeconds = Math.max(
@@ -46,6 +54,55 @@ const getModerationSettings = (entity) => ({
   ...DEFAULT_MODERATION_SETTINGS,
   ...normalizeModerationSettings(toPlain(entity)?.moderation),
 });
+
+let cachedGlobalConfig = null;
+let cachedGlobalAt = 0;
+const GLOBAL_CONFIG_TTL_MS = 60 * 1000;
+
+const loadGlobalModerationConfig = async () => {
+  const now = Date.now();
+  if (cachedGlobalConfig && now - cachedGlobalAt < GLOBAL_CONFIG_TTL_MS) {
+    return cachedGlobalConfig;
+  }
+
+  const [row] = await AdminModerationConfigModel.findOrCreate({
+    where: {},
+    defaults: {
+      bannedWords: [],
+      blockedMediaTypes: [],
+      slowModePresets: [0, 10, 30, 60, 120],
+      autoReportViolations: true,
+    },
+  });
+
+  const plain = row?.get ? row.get({ plain: true }) : row;
+  const normalized = {
+    bannedWords: normalizeWordList(plain?.bannedWords),
+    blockedMediaTypes: normalizeMediaTypes(plain?.blockedMediaTypes),
+    slowModePresets: normalizePresetList(plain?.slowModePresets),
+    autoReportViolations: plain?.autoReportViolations !== false,
+  };
+
+  cachedGlobalConfig = normalized;
+  cachedGlobalAt = now;
+  return normalized;
+};
+
+const getActiveMuteEntry = ({ mutedUsers = [], userId }) => {
+  const now = Date.now();
+  const entries = asArray(mutedUsers)
+    .map((entry) => ({
+      userId: entry?.userId || entry?.id || entry,
+      expiresAt: entry?.expiresAt || null,
+    }))
+    .filter((entry) => entry.userId);
+
+  return entries.find((entry) => {
+    if (String(entry.userId) !== String(userId)) return false;
+    if (!entry.expiresAt) return true;
+    return new Date(entry.expiresAt).getTime() > now;
+  });
+};
 
 const getNormalizedFileType = (file) => {
   const explicit = String(file?.type || '').trim().toLowerCase();
@@ -105,13 +162,49 @@ const enforceModerationForMessage = async ({
   if (!entity || !roomId || !senderId) return null;
   if (isGroupAdminUser({ group: entity, userId: senderId })) return null;
 
-  const moderation = getModerationSettings(entity);
+  const [globalConfig, moderation] = await Promise.all([
+    loadGlobalModerationConfig(),
+    getModerationSettings(entity),
+  ]);
+
+  const merged = {
+    ...moderation,
+    bannedWords: [
+      ...new Set([
+        ...normalizeWordList(globalConfig?.bannedWords),
+        ...normalizeWordList(moderation?.bannedWords),
+      ]),
+    ],
+    blockedMediaTypes: [
+      ...new Set([
+        ...normalizeMediaTypes(globalConfig?.blockedMediaTypes),
+        ...normalizeMediaTypes(moderation?.blockedMediaTypes),
+      ]),
+    ],
+    autoReportViolations:
+      moderation?.autoReportViolations !== false &&
+      globalConfig?.autoReportViolations !== false,
+  };
+
+  const mutedEntry = getActiveMuteEntry({
+    mutedUsers: entity?.mutedUserIds,
+    userId: senderId,
+  });
+  if (mutedEntry) {
+    throw createModerationError({
+      statusCode: 403,
+      code: 'muted',
+      message: 'You are muted in this room',
+      details: { expiresAt: mutedEntry.expiresAt || null },
+    });
+  }
+
   const matchedWord =
-    moderation.bannedWords.length > 0
-      ? findMatchedWord(text, moderation.bannedWords)
+    merged.bannedWords.length > 0
+      ? findMatchedWord(text, merged.bannedWords)
       : null;
   if (matchedWord) {
-    if (moderation.autoReportViolations) {
+    if (merged.autoReportViolations) {
       await createAutoModerationReport({
         senderId,
         roomId,
@@ -130,8 +223,8 @@ const enforceModerationForMessage = async ({
   }
 
   const fileType = getNormalizedFileType(file);
-  if (fileType && moderation.blockedMediaTypes.includes(fileType)) {
-    if (moderation.autoReportViolations) {
+  if (fileType && merged.blockedMediaTypes.includes(fileType)) {
+    if (merged.autoReportViolations) {
       await createAutoModerationReport({
         senderId,
         roomId,
@@ -149,13 +242,13 @@ const enforceModerationForMessage = async ({
     });
   }
 
-  if (moderation.slowModeSeconds > 0) {
+  if (merged.slowModeSeconds > 0) {
     const latestChat = await ChatModel.findOne({
       where: {
         roomId,
         userId: senderId,
         createdAt: {
-          [Op.gte]: new Date(Date.now() - moderation.slowModeSeconds * 1000),
+          [Op.gte]: new Date(Date.now() - merged.slowModeSeconds * 1000),
         },
       },
       order: [['createdAt', 'DESC']],
@@ -165,7 +258,7 @@ const enforceModerationForMessage = async ({
     if (latestChat) {
       const nextAllowedAt =
         new Date(latestChat.createdAt).getTime() +
-        moderation.slowModeSeconds * 1000;
+        merged.slowModeSeconds * 1000;
       const retryAfterSeconds = Math.max(
         1,
         Math.ceil((nextAllowedAt - Date.now()) / 1000)
@@ -175,19 +268,21 @@ const enforceModerationForMessage = async ({
         code: 'slow_mode',
         message: `Slow mode is on. Try again in ${retryAfterSeconds}s`,
         details: {
-          slowModeSeconds: moderation.slowModeSeconds,
+          slowModeSeconds: merged.slowModeSeconds,
           retryAfterSeconds,
         },
       });
     }
   }
 
-  return moderation;
+  return merged;
 };
 
 module.exports = {
   DEFAULT_MODERATION_SETTINGS,
   normalizeModerationSettings,
+  normalizePresetList,
   getModerationSettings,
   enforceModerationForMessage,
+  loadGlobalModerationConfig,
 };

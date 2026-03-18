@@ -17,6 +17,43 @@ const authDebug = (...args) => {
 };
 
 const getAppLockSessionKey = (userId) => `app-lock-unlocked:${userId}`;
+const toMbBytes = (value, fallbackMb = 0) => {
+  const mb = Number(value || fallbackMb);
+  return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : fallbackMb * 1024 * 1024;
+};
+
+const applyRuntimeAppConfig = (payload = {}) => {
+  if (payload.appName) {
+    config.brandName = String(payload.appName || config.brandName);
+  }
+  if (payload.appLogo) {
+    config.brandLogo = String(payload.appLogo || config.brandLogo);
+  }
+  if (payload.supportEmail) {
+    config.supportEmail = String(payload.supportEmail || config.supportEmail);
+  }
+  if (payload.uploadLimits) {
+    const chatMb = Number(payload.uploadLimits.chatMb || 0);
+    const avatarMb = Number(payload.uploadLimits.avatarMb || 0);
+    if (chatMb > 0) config.chatUploadLimit = toMbBytes(chatMb, 100);
+    if (avatarMb > 0) config.avatarUploadLimit = toMbBytes(avatarMb, 10);
+    if (Array.isArray(payload.uploadLimits.allowedTypes)) {
+      config.uploadAllowedTypes = payload.uploadLimits.allowedTypes;
+    }
+  }
+  if (payload.featureFlags && typeof payload.featureFlags === 'object') {
+    config.featureFlags = payload.featureFlags;
+  }
+  if (payload.maintenance && typeof payload.maintenance === 'object') {
+    config.maintenance = payload.maintenance;
+  }
+  if (payload.seo && typeof payload.seo === 'object') {
+    config.seo = {
+      ...config.seo,
+      ...payload.seo,
+    };
+  }
+};
 
 // Ensure API base URL is set before any request is made.
 axios.defaults.baseURL = config.apiBaseUrl;
@@ -27,6 +64,8 @@ function App() {
 
   const [inactive, setInactive] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [appConfigReady, setAppConfigReady] = useState(false);
+  const [maintenance, setMaintenance] = useState(config.maintenance || null);
   const [appLockVerified, setAppLockVerified] = useState(true);
   const [bannerNotice, setBannerNotice] = useState(null);
   const [popupNotice, setPopupNotice] = useState(null);
@@ -91,6 +130,28 @@ function App() {
 
   useEffect(() => {
     const abortCtrl = new AbortController();
+    const loadAppConfig = async () => {
+      try {
+        const { data } = await axios.get('/app-config', { signal: abortCtrl.signal });
+        const payload = data?.payload || {};
+        applyRuntimeAppConfig(payload);
+        if (payload?.maintenance) {
+          setMaintenance(payload.maintenance);
+        } else {
+          setMaintenance(config.maintenance || null);
+        }
+        if (payload?.appName) {
+          document.title = payload.appName;
+        }
+      } catch (error0) {
+        if (config.isDev) {
+          console.warn('Failed to load app config', error0?.message || error0);
+        }
+      } finally {
+        setAppConfigReady(true);
+      }
+    };
+
     // set default base url
     axios.defaults.baseURL = config.apiBaseUrl;
     if (token) {
@@ -100,6 +161,7 @@ function App() {
       socket.disconnect();
       authDebug('socket:disconnect (no token)');
     }
+    loadAppConfig();
     handleGetMaster(abortCtrl.signal);
 
     socket.on('user/inactivate', () => {
@@ -314,10 +376,25 @@ function App() {
     !!setting?.appLockEnabled &&
     !appLockVerified;
 
+  const isReady = loaded && appConfigReady;
+  const maintenanceEnabled = !!maintenance?.enabled;
+
   return (
     <BrowserRouter>
-      {loaded ? (
-        needsAppLock ? (
+      {isReady ? (
+        maintenanceEnabled ? (
+          <div className="absolute inset-0 grid place-items-center bg-slate-950 px-4 text-slate-100">
+            <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-6 text-center shadow-2xl">
+              <h1 className="text-2xl font-bold">{config.brandName}</h1>
+              <p className="mt-3 text-sm text-slate-300">
+                {maintenance?.message || 'We are performing scheduled maintenance.'}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Please try again later.
+              </p>
+            </div>
+          </div>
+        ) : needsAppLock ? (
           <div className="absolute inset-0 grid place-items-center bg-slate-950 px-4 text-slate-100">
             <form
               className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"

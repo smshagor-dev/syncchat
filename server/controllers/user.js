@@ -10,16 +10,21 @@ const ProfileModel = require('../db/models/profile');
 const SettingModel = require('../db/models/setting');
 const GroupModel = require('../db/models/group');
 const ContactModel = require('../db/models/contact');
+const ContactLabelModel = require('../db/models/contactLabel');
 const DeviceLinkRequestModel = require('../db/models/deviceLinkRequest');
 
 const { toPlain, asArray, pullFromArray } = require('../db/utils');
 const response = require('../helpers/response');
 const mailer = require('../helpers/mailer');
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
+const { applyDefaultSettings, loadAppConfig } = require('../helpers/appConfig');
 
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 const { verifyToken: verifyTotpToken } = require('../helpers/totp');
+const {
+  consumeRecoveryCode,
+} = require('../helpers/recoveryCodes');
 const UserSessionModel = require('../db/models/userSession');
 const {
   createSession,
@@ -59,6 +64,15 @@ const maskEmail = (value = '') => {
 };
 
 const buildLoginPayload = async ({ user, req, authProvider = 'password' }) => {
+  if (user?.status === 'blocked') {
+    throw createError(403, 'Account is blocked');
+  }
+  if (user?.status === 'banned') {
+    throw createError(403, 'You are banned from SyncChat.');
+  }
+  if (user?.status === 'deleted') {
+    throw createError(403, 'Account is deleted');
+  }
   const setting = await SettingModel.findOne({
     where: { userId: user._id },
     attributes: ['twoFactorEnabled', 'twoFactorSecret'],
@@ -339,7 +353,7 @@ const upsertSocialUser = async (socialData) => {
       otp: null,
     });
 
-    await SettingModel.create({ userId: user._id });
+    await SettingModel.create(await applyDefaultSettings({ userId: user._id }));
     await ProfileModel.create({
       userId: user._id,
       username,
@@ -385,7 +399,7 @@ exports.register = async (req, res) => {
     });
     const userId = user._id;
 
-    await SettingModel.create({ userId });
+    await SettingModel.create(await applyDefaultSettings({ userId }));
     await ProfileModel.create({
       ...req.body,
       userId,
@@ -502,6 +516,15 @@ exports.login = async (req, res) => {
 
     if (!user) {
       throw createError(401, 'Username or email not registered');
+    }
+    if (user.status === 'blocked') {
+      throw createError(403, 'Account is blocked');
+    }
+    if (user.status === 'banned') {
+      throw createError(403, 'You are banned from SyncChat.');
+    }
+    if (user.status === 'deleted') {
+      throw createError(403, 'Account is deleted');
     }
 
     if (!user.password || typeof user.password !== 'string') {
@@ -631,6 +654,15 @@ exports.completeDeviceLink = async (req, res) => {
 
     const user = await UserModel.findOne({ where: { _id: row.userId } });
     if (!user) throw createError(404, 'User not found');
+    if (user.status === 'blocked') {
+      throw createError(403, 'Account is blocked');
+    }
+    if (user.status === 'banned') {
+      throw createError(403, 'You are banned from SyncChat.');
+    }
+    if (user.status === 'deleted') {
+      throw createError(403, 'Account is deleted');
+    }
 
     const session = await createSession({
       userId: user._id,
@@ -701,6 +733,7 @@ exports.verifyLoginTwoFactor = async (req, res) => {
   try {
     const tempToken = String(req.body?.tempToken || '');
     const code = String(req.body?.code || '');
+    const recoveryCode = String(req.body?.recoveryCode || '');
 
     if (!tempToken) throw createError(400, 'Temporary login token is required');
 
@@ -709,23 +742,62 @@ exports.verifyLoginTwoFactor = async (req, res) => {
       throw createError(401, 'Invalid two-factor session');
     }
 
+    const user = await UserModel.findOne({ where: { _id: payload._id } });
+    if (!user) throw createError(404, 'User not found');
+    if (user.status === 'blocked') {
+      throw createError(403, 'Account is blocked');
+    }
+    if (user.status === 'banned') {
+      throw createError(403, 'You are banned from SyncChat.');
+    }
+    if (user.status === 'deleted') {
+      throw createError(403, 'Account is deleted');
+    }
+
     const setting = await SettingModel.findOne({
       where: { userId: payload._id },
-      attributes: ['twoFactorEnabled', 'twoFactorSecret'],
+      attributes: [
+        'twoFactorEnabled',
+        'twoFactorSecret',
+        'twoFactorRecoveryCodes',
+      ],
     });
 
     if (!setting?.twoFactorEnabled || !setting?.twoFactorSecret) {
       throw createError(400, 'Two-factor authentication is not enabled');
     }
 
-    if (!verifyTotpToken({ secret: setting.twoFactorSecret, token: code })) {
-      throw createError(400, 'Invalid authentication code');
+    let authProvider = 'password';
+    let verified = false;
+
+    if (recoveryCode) {
+      const consumed = consumeRecoveryCode(
+        Array.isArray(setting.twoFactorRecoveryCodes)
+          ? setting.twoFactorRecoveryCodes
+          : [],
+        recoveryCode
+      );
+      if (consumed.matched) {
+        await setting.update({
+          twoFactorRecoveryCodes: consumed.codes,
+        });
+        authProvider = 'recovery-code';
+        verified = true;
+      }
+    }
+
+    if (!verified && verifyTotpToken({ secret: setting.twoFactorSecret, token: code })) {
+      verified = true;
+    }
+
+    if (!verified) {
+      throw createError(400, recoveryCode ? 'Invalid recovery code' : 'Invalid authentication code');
     }
 
     const session = await createSession({
       userId: payload._id,
       req,
-      authProvider: 'password',
+      authProvider,
     });
     notifySuspiciousLogin(session);
 
@@ -786,7 +858,11 @@ exports.feedback = async (req, res) => {
     const user = await UserModel.findOne({ where: { _id: req.user._id } });
     if (!user) throw createError(404, 'User not found');
 
-    const to = process.env.FEEDBACK_EMAIL || process.env.EMAIL_USER;
+    const appConfig = await loadAppConfig();
+    const to =
+      appConfig?.supportEmail ||
+      process.env.FEEDBACK_EMAIL ||
+      process.env.EMAIL_USER;
     if (!to) {
       throw createError(
         500,
@@ -840,6 +916,7 @@ exports.delete = async (req, res) => {
     await ProfileModel.destroy({ where: { userId } });
     await SettingModel.destroy({ where: { userId } });
     await ContactModel.destroy({ where: { userId } });
+    await ContactLabelModel.destroy({ where: { userId } });
     await UserSessionModel.destroy({ where: { userId } });
 
     const groups = await GroupModel.findAll();
