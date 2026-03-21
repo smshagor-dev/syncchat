@@ -1,5 +1,9 @@
 const sequelize = require('./sequelize');
 const { db } = require('../config');
+const AdminModel = require('./models/admin');
+const encrypt = require('../helpers/encrypt');
+const { ensureDefaultRoles } = require('../helpers/adminPermissions');
+const AdminRoleModel = require('./models/adminRole');
 
 const normalizeTableName = (table) => {
   if (typeof table === 'string') return table;
@@ -60,6 +64,28 @@ const cleanupDuplicateUniqueIndexes = async (tableName) => {
   );
 };
 
+const seedInitialAdmin = async () => {
+  await ensureDefaultRoles();
+
+  const count = await AdminModel.count();
+  if (count > 0) return;
+
+  const superRole = await AdminRoleModel.findOne({
+    where: { name: 'super-admin' },
+  });
+
+  await AdminModel.create({
+    fullname: 'System Admin',
+    email: 'admin@admin.com',
+    password: encrypt('admin'),
+    role: 'super-admin',
+    roleId: superRole?._id || null,
+    active: true,
+  });
+
+  console.log('Seeded default admin: admin@admin.com');
+};
+
 module.exports = async () => {
   try {
     const qi = sequelize.getQueryInterface();
@@ -76,6 +102,8 @@ module.exports = async () => {
     } else {
       await sequelize.sync();
     }
+
+    await seedInitialAdmin();
 
     console.log('Database connected successfully');
   } catch (err) {

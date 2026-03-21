@@ -83,10 +83,19 @@ exports.upload = async (req, res) => {
         where: { _id: targetId },
         attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
       });
+      if (!channel) {
+        response({
+          res,
+          statusCode: 404,
+          success: false,
+          message: 'Channel not found',
+        });
+        return;
+      }
       if (channel?.avatar) await deleteLocalFileByUrl(channel.avatar);
 
       await ChannelModel.update(
-        { avatar: uploaded.url },
+        { avatar: uploaded.publicPath },
         { where: { _id: targetId } }
       );
 
@@ -94,7 +103,7 @@ exports.upload = async (req, res) => {
         const payload = {
           channelId: channel._id,
           roomId: channel.roomId,
-          avatar: uploaded.url,
+          avatar: uploaded.publicPath,
         };
         global.io.to(channel.roomId).emit('channel/avatar', payload);
         if (Array.isArray(channel.participantsId) && channel.participantsId.length) {
@@ -106,10 +115,19 @@ exports.upload = async (req, res) => {
         where: { _id: targetId },
         attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
       });
+      if (!group) {
+        response({
+          res,
+          statusCode: 404,
+          success: false,
+          message: 'Group not found',
+        });
+        return;
+      }
       if (group?.avatar) await deleteLocalFileByUrl(group.avatar);
 
       await GroupModel.update(
-        { avatar: uploaded.url },
+        { avatar: uploaded.publicPath },
         { where: { _id: targetId } }
       );
 
@@ -117,7 +135,7 @@ exports.upload = async (req, res) => {
         const payload = {
           groupId: group._id,
           roomId: group.roomId,
-          avatar: uploaded.url,
+          avatar: uploaded.publicPath,
         };
         // Emit to room watchers and all group members so inbox list updates instantly.
         global.io.to(group.roomId).emit('group/avatar', payload);
@@ -131,10 +149,19 @@ exports.upload = async (req, res) => {
         where: { userId },
         attributes: ['avatar'],
       });
+      if (!profile) {
+        response({
+          res,
+          statusCode: 404,
+          success: false,
+          message: 'Profile not found',
+        });
+        return;
+      }
       if (profile?.avatar) await deleteLocalFileByUrl(profile.avatar);
 
       await ProfileModel.update(
-        { avatar: uploaded.url },
+        { avatar: uploaded.publicPath },
         { where: { userId } }
       );
     }
@@ -142,7 +169,7 @@ exports.upload = async (req, res) => {
     response({
       res,
       message: 'Avatar uploaded successfully',
-      payload: uploaded.url,
+      payload: uploaded.publicPath,
     });
   } catch (error0) {
     response({

@@ -26,14 +26,10 @@ const resolveUploadUrl = (url) => {
 
   if (!url.startsWith('/uploads/')) return url;
 
-  if (config.isDev) {
+  if (config.isDev || isLocalHostname(window.location.hostname || '')) {
     const protocol = window.location.protocol || 'http:';
     const hostname = window.location.hostname || 'localhost';
     return `${protocol}//${hostname}:8080${url}`;
-  }
-
-  if (config.publicOrigin) {
-    return `${config.publicOrigin}${url}`;
   }
 
   return url;

@@ -27,6 +27,7 @@ import {
 import './style.css';
 import config from './config';
 import socket from './helpers/socket';
+import resolveUploadUrl from './helpers/resolveUploadUrl';
 
 axios.defaults.baseURL = config.apiBaseUrl;
 
@@ -166,10 +167,8 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    fullname: '',
     email: '',
     password: '',
-    confirm: '',
   });
 
   const [roles, setRoles] = useState([]);
@@ -414,7 +413,7 @@ function App() {
     const nextHasAdmin = Boolean(data?.payload?.hasAdmin);
     setHasAdmin(nextHasAdmin);
     if (!hasSession) {
-      applyView(nextHasAdmin ? 'login' : 'register');
+      applyView('login');
     }
   };
 
@@ -432,7 +431,7 @@ function App() {
         email: data?.payload?.email || '',
         avatar: '',
       });
-      setProfilePreview(data?.payload?.avatar || '');
+      setProfilePreview(resolveUploadUrl(data?.payload?.avatar || ''));
       setView('dashboard');
       return true;
     } catch (error0) {
@@ -454,7 +453,7 @@ function App() {
             if (payload?.appName || payload?.appLogo) {
               setPublicBrand({
                 appName: payload.appName || 'SyncChat Admin',
-                appLogo: payload.appLogo || '',
+                appLogo: resolveUploadUrl(payload.appLogo || ''),
               });
             }
           })
@@ -579,40 +578,6 @@ function App() {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
 
-  const submitRegister = async (event) => {
-    event.preventDefault();
-    clearMessages();
-
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-    if (form.password !== form.confirm) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const { data } = await axios.post('/admin/register', {
-        fullname: form.fullname.trim(),
-        email: normalizedEmail,
-        password: form.password,
-      });
-
-      setToken(data?.payload?.token);
-      setAdmin(data?.payload?.admin || null);
-      setPermissions(data?.payload?.admin?.permissions || ['*']);
-      setNotice('Admin created successfully');
-      setView('dashboard');
-      setForm({ fullname: '', email: '', password: '', confirm: '' });
-    } catch (error0) {
-      setError(error0?.response?.data?.message || error0.message || 'Registration failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const submitLogin = async (event) => {
     event.preventDefault();
     clearMessages();
@@ -628,7 +593,7 @@ function App() {
       setAdmin(data?.payload?.admin || null);
       setNotice('Welcome back');
       setView('dashboard');
-      setForm({ fullname: '', email: '', password: '', confirm: '' });
+      setForm({ email: '', password: '' });
       await loadSession();
     } catch (error0) {
       setError(error0?.response?.data?.message || error0.message || 'Login failed');
@@ -648,7 +613,7 @@ function App() {
     setAdmin(null);
     setPermissions([]);
     setAppConfigLoaded(false);
-    applyView(hasAdmin ? 'login' : 'register');
+    applyView('login');
   };
 
   const loadAdminData = async (nextSection) => {
@@ -1673,12 +1638,12 @@ function App() {
           passSet: payload?.smtp?.passSet || false,
         },
       });
-      setAppLogoPreview(payload.appLogo || '');
+      setAppLogoPreview(resolveUploadUrl(payload.appLogo || ''));
       setSeoImagePreview(payload.seo?.image || '');
       if (payload.appName || payload.appLogo) {
         setPublicBrand({
           appName: payload.appName || 'SyncChat Admin',
-          appLogo: payload.appLogo || '',
+          appLogo: resolveUploadUrl(payload.appLogo || ''),
         });
       }
     } catch (error0) {
@@ -1794,8 +1759,11 @@ function App() {
         setPublicBrand((prev) => ({ ...prev, appName: data.payload.appName }));
       }
       if (data?.payload?.appLogo) {
-        setAppLogoPreview(data.payload.appLogo);
-        setPublicBrand((prev) => ({ ...prev, appLogo: data.payload.appLogo }));
+        setAppLogoPreview(resolveUploadUrl(data.payload.appLogo));
+        setPublicBrand((prev) => ({
+          ...prev,
+          appLogo: resolveUploadUrl(data.payload.appLogo),
+        }));
       } else if (data?.payload?.appLogo === '') {
         setAppLogoPreview('');
         setPublicBrand((prev) => ({ ...prev, appLogo: '' }));
@@ -2301,7 +2269,9 @@ function App() {
         avatar: avatarValue.startsWith('data:') ? avatarValue : undefined,
       });
       setAdmin(data?.payload || admin);
-      setProfilePreview(data?.payload?.avatar || profileForm.avatar || '');
+      setProfilePreview(
+        resolveUploadUrl(data?.payload?.avatar || profileForm.avatar || '')
+      );
       setNotice('Profile updated');
     } catch (error0) {
       setError(error0?.response?.data?.message || error0.message || 'Failed to update profile');
@@ -2418,9 +2388,9 @@ function App() {
               <p className="brand-sub">Admin Console</p>
             </div>
             <div className="brand-admin">
-              <div className="admin-avatar small">
+                <div className="admin-avatar small">
                 {admin?.avatar ? (
-                  <img src={admin.avatar} alt="Admin avatar" />
+                  <img src={resolveUploadUrl(admin.avatar)} alt="Admin avatar" />
                 ) : (
                   admin?.fullname?.trim()?.slice(0, 1)?.toUpperCase() || 'A'
                 )}
@@ -2540,7 +2510,7 @@ function App() {
             <div className="admin-mini">
               <div className="admin-avatar">
                 {admin?.avatar ? (
-                  <img src={admin.avatar} alt="Admin avatar" />
+                  <img src={resolveUploadUrl(admin.avatar)} alt="Admin avatar" />
                 ) : (
                   admin?.fullname?.trim()?.slice(0, 1)?.toUpperCase() || 'A'
                 )}
@@ -3072,7 +3042,7 @@ function App() {
                       <div className="logo-upload">
                         <div className="avatar-preview">
                           {appLogoPreview ? (
-                            <img src={appLogoPreview} alt="App logo" />
+                            <img src={resolveUploadUrl(appLogoPreview)} alt="App logo" />
                           ) : (
                             <span className="table-avatar">SC</span>
                           )}
@@ -6987,7 +6957,10 @@ function App() {
         <div className="auth-brand">
           <div className="brand-mark">
             {publicBrand.appLogo ? (
-              <img src={publicBrand.appLogo} alt={publicBrand.appName} />
+              <img
+                src={resolveUploadUrl(publicBrand.appLogo)}
+                alt={publicBrand.appName}
+              />
             ) : (
               'SC'
             )}
@@ -7023,33 +6996,15 @@ function App() {
 
       <section className="auth-right">
         <div className="auth-card">
-          <p className="auth-eyebrow">{view === 'register' ? 'First-time setup' : 'Welcome back'}</p>
-          <h2 className="auth-title">
-            {view === 'register' ? 'Create the super admin' : 'Sign in to dashboard'}
-          </h2>
+          <p className="auth-eyebrow">Welcome back</p>
+          <h2 className="auth-title">Sign in to dashboard</h2>
           <p className="auth-sub">
-            {view === 'register'
-              ? 'Registration is only available when the admin table is empty.'
+            {hasAdmin === false
+              ? 'Default admin is being prepared automatically. Try signing in with the seeded credentials after startup.'
               : 'Use your admin email and password to continue.'}
           </p>
 
-          <form
-            className="auth-form"
-            onSubmit={view === 'register' ? submitRegister : submitLogin}
-          >
-            {view === 'register' && (
-              <label className="field">
-                <span>Full name</span>
-                <input
-                  type="text"
-                  value={form.fullname}
-                  onChange={handleChange('fullname')}
-                  placeholder="SyncChat Owner"
-                  minLength={2}
-                  required
-                />
-              </label>
-            )}
+          <form className="auth-form" onSubmit={submitLogin}>
 
             <label className="field">
               <span>Email</span>
@@ -7074,51 +7029,13 @@ function App() {
               />
             </label>
 
-            {view === 'register' && (
-              <label className="field">
-                <span>Confirm password</span>
-                <input
-                  type="password"
-                  value={form.confirm}
-                  onChange={handleChange('confirm')}
-                  placeholder="••••••••"
-                  minLength={6}
-                  required
-                />
-              </label>
-            )}
-
             {error && <p className="form-message error">{error}</p>}
             {notice && <p className="form-message success">{notice}</p>}
 
             <button type="submit" className="primary-btn" disabled={loading}>
-              {loading
-                ? 'Please wait...'
-                : view === 'register'
-                  ? 'Create admin'
-                  : 'Sign in'}
+              {loading ? 'Please wait...' : 'Sign in'}
             </button>
           </form>
-
-          {view === 'register' ? (
-            <button
-              type="button"
-              className="ghost-link"
-              onClick={() => applyView('login')}
-              disabled={loading || !hasAdmin}
-            >
-              Already created? Go to login
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ghost-link"
-              onClick={() => applyView('register')}
-              disabled={loading || hasAdmin}
-            >
-              Need to create the first admin?
-            </button>
-          )}
         </div>
       </section>
     </div>

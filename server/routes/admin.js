@@ -5,7 +5,6 @@ const { requirePermission } = require('../middleware/adminPermission');
 const { PERMISSIONS } = require('../helpers/adminPermissions');
 
 router.get('/admin/bootstrap', admin.bootstrap);
-router.post('/admin/register', admin.register);
 router.post('/admin/login', admin.login);
 router.post('/admin/logout', adminAuth, admin.logout);
 router.get('/admin/me', adminAuth, admin.me);
