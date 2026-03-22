@@ -11,6 +11,10 @@ const resolveUploadUrl = (url) => {
     return `${protocol}//${hostname}:8080${url}`;
   }
 
+  if (config.publicOrigin) {
+    return `${config.publicOrigin}${url}`;
+  }
+
   return url;
 };
 

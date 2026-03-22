@@ -53,6 +53,9 @@ module.exports = {
   plugins: [
     new webpack.DefinePlugin({
       __APP_IS_DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
+      __API_BASE_URL__: JSON.stringify(process.env.API_BASE_URL || ''),
+      __SOCKET_URL__: JSON.stringify(process.env.SOCKET_URL || ''),
+      __PUBLIC_ORIGIN__: JSON.stringify(process.env.PUBLIC_ORIGIN || ''),
       __CHAT_UPLOAD_LIMIT_MB__: JSON.stringify(
         Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100)
       ),
