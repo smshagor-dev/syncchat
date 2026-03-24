@@ -12,6 +12,7 @@ const { uploadRootDir } = require('./helpers/storage');
 const logger = require('./helpers/logger');
 const { loadSecurityConfig, getClientIp, getRequestFingerprint } = require('./helpers/securityConfig');
 const { loadAppConfig } = require('./helpers/appConfig');
+const { getAdminOrigin, getHostnameFromOrigin } = require('./helpers/origins');
 
 const app = express();
 const server = http.createServer(app);
@@ -168,6 +169,12 @@ const matchesPath = (pathname = '', target = '') => {
   return pathname.startsWith(`${target}/`);
 };
 
+const configuredAdminHostname = getHostnameFromOrigin(getAdminOrigin());
+const getRequestHostname = (req) =>
+  String(req.hostname || req.headers.host || '')
+    .split(':')[0]
+    .toLowerCase();
+
 if (!config.isDev) {
   const publicRoot = path.join(__dirname, '..', 'client', 'public');
   const clientIndex = path.join(publicRoot, 'index.html');
@@ -177,6 +184,9 @@ if (!config.isDev) {
 
   app.get('*', async (req, res) => {
     const pathname = normalizeRoutePath(req.path);
+    const requestHostname = getRequestHostname(req);
+    const isAdminHost =
+      !!configuredAdminHostname && requestHostname === configuredAdminHostname;
 
     if (
       matchesPath(pathname, 'api')
@@ -187,7 +197,7 @@ if (!config.isDev) {
       return;
     }
 
-    if (matchesPath(pathname, 'admin')) {
+    if (isAdminHost || matchesPath(pathname, 'admin')) {
       res.sendFile(adminIndex);
       return;
     }

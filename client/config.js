@@ -1,12 +1,24 @@
-/* global __APP_IS_DEV__, __API_BASE_URL__, __SOCKET_URL__, __PUBLIC_ORIGIN__, __CHAT_UPLOAD_LIMIT_MB__, __AVATAR_UPLOAD_LIMIT_MB__ */
+/* global __APP_IS_DEV__, __API_BASE_URL__, __SOCKET_URL__, __PUBLIC_ORIGIN__, __CLIENT_API_BASE_URL__, __CLIENT_SOCKET_URL__, __CLIENT_PUBLIC_ORIGIN__, __CHAT_UPLOAD_LIMIT_MB__, __AVATAR_UPLOAD_LIMIT_MB__ */
 
 const isDev = typeof __APP_IS_DEV__ !== 'undefined' ? Boolean(__APP_IS_DEV__) : false;
 const configuredApiBaseUrl =
-  typeof __API_BASE_URL__ !== 'undefined' ? String(__API_BASE_URL__ || '').trim() : '';
+  typeof __CLIENT_API_BASE_URL__ !== 'undefined'
+    ? String(__CLIENT_API_BASE_URL__ || '').trim()
+    : typeof __API_BASE_URL__ !== 'undefined'
+      ? String(__API_BASE_URL__ || '').trim()
+      : '';
 const configuredSocketUrl =
-  typeof __SOCKET_URL__ !== 'undefined' ? String(__SOCKET_URL__ || '').trim() : '';
+  typeof __CLIENT_SOCKET_URL__ !== 'undefined'
+    ? String(__CLIENT_SOCKET_URL__ || '').trim()
+    : typeof __SOCKET_URL__ !== 'undefined'
+      ? String(__SOCKET_URL__ || '').trim()
+      : '';
 const configuredPublicOrigin =
-  typeof __PUBLIC_ORIGIN__ !== 'undefined' ? String(__PUBLIC_ORIGIN__ || '').trim() : '';
+  typeof __CLIENT_PUBLIC_ORIGIN__ !== 'undefined'
+    ? String(__CLIENT_PUBLIC_ORIGIN__ || '').trim()
+    : typeof __PUBLIC_ORIGIN__ !== 'undefined'
+      ? String(__PUBLIC_ORIGIN__ || '').trim()
+      : '';
 const toMbBytes = (value, fallbackMb) => {
   const mb = Number(value || fallbackMb);
   return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : fallbackMb * 1024 * 1024;

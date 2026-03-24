@@ -1,4 +1,10 @@
 const isDev = process.env.NODE_ENV === 'development';
+const {
+  getAdminOrigin,
+  getClientOrigin,
+  getServerOrigin,
+  normalizeOrigin,
+} = require('./helpers/origins');
 
 const withWwwVariants = (origin) => {
   const trimmed = String(origin || '').trim().replace(/\/$/, '');
@@ -24,8 +30,16 @@ const withWwwVariants = (origin) => {
   }
 };
 
-const configuredOrigins = String(process.env.APP_ORIGIN || 'http://localhost:3000')
-  .split(',')
+const configuredOrigins = [
+  ...String(process.env.APP_ORIGIN || '')
+    .split(','),
+  getClientOrigin(),
+  getAdminOrigin(),
+  getServerOrigin(),
+  normalizeOrigin(process.env.PUBLIC_ORIGIN || ''),
+  normalizeOrigin(process.env.API_BASE_URL || ''),
+  normalizeOrigin(process.env.SOCKET_URL || ''),
+]
   .flatMap((origin) => withWwwVariants(origin))
   .filter(Boolean);
 

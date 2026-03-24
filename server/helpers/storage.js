@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getServerOrigin } = require('./origins');
 
 const uploadRootDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
@@ -9,15 +10,13 @@ const ensureDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 };
 
-const getServerOrigin = () => {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, '');
-  if (process.env.NODE_ENV !== 'production') {
-    return `http://localhost:${process.env.PORT || 8080}`;
-  }
-  return '';
-};
+const resolveServerOrigin = () =>
+  getServerOrigin()
+  || (process.env.NODE_ENV !== 'production'
+    ? `http://localhost:${process.env.PORT || 8080}`
+    : '');
 
-const toPublicUrl = (publicPath) => `${getServerOrigin()}${publicPath}`;
+const toPublicUrl = (publicPath) => `${resolveServerOrigin()}${publicPath}`;
 
 const toAbsoluteUploadUrl = (url = '') => {
   if (!url) return url;

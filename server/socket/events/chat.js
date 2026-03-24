@@ -46,13 +46,12 @@ const {
   isViewOnceChat,
 } = require('../../helpers/viewOnce');
 const { sendPushToUsers } = require('../../helpers/pushNotifications');
+const { getClientOrigin } = require('../../helpers/origins');
 
 const POLL_PREFIX = '__poll__::';
 const EVENT_PREFIX = '__event__::';
 const GROUP_INFO_PREFIX = '__group_info__::';
-const APP_ORIGIN = String(process.env.APP_ORIGIN || 'http://localhost:3000')
-  .trim()
-  .replace(/\/$/, '');
+const CLIENT_ORIGIN = getClientOrigin() || 'http://localhost:3000';
 
 const normalizeDeepLinkToken = (link, prefix) => {
   const raw = String(link || '');
@@ -62,20 +61,20 @@ const normalizeDeepLinkToken = (link, prefix) => {
 
 const buildPushUrl = ({ roomType, profile, roomAccess }) => {
   if (roomType === 'private' && profile?.username) {
-    return `${APP_ORIGIN}/?u=${encodeURIComponent(profile.username)}`;
+    return `${CLIENT_ORIGIN}/?u=${encodeURIComponent(profile.username)}`;
   }
   const groupToken = normalizeDeepLinkToken(roomAccess?.group?.link, '/group/+');
   if (groupToken) {
-    return `${APP_ORIGIN}/?g=${encodeURIComponent(groupToken)}`;
+    return `${CLIENT_ORIGIN}/?g=${encodeURIComponent(groupToken)}`;
   }
   const channelToken = normalizeDeepLinkToken(
     roomAccess?.channel?.link,
     '/channel/+'
   );
   if (channelToken) {
-    return `${APP_ORIGIN}/?c=${encodeURIComponent(channelToken)}`;
+    return `${CLIENT_ORIGIN}/?c=${encodeURIComponent(channelToken)}`;
   }
-  return APP_ORIGIN || '/';
+  return CLIENT_ORIGIN || '/';
 };
 
 const getFileCleanupUrls = (file) =>

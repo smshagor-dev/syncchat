@@ -18,6 +18,7 @@ const response = require('../helpers/response');
 const mailer = require('../helpers/mailer');
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const { applyDefaultSettings, loadAppConfig } = require('../helpers/appConfig');
+const { getClientOriginFromRequest } = require('../helpers/origins');
 
 const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
@@ -596,9 +597,7 @@ exports.deviceLinkInfo = async (req, res) => {
       attributes: ['fullname', 'email'],
     });
 
-    const appOrigin = String(
-      req.get('origin') || process.env.APP_ORIGIN || 'http://localhost:3000'
-    ).replace(/\/$/, '');
+    const appOrigin = getClientOriginFromRequest(req) || 'http://localhost:3000';
     const linkUrl = `${appOrigin}/?link=${encodeURIComponent(
       row.pairingToken
     )}`;

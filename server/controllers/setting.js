@@ -32,6 +32,7 @@ const {
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const mailer = require('../helpers/mailer');
 const { sendSupportMessage } = require('../helpers/supportChat');
+const { getClientOriginFromRequest } = require('../helpers/origins');
 const {
   cleanupExpiredExports,
   createAccountExport,
@@ -617,9 +618,7 @@ exports.createDeviceLinkRequest = async (req, res) => {
       expiresAt: new Date(Date.now() + DEVICE_LINK_TTL_MS),
     });
 
-    const appOrigin = String(
-      req.get('origin') || process.env.APP_ORIGIN || 'http://localhost:3000'
-    ).replace(/\/$/, '');
+    const appOrigin = getClientOriginFromRequest(req) || 'http://localhost:3000';
     const linkUrl = `${appOrigin}/?link=${encodeURIComponent(
       requestRow.pairingToken
     )}`;

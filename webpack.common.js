@@ -56,6 +56,24 @@ module.exports = {
       __API_BASE_URL__: JSON.stringify(process.env.API_BASE_URL || ''),
       __SOCKET_URL__: JSON.stringify(process.env.SOCKET_URL || ''),
       __PUBLIC_ORIGIN__: JSON.stringify(process.env.PUBLIC_ORIGIN || ''),
+      __CLIENT_API_BASE_URL__: JSON.stringify(
+        process.env.CLIENT_API_BASE_URL || process.env.API_BASE_URL || ''
+      ),
+      __CLIENT_SOCKET_URL__: JSON.stringify(
+        process.env.CLIENT_SOCKET_URL || process.env.SOCKET_URL || ''
+      ),
+      __CLIENT_PUBLIC_ORIGIN__: JSON.stringify(
+        process.env.CLIENT_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''
+      ),
+      __ADMIN_API_BASE_URL__: JSON.stringify(
+        process.env.ADMIN_API_BASE_URL || process.env.API_BASE_URL || ''
+      ),
+      __ADMIN_SOCKET_URL__: JSON.stringify(
+        process.env.ADMIN_SOCKET_URL || process.env.SOCKET_URL || ''
+      ),
+      __ADMIN_PUBLIC_ORIGIN__: JSON.stringify(
+        process.env.ADMIN_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''
+      ),
       __CHAT_UPLOAD_LIMIT_MB__: JSON.stringify(
         Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100)
       ),

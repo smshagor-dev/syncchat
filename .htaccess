@@ -3,6 +3,13 @@ RewriteEngine On
 # If Apache is serving this repository root, route public web requests
 # to the generated frontend assets under client/public.
 
+# Admin subdomain SPA entry.
+RewriteCond %{HTTP_HOST} ^admin\. [NC]
+RewriteCond %{REQUEST_URI} !^/client/public/
+RewriteCond %{DOCUMENT_ROOT}/client/public%{REQUEST_URI} !-f
+RewriteCond %{DOCUMENT_ROOT}/client/public%{REQUEST_URI} !-d
+RewriteRule ^.*$ client/public/admin/index.html [L]
+
 # Serve existing files or directories from client/public directly.
 RewriteCond %{REQUEST_URI} !^/client/public/
 RewriteCond %{DOCUMENT_ROOT}/client/public%{REQUEST_URI} -f [OR]
