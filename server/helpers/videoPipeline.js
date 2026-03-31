@@ -1,9 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const ffmpegPath = require('ffmpeg-static');
-const ffprobePath = require('ffprobe-static').path;
 const { toAbsoluteUploadUrl, uploadRootDir } = require('./storage');
+
+const safeRequire = (moduleName) => {
+  try {
+    return require(moduleName);
+  } catch (error0) {
+    if (error0?.code === 'MODULE_NOT_FOUND') {
+      return null;
+    }
+    throw error0;
+  }
+};
+
+const ffmpegPath = safeRequire('ffmpeg-static');
+const ffprobeModule = safeRequire('ffprobe-static');
+const ffprobePath = ffprobeModule?.path || null;
 
 const execFileAsync = (command, args) =>
   new Promise((resolve, reject) => {
@@ -117,7 +130,7 @@ const generateThumbnail = async ({ sourcePath, outputPath }) => {
 
 const processUploadedVideo = async ({ absolutePath }) => {
   if (!ffmpegPath || !ffprobePath) {
-    throw new Error('Video processing binaries are not available');
+    return {};
   }
 
   const parsed = path.parse(absolutePath);

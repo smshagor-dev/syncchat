@@ -51,9 +51,25 @@ npm run dev:client
 ## Build and Start
 
 ```bash
-npm run build
 npm start
 ```
+
+`npm start` now runs the production frontend build first, then starts `server/index.js`.
+That means the backend, main client app, and admin app are served together from one Node.js entrypoint.
+
+## cPanel Node.js Setup
+
+Use these values in cPanel Node.js App:
+
+- Application startup file: `server/index.js`
+- Start command: `npm start`
+
+With this setup, you do not need a separate manual step for `client` or `admin`.
+`npm start` builds both frontend bundles, and the Node server serves:
+
+- `/` -> main client app
+- `/admin` -> admin app
+- `/api` -> backend API + Socket.IO
 
 ## Folder Structure
 
@@ -493,4 +509,3 @@ Everything here should be dynamic (DB-driven + API-controlled) and not hardcoded
 - Added device link QR scan improvements + QR token display/copy + dark mode fixes.
 - Added sender/receiver message bubble background + text color settings.
 - Fixed MySQL push subscription unique index by using endpoint hash.
-

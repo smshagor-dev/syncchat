@@ -4,6 +4,7 @@ const express = require('express');
 const { Server: SocketServer } = require('socket.io');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const multer = require('multer');
 const routes = require('./routes');
@@ -18,7 +19,21 @@ const app = express();
 const server = http.createServer(app);
 
 // middleware
-app.use(cors(config.cors));
+const allowedOrigins = config.cors.origin;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(
   express.urlencoded({
@@ -179,36 +194,41 @@ if (!config.isDev) {
   const publicRoot = path.join(__dirname, '..', 'client', 'public');
   const clientIndex = path.join(publicRoot, 'index.html');
   const adminIndex = path.join(publicRoot, 'admin', 'index.html');
+  const hasFrontendBuild = fs.existsSync(clientIndex) && fs.existsSync(adminIndex);
 
-  app.use(express.static(publicRoot));
+  if (!hasFrontendBuild) {
+    console.warn('[startup] Frontend build files were not found. Client/admin routes will not be available.');
+  } else {
+    app.use(express.static(publicRoot));
 
-  app.get('*', async (req, res) => {
-    const pathname = normalizeRoutePath(req.path);
-    const requestHostname = getRequestHostname(req);
-    const isAdminHost =
-      !!configuredAdminHostname && requestHostname === configuredAdminHostname;
+    app.get('*', async (req, res) => {
+      const pathname = normalizeRoutePath(req.path);
+      const requestHostname = getRequestHostname(req);
+      const isAdminHost =
+        !!configuredAdminHostname && requestHostname === configuredAdminHostname;
 
-    if (
-      matchesPath(pathname, 'api')
-      || matchesPath(pathname, 'uploads')
-      || matchesPath(pathname, 'socket.io')
-    ) {
-      res.status(404).send('Not found');
-      return;
-    }
+      if (
+        matchesPath(pathname, 'api')
+        || matchesPath(pathname, 'uploads')
+        || matchesPath(pathname, 'socket.io')
+      ) {
+        res.status(404).send('Not found');
+        return;
+      }
 
-    if (isAdminHost || matchesPath(pathname, 'admin')) {
-      res.sendFile(adminIndex);
-      return;
-    }
+      if (isAdminHost || matchesPath(pathname, 'admin')) {
+        res.sendFile(adminIndex);
+        return;
+      }
 
-    res.sendFile(clientIndex);
-  });
+      res.sendFile(clientIndex);
+    });
+  }
 }
 
 // store socket on global object
 global.io = new SocketServer(server, {
-  cors: config.cors,
+  cors: corsOptions,
   maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE || 25e6),
 });
 require('./socket');

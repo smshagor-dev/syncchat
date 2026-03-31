@@ -18,6 +18,8 @@
     "predev": "node scripts/free-ports.js 3000 8080",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client:wait\"",
     "build": "webpack --config ./webpack.prod.js",
+    "build:prod": "node scripts/build-production.js",
+    "prestart": "npm run build:prod",
     "start": "node server",
     "prepare": "husky install",
     "format": "prettier --write ."
