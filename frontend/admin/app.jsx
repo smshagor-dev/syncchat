@@ -365,7 +365,10 @@ function App() {
     [form.email]
   );
 
-  const can = (perm) => permissions.includes('*') || permissions.includes(perm);
+  const can = (perm) => {
+    const list = Array.isArray(permissions) ? permissions : [];
+    return list.includes('*') || list.includes(perm);
+  };
   const formatDate = (value) => (value ? new Date(value).toLocaleString() : '—');
   const formatBytes = (bytes = 0) => {
     const value = Number(bytes || 0);
@@ -535,7 +538,7 @@ function App() {
     return () => {
       socket.emit('admin/analytics/unsubscribe');
     };
-  }, [admin?._id, adminSocketConnected, analyticsAutoRefresh, permissions.join(',')]);
+  }, [admin?._id, adminSocketConnected, analyticsAutoRefresh, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (!can('analytics.read')) return undefined;
@@ -548,7 +551,7 @@ function App() {
     }, 60000);
 
     return () => clearInterval(timer);
-  }, [section, analyticsAutoRefresh, adminSocketConnected, permissions.join(',')]);
+  }, [section, analyticsAutoRefresh, adminSocketConnected, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (view !== 'dashboard') return undefined;
@@ -556,7 +559,7 @@ function App() {
     if (appConfigLoaded) return undefined;
     loadAppConfig().finally(() => setAppConfigLoaded(true));
     return undefined;
-  }, [view, appConfigLoaded, permissions.join(',')]);
+  }, [view, appConfigLoaded, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (section !== 'analytics') return undefined;
@@ -564,14 +567,14 @@ function App() {
     if (!analyticsRange.start || !analyticsRange.end) return undefined;
     loadAnalyticsRange();
     return undefined;
-  }, [section, analyticsRange.start, analyticsRange.end, permissions.join(',')]);
+  }, [section, analyticsRange.start, analyticsRange.end, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (section !== 'channels') return undefined;
     if (!selectedChannelId) return undefined;
     loadChannelReviews(selectedChannelId);
     return undefined;
-  }, [section, selectedChannelId, channelReviewFilter, permissions.join(',')]);
+  }, [section, selectedChannelId, channelReviewFilter, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   const handleChange = (key) => (event) => {
     clearMessages();
@@ -2080,7 +2083,7 @@ function App() {
   useEffect(() => {
     if (view !== 'dashboard') return;
     loadAdminData(section);
-  }, [section, view, permissions.join(',')]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'users') return;
