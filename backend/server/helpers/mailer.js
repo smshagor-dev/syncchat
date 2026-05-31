@@ -13,11 +13,18 @@ module.exports = async ({ to, fullname, subject, html, otp }) => {
   const options = {
     host: smtp.host,
     port: Number(smtp.port || 587),
-    secure: Boolean(smtp.secure),
+    secure: Boolean(smtp.secure) || Number(smtp.port || 587) === 465,
     auth: {
       user: smtp.user,
-      pass: smtp.pass,
+      pass:
+        String(smtp.host || '').toLowerCase().includes('gmail') ||
+        String(smtp.user || '').toLowerCase().endsWith('@gmail.com')
+          ? String(smtp.pass || '').replace(/\s+/g, '')
+          : smtp.pass,
     },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   };
 
   const transporter = nodemailer.createTransport(options);

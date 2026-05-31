@@ -3,7 +3,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const axios = require('axios');
 const qrcode = require('qrcode');
-const { Op } = require('sequelize');
+const { Op, col, fn, where: sequelizeWhere } = require('sequelize');
 
 const UserModel = require('../db/models/user');
 const ProfileModel = require('../db/models/profile');
@@ -409,19 +409,25 @@ const upsertSocialUser = async (socialData) => {
 exports.register = async (req, res) => {
   try {
     const otp = Math.floor(1000 + Math.random() * 9000);
+    const registrationPayload = {
+      ...req.body,
+      fullname: String(req.body.fullname || '').trim(),
+      username: String(req.body.username || '').trim().toLowerCase(),
+      email: String(req.body.email || '').trim().toLowerCase(),
+    };
 
     const user = await UserModel.create({
-      ...req.body,
-      password: encrypt(req.body.password),
+      ...registrationPayload,
+      password: encrypt(registrationPayload.password),
       otp,
     });
     const userId = user._id;
 
     await SettingModel.create(await applyDefaultSettings({ userId }));
     await ProfileModel.create({
-      ...req.body,
+      ...registrationPayload,
       userId,
-      fullname: req.body.fullname,
+      fullname: registrationPayload.fullname,
     });
 
     const session = await createSession({
@@ -438,8 +444,8 @@ exports.register = async (req, res) => {
 
     try {
       await mailer({
-        to: req.body.email,
-        fullname: req.body.fullname,
+        to: registrationPayload.email,
+        fullname: registrationPayload.fullname,
         subject: 'Please activate your account',
         html: template,
         otp,
@@ -530,10 +536,14 @@ exports.resendVerifyOtp = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { password } = req.body;
+    const identifier = String(req.body.username || '').trim().toLowerCase();
     const user = await UserModel.findOne({
       where: {
-        [Op.or]: [{ email: username }, { username }],
+        [Op.or]: [
+          sequelizeWhere(fn('LOWER', col('email')), identifier),
+          sequelizeWhere(fn('LOWER', col('username')), identifier),
+        ],
       },
     });
 

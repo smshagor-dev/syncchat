@@ -81,31 +81,8 @@ function Verify() {
       <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-sky-500/20 blur-3xl" />
       <div className="absolute bottom-0 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-teal-500/20 blur-3xl" />
 
-      <div className="relative mx-auto grid min-h-full w-full max-w-6xl grid-cols-1 items-center gap-8 px-4 py-8 md:px-8 lg:grid-cols-[1.1fr_1fr]">
-        <section className="hidden rounded-3xl border border-cyan-300/30 bg-slate-900/70 p-10 lg:block">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
-            Account Security
-          </p>
-          <h1 className="mt-4 max-w-md bg-gradient-to-r from-white via-cyan-100 to-sky-200 bg-clip-text font-authDisplay text-5xl leading-tight text-transparent">
-            Confirm your identity with a one-time passcode.
-          </h1>
-          <p className="mt-4 max-w-lg text-slate-100">
-            We sent a 4-digit verification code to your email to protect your
-            account and keep login access secure.
-          </p>
-          <div className="mt-8 grid gap-3 text-sm text-slate-100">
-            <span className="flex items-center gap-3 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3">
-              <i className="h-2 w-2 rounded-full bg-emerald-400" />
-              Fast verification with instant account activation
-            </span>
-            <span className="flex items-center gap-3 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3">
-              <i className="h-2 w-2 rounded-full bg-cyan-400" />
-              OTP required to prevent unauthorized access
-            </span>
-          </div>
-        </section>
-
-        <section className="w-full max-w-xl justify-self-center rounded-3xl border border-slate-200/80 bg-white/95 p-5 text-slate-800 shadow-2xl shadow-slate-900/20 backdrop-blur-md sm:p-8">
+      <div className="relative flex min-h-full w-full items-center justify-center px-4 py-8 md:px-8">
+        <section className="w-full max-w-xl rounded-3xl border border-slate-200/80 bg-white/95 p-5 text-slate-800 shadow-2xl shadow-slate-900/20 backdrop-blur-md sm:p-8">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
