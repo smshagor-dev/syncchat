@@ -2139,7 +2139,7 @@ function App() {
     loadReports();
     loadModerationConfig();
     loadModerationActions();
-  }, [section, view, permissions.join(','), reportFilters]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), reportFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'moderation') return;
@@ -2153,7 +2153,7 @@ function App() {
       setLastReportSeenAt(new Date(latest).toISOString());
       setReportNewCount(0);
     }
-  }, [reports, section, view, permissions.join(',')]);
+  }, [reports, section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'content') return;
@@ -2162,14 +2162,14 @@ function App() {
       loadContentChats();
     }, 350);
     return () => clearTimeout(handle);
-  }, [section, view, permissions.join(','), contentFilters]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), contentFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'content') return;
     if (!can('content.delete')) return;
     loadContentStatuses();
     loadContentConfig();
-  }, [section, view, permissions.join(','), statusFilters]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), statusFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'security') return;
@@ -2178,13 +2178,13 @@ function App() {
     loadSuspiciousSessions();
     loadPushStatus();
     loadEraseRequests();
-  }, [section, view, permissions.join(','), suspiciousFilter, eraseFilters]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), suspiciousFilter, eraseFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'security') return;
     if (!can('data.export')) return;
     loadAccountExports();
-  }, [section, view, permissions.join(',')]);
+  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
 
   const handleCreateRole = async (event) => {
     event.preventDefault();
