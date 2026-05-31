@@ -73,6 +73,36 @@ const DEFAULT_ROLES = [
 
 const listPermissions = () => Object.values(PERMISSIONS);
 
+const normalizePermissions = (permissions) => {
+  if (Array.isArray(permissions)) {
+    return permissions.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (typeof permissions === 'string') {
+    const trimmed = permissions.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        return normalizePermissions(JSON.parse(trimmed));
+      } catch (error0) {
+        return [trimmed];
+      }
+    }
+
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (permissions && typeof permissions === 'object') {
+    return normalizePermissions(Object.values(permissions));
+  }
+
+  return [];
+};
+
 const ensureDefaultRoles = async () => {
   const existing = await AdminRoleModel.findAll();
   const existingNames = new Set(existing.map((role) => role.name));
@@ -89,22 +119,23 @@ const ensureDefaultRoles = async () => {
 const resolveRolePermissions = async ({ roleId, roleName }) => {
   if (roleId) {
     const role = await AdminRoleModel.findOne({ where: { _id: roleId } });
-    return role?.permissions || [];
+    return normalizePermissions(role?.permissions);
   }
 
   if (roleName) {
     const role = await AdminRoleModel.findOne({ where: { name: roleName } });
-    return role?.permissions || [];
+    return normalizePermissions(role?.permissions);
   }
 
   return [];
 };
 
 const hasPermission = ({ permissions = [], needed }) => {
+  const normalizedPermissions = normalizePermissions(permissions);
   if (!needed) return true;
-  if (permissions.includes('*')) return true;
+  if (normalizedPermissions.includes('*')) return true;
   const list = Array.isArray(needed) ? needed : [needed];
-  return list.every((perm) => permissions.includes(perm));
+  return list.every((perm) => normalizedPermissions.includes(perm));
 };
 
 module.exports = {
@@ -112,6 +143,7 @@ module.exports = {
   DEFAULT_ROLES,
   ensureDefaultRoles,
   listPermissions,
+  normalizePermissions,
   resolveRolePermissions,
   hasPermission,
 };

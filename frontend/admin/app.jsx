@@ -53,6 +53,36 @@ const setToken = (token) => {
   }
 };
 
+const normalizeAdminPermissions = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        return normalizeAdminPermissions(JSON.parse(trimmed));
+      } catch (error0) {
+        return [trimmed];
+      }
+    }
+
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (value && typeof value === 'object') {
+    return normalizeAdminPermissions(Object.values(value));
+  }
+
+  return [];
+};
+
 const sections = [
   { id: 'overview', label: 'Overview', icon: BiBarChartAlt2 },
   { id: 'analytics', label: 'Analytics', icon: BiBarChartAlt2 },
@@ -364,9 +394,13 @@ function App() {
     () => String(form.email || '').trim().toLowerCase(),
     [form.email]
   );
+  const permissionKey = useMemo(
+    () => normalizeAdminPermissions(permissions).join(','),
+    [permissions]
+  );
 
   const can = (perm) => {
-    const list = Array.isArray(permissions) ? permissions : [];
+    const list = normalizeAdminPermissions(permissions);
     return list.includes('*') || list.includes(perm);
   };
   const formatDate = (value) => (value ? new Date(value).toLocaleString() : '—');
@@ -428,7 +462,7 @@ function App() {
     try {
       const { data } = await axios.get('/admin/me');
       setAdmin(data?.payload || null);
-      setPermissions(data?.payload?.permissions || []);
+      setPermissions(normalizeAdminPermissions(data?.payload?.permissions));
       setProfileForm({
         fullname: data?.payload?.fullname || '',
         email: data?.payload?.email || '',
@@ -538,7 +572,7 @@ function App() {
     return () => {
       socket.emit('admin/analytics/unsubscribe');
     };
-  }, [admin?._id, adminSocketConnected, analyticsAutoRefresh, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [admin?._id, adminSocketConnected, analyticsAutoRefresh, permissionKey]);
 
   useEffect(() => {
     if (!can('analytics.read')) return undefined;
@@ -551,7 +585,7 @@ function App() {
     }, 60000);
 
     return () => clearInterval(timer);
-  }, [section, analyticsAutoRefresh, adminSocketConnected, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [section, analyticsAutoRefresh, adminSocketConnected, permissionKey]);
 
   useEffect(() => {
     if (view !== 'dashboard') return undefined;
@@ -559,7 +593,7 @@ function App() {
     if (appConfigLoaded) return undefined;
     loadAppConfig().finally(() => setAppConfigLoaded(true));
     return undefined;
-  }, [view, appConfigLoaded, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [view, appConfigLoaded, permissionKey]);
 
   useEffect(() => {
     if (section !== 'analytics') return undefined;
@@ -567,14 +601,14 @@ function App() {
     if (!analyticsRange.start || !analyticsRange.end) return undefined;
     loadAnalyticsRange();
     return undefined;
-  }, [section, analyticsRange.start, analyticsRange.end, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [section, analyticsRange.start, analyticsRange.end, permissionKey]);
 
   useEffect(() => {
     if (section !== 'channels') return undefined;
     if (!selectedChannelId) return undefined;
     loadChannelReviews(selectedChannelId);
     return undefined;
-  }, [section, selectedChannelId, channelReviewFilter, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [section, selectedChannelId, channelReviewFilter, permissionKey]);
 
   const handleChange = (key) => (event) => {
     clearMessages();
@@ -2083,7 +2117,7 @@ function App() {
   useEffect(() => {
     if (view !== 'dashboard') return;
     loadAdminData(section);
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [section, view, permissionKey]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'users') return;
@@ -2092,13 +2126,13 @@ function App() {
       loadUsers();
     }, 350);
     return () => clearTimeout(handle);
-  }, [section, view, permissions.join(','), userFilters]);
+  }, [section, view, permissionKey, userFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'exports') return;
     if (!can('data.export')) return;
     loadAccountExports();
-  }, [section, view, permissions.join(','), exportsFilter]);
+  }, [section, view, permissionKey, exportsFilter]);
 
   useEffect(() => {
     if (!selectedUserId || section !== 'users') return;
@@ -2112,7 +2146,7 @@ function App() {
       loadGroups();
     }, 350);
     return () => clearTimeout(handle);
-  }, [section, view, permissions.join(','), groupFilters]);
+  }, [section, view, permissionKey, groupFilters]);
 
   useEffect(() => {
     if (!selectedGroupId || section !== 'groups') return;
@@ -2126,7 +2160,7 @@ function App() {
       loadChannels();
     }, 350);
     return () => clearTimeout(handle);
-  }, [section, view, permissions.join(','), channelFilters]);
+  }, [section, view, permissionKey, channelFilters]);
 
   useEffect(() => {
     if (!selectedChannelId || section !== 'channels') return;
@@ -2139,7 +2173,7 @@ function App() {
     loadReports();
     loadModerationConfig();
     loadModerationActions();
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), reportFilters]);
+  }, [section, view, permissionKey, reportFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'moderation') return;
@@ -2153,7 +2187,7 @@ function App() {
       setLastReportSeenAt(new Date(latest).toISOString());
       setReportNewCount(0);
     }
-  }, [reports, section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [reports, section, view, permissionKey]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'content') return;
@@ -2162,14 +2196,14 @@ function App() {
       loadContentChats();
     }, 350);
     return () => clearTimeout(handle);
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), contentFilters]);
+  }, [section, view, permissionKey, contentFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'content') return;
     if (!can('content.delete')) return;
     loadContentStatuses();
     loadContentConfig();
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), statusFilters]);
+  }, [section, view, permissionKey, statusFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'security') return;
@@ -2178,13 +2212,13 @@ function App() {
     loadSuspiciousSessions();
     loadPushStatus();
     loadEraseRequests();
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(','), suspiciousFilter, eraseFilters]);
+  }, [section, view, permissionKey, suspiciousFilter, eraseFilters]);
 
   useEffect(() => {
     if (view !== 'dashboard' || section !== 'security') return;
     if (!can('data.export')) return;
     loadAccountExports();
-  }, [section, view, (Array.isArray(permissions) ? permissions : []).join(',')]);
+  }, [section, view, permissionKey]);
 
   const handleCreateRole = async (event) => {
     event.preventDefault();
