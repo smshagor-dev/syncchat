@@ -45,6 +45,23 @@ const createError = (statusCode, message) => {
   return error;
 };
 
+const getSequelizeErrorResponse = (error0) => {
+  if (error0?.name === 'SequelizeUniqueConstraintError') {
+    const field = error0.errors?.[0]?.path;
+    const label = field === 'email' ? 'Email' : field === 'username' ? 'Username' : 'Account';
+    return { statusCode: 409, message: `${label} already registered` };
+  }
+
+  if (error0?.name === 'SequelizeValidationError') {
+    return {
+      statusCode: 400,
+      message: error0.errors?.[0]?.message || 'Invalid registration details',
+    };
+  }
+
+  return null;
+};
+
 const cleanupExpiredDeviceLinks = async () => {
   await DeviceLinkRequestModel.update(
     { status: 'expired' },
@@ -419,13 +436,17 @@ exports.register = async (req, res) => {
       'utf8'
     );
 
-    await mailer({
-      to: req.body.email,
-      fullname: req.body.fullname,
-      subject: 'Please activate your account',
-      html: template,
-      otp,
-    });
+    try {
+      await mailer({
+        to: req.body.email,
+        fullname: req.body.fullname,
+        subject: 'Please activate your account',
+        html: template,
+        otp,
+      });
+    } catch (mailError) {
+      console.warn('[register] OTP email could not be sent:', mailError.message);
+    }
 
     response({
       res,
@@ -434,11 +455,12 @@ exports.register = async (req, res) => {
       payload: token,
     });
   } catch (error0) {
+    const sequelizeError = getSequelizeErrorResponse(error0);
     response({
       res,
-      statusCode: error0.statusCode || 500,
+      statusCode: sequelizeError?.statusCode || error0.statusCode || 500,
       success: false,
-      message: error0.message,
+      message: sequelizeError?.message || error0.message,
     });
   }
 };

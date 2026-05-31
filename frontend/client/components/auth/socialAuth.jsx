@@ -147,7 +147,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
           size: 'medium',
           text: 'continue_with',
           shape: 'pill',
-          width: 116,
+          width: 122,
         });
       } catch (error0) {
         setRespond({
@@ -234,24 +234,23 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
     <div className="mt-3 grid gap-3">
       <div className="relative">
         <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-spill-700" />
-        <p className="relative mx-auto w-fit bg-white px-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 dark:bg-spill-900 dark:text-white/50">
-          Continue with
-        </p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2 dark:border-spill-700 dark:bg-spill-900">
-          {googleEnabled ? (
-            <div className="flex justify-center" ref={googleButtonRef} />
-          ) : (
-            <button
-              type="button"
-              disabled
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400 dark:border-spill-700 dark:bg-spill-950 dark:text-white/40"
-            >
-              <ri.RiGoogleFill size={18} />
-              <span>Google</span>
-            </button>
+      <div className="flex justify-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="relative shrink-0 min-w-[122px]">
+          <button
+            type="button"
+            disabled={!googleEnabled || loadingProvider === 'google'}
+            className="flex h-[54px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
+          >
+            <ri.RiGoogleFill size={18} />
+            <span>{loadingProvider === 'google' ? 'Connecting...' : 'Google'}</span>
+          </button>
+          {googleEnabled && (
+            <div
+              className="absolute inset-0 grid place-items-center overflow-hidden opacity-0"
+              ref={googleButtonRef}
+            />
           )}
         </div>
 
@@ -285,18 +284,22 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
           <span>{loadingProvider === 'facebook' ? 'Connecting...' : 'Facebook'}</span>
         </button>
 
-        <div className="shrink-0 min-w-[122px] rounded-xl border border-slate-300 bg-white p-2 dark:border-spill-700 dark:bg-spill-900">
-          {telegramEnabled ? (
-            <div ref={telegramButtonRef} className="grid place-items-center" />
-          ) : (
-            <button
-              type="button"
-              disabled
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400 dark:border-spill-700 dark:bg-spill-950 dark:text-white/40"
-            >
-              <ri.RiTelegramFill size={18} />
-              <span>Telegram</span>
-            </button>
+        <div className="relative shrink-0 min-w-[122px]">
+          <button
+            type="button"
+            disabled={!telegramEnabled || loadingProvider === 'telegram'}
+            className="flex h-[54px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
+          >
+            <ri.RiTelegramFill size={18} />
+            <span>
+              {loadingProvider === 'telegram' ? 'Connecting...' : 'Telegram'}
+            </span>
+          </button>
+          {telegramEnabled && (
+            <div
+              ref={telegramButtonRef}
+              className="absolute inset-0 grid place-items-center overflow-hidden opacity-0"
+            />
           )}
         </div>
       </div>
