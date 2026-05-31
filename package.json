@@ -15,6 +15,7 @@
     "node": "24.x"
   },
   "dependencies": {
+    "html-webpack-plugin": "^5.6.7",
     "webpack-cli": "^5.1.4"
   }
 }
