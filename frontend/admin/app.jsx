@@ -2828,7 +2828,10 @@ function App() {
                     <div className="overview-card">
                       <p className="overview-title">Load avg</p>
                       <p className="overview-value">
-                        {(analyticsSummary.system?.load || [])
+                        {(Array.isArray(analyticsSummary.system?.load)
+                          ? analyticsSummary.system.load
+                          : []
+                        )
                           .map((item) => Number(item || 0).toFixed(2))
                           .join(' · ') || '—'}
                       </p>
@@ -3185,7 +3188,9 @@ function App() {
                                 onChange={(event) =>
                                   setAppConfigForm((prev) => {
                                     const current =
-                                      prev.uploadLimits?.allowedTypes || [];
+                                      Array.isArray(prev.uploadLimits?.allowedTypes)
+                                        ? prev.uploadLimits.allowedTypes
+                                        : [];
                                     const next = event.target.checked
                                       ? [...new Set([...current, type])]
                                       : current.filter((item) => item !== type);
