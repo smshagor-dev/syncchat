@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci --prefix frontend",
+  "buildCommand": "npm run build --prefix frontend",
+  "devCommand": "npm run dev --prefix frontend",
+  "outputDirectory": "frontend/client/public",
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/admin/:path((?!.*\\.).*)",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/:path((?!admin(?:/.*)?$)(?!.*\\.[^/]+$).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -18,12 +18,20 @@ SyncChat is a real-time chat application with private messaging, group chat, cal
 ## Setup
 
 ```bash
+# backend
+cd backend
+npm install
+cp .env.example .env
+
+# frontend
+cd ../frontend
 npm install
 cp .env.example .env
 ```
 
-Update `.env` with your local values before running.
-If you want push notifications, generate VAPID keys and set these in `.env`:
+Update each folder's `.env` with its own values before running. Backend secrets stay in `backend/.env`; browser build values stay in `frontend/.env`.
+
+If you want push notifications, generate VAPID keys and set these in `backend/.env`:
 
 ```bash
 npx web-push generate-vapid-keys
@@ -38,82 +46,161 @@ VAPID_SUBJECT=mailto:support@syncchat.app
 ## Run
 
 ```bash
-# start backend + frontend together
+# backend only
+cd backend
 npm run dev
 
-# backend only
-npm run dev:server
-
 # frontend only
-npm run dev:client
+cd frontend
+npm run dev
 ```
 
-## Build and Start
+You can also run helper commands from the repo root:
 
 ```bash
-npm start
+npm run dev:backend
+npm run dev:frontend
 ```
 
-`npm start` now runs the production frontend build first, then starts `server/index.js`.
-That means the backend, main client app, and admin app are served together from one Node.js entrypoint.
+## Separate Build and Deploy
 
-## cPanel Node.js Setup
+```bash
+# backend validation build
+cd backend
+npm run build
+
+# frontend/admin production assets
+cd frontend
+npm run build
+```
+
+`npm start` inside `backend/` starts only the backend API and Socket.IO server. It does not build or serve the React frontend.
+
+Deploy the frontend/admin build output from `frontend/client/public` on a separate static host. Build it with production frontend targets in `frontend/.env`:
+
+```bash
+API_BASE_URL=https://api.syncchat.live/api
+SOCKET_URL=https://api.syncchat.live
+PUBLIC_ORIGIN=https://syncchat.live
+```
+
+On the backend host, set CORS/public origins in `backend/.env`:
+
+```bash
+NODE_ENV=production
+APP_ORIGIN=https://syncchat.live,https://www.syncchat.live
+PUBLIC_ORIGIN=https://syncchat.live
+API_BASE_URL=https://api.syncchat.live/api
+SOCKET_URL=https://api.syncchat.live
+SERVE_FRONTEND=false
+```
+
+If you ever need the old combined deployment temporarily, set `SERVE_FRONTEND=true` and make sure `frontend/client/public/index.html` and `frontend/client/public/admin/index.html` exist.
+
+## Vercel Frontend Deploy
+
+This repo now includes a root-level `vercel.json` that builds only the `frontend/` app and publishes `frontend/client/public` as a static output.
+
+Use these Vercel project settings:
+
+- Root Directory: repo root (`syncchat`)
+- Install Command: auto-loaded from `vercel.json`
+- Build Command: auto-loaded from `vercel.json`
+- Output Directory: auto-loaded from `vercel.json`
+- Node.js version: `24.x`
+
+Set these environment variables in the Vercel project before deploying:
+
+```bash
+API_BASE_URL=https://your-backend-domain/api
+SOCKET_URL=https://your-backend-domain
+PUBLIC_ORIGIN=https://your-vercel-domain.vercel.app
+CHAT_UPLOAD_LIMIT_MB=100
+AVATAR_UPLOAD_LIMIT_MB=10
+```
+
+The included rewrites keep both SPAs working after refresh:
+
+- `/admin` and `/admin/*` -> admin app
+- all other non-file routes -> client app
+
+Important: the backend in `backend/` uses Express + Socket.IO + MySQL and is not a good fit for Vercel serverless hosting. Deploy it on a VM/container host instead, then point the Vercel frontend env vars to that backend.
+
+## Docker Deploy
+
+The root `Dockerfile` builds the frontend bundle first, then starts the backend in production mode with `SERVE_FRONTEND=true`. That gives you one container that can serve both the API and the built frontend when you are not using Vercel for the frontend.
+
+Build and run it like this:
+
+```bash
+docker build -t syncchat .
+docker run --env-file backend/.env -p 8080:8080 syncchat
+```
+
+If you want the containerized frontend to point at production URLs during the image build, pass them as build args:
+
+```bash
+docker build -t syncchat \
+  --build-arg API_BASE_URL=https://your-api-domain/api \
+  --build-arg SOCKET_URL=https://your-api-domain \
+  --build-arg PUBLIC_ORIGIN=https://your-frontend-domain .
+```
+
+For container deploys, make sure these backend env vars are set for your real domain:
+
+```bash
+NODE_ENV=production
+PORT=8080
+SERVE_FRONTEND=true
+APP_ORIGIN=https://your-frontend-domain
+PUBLIC_ORIGIN=https://your-frontend-domain
+API_BASE_URL=https://your-api-domain/api
+SOCKET_URL=https://your-api-domain
+UPLOAD_PUBLIC_ORIGIN=https://your-api-domain
+```
+
+## Backend cPanel Node.js Setup
 
 Use these values in cPanel Node.js App:
 
+- Application root: `backend`
 - Application startup file: `server/index.js`
 - Start command: `npm start`
 
-With this setup, you do not need a separate manual step for `client` or `admin`.
-`npm start` builds both frontend bundles, and the Node server serves:
+With this setup, the Node app serves only:
 
-- `/` -> main client app
-- `/admin` -> admin app
 - `/api` -> backend API + Socket.IO
+- `/uploads` -> uploaded media
 
 ## Folder Structure
 
 ```text
 syncchat/
-|-- client/
-|   |-- api/
-|   |-- components/
-|   |   |-- auth/
-|   |   |-- chat/
-|   |   |-- mockups/
-|   |   `-- modals/
-|   |-- containers/
-|   |-- helpers/
-|   |-- json/
-|   |-- pages/
-|   |-- public/
-|   |-- pwa/
-|   |-- redux/
-|   `-- routes/
-|-- server/
-|   |-- controllers/
-|   |-- db/
-|   |   `-- models/
-|   |-- helpers/
-|   |-- middleware/
-|   |-- routes/
-|   `-- socket/
-|       `-- events/
-|-- scripts/
-|   `-- wait-for-port.js
-|-- uploads/
-|-- logs/
+|-- frontend/
+|   |-- admin/
+|   |-- client/
+|   |-- mobile/
+|   |-- scripts/
+|   |-- package.json
+|   |-- webpack.common.js
+|   |-- webpack.dev.js
+|   `-- webpack.prod.js
+|-- backend/
+|   |-- server/
+|   |-- scripts/
+|   |-- uploads/
+|   |-- logs/
+|   `-- package.json
+|-- docs/
 |-- package.json
-|-- webpack.common.js
-|-- webpack.dev.js
-`-- webpack.prod.js
+`-- README.md
 ```
 
 ## Notes
 
-- `uploads/` stores runtime uploaded files.
-- `logs/` contains runtime logs.
-- `client/public/` contains built frontend assets.
+- `backend/uploads/` stores runtime uploaded files.
+- `backend/logs/` contains runtime logs.
+- `frontend/client/public/` contains built frontend assets.
 
 ## Version
 

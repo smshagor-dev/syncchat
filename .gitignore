@@ -13,10 +13,10 @@ dist/
 build/
 coverage/
 
-client/public/
+frontend/client/public/
 
-logs/
-uploads/
+backend/logs/
+backend/uploads/
 
 *.log
 npm-debug.log*
