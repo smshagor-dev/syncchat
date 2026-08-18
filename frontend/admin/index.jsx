@@ -1,6 +1,7 @@
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import App from './app';
+import { registerServiceWorker } from '../client/pwa/registerSW';
 import { installProfilePasswordPanel } from './profilePassword';
 
 const removeLoginPasswordMinLength = () => {
@@ -15,3 +16,4 @@ const root = ReactDOM.createRoot(document.querySelector('#admin-root'));
 root.render(<App />);
 removeLoginPasswordMinLength();
 installProfilePasswordPanel();
+registerServiceWorker();
