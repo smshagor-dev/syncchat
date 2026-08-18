@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import socket from '../../helpers/socket';
 import { setModal } from '../../redux/features/modal';
-import CallPanelRuntime from '../modals/callPanelRuntime';
+import CallPanelGateway from './callPanelGateway';
 
 const normalizeCall = (payload = {}) => {
   if (!payload?.callId || !payload?.roomId) return null;
@@ -11,6 +11,7 @@ const normalizeCall = (payload = {}) => {
     roomId: String(payload.roomId),
     roomType: payload.roomType === 'group' ? 'group' : 'private',
     mediaType: payload.mediaType === 'video' ? 'video' : 'audio',
+    mediaMode: payload.mediaMode === 'sfu' ? 'sfu' : undefined,
     fromUserId: String(payload.fromUserId || ''),
     fromName: String(payload.fromName || ''),
     fromUsername: String(payload.fromUsername || ''),
@@ -32,6 +33,7 @@ const readLaunchAction = () => {
       roomId,
       roomType: params.get('roomType'),
       mediaType: params.get('mediaType'),
+      mediaMode: params.get('mediaMode'),
       fromUserId: params.get('fromUserId'),
       fromName: params.get('fromName'),
       fromUsername: params.get('fromUsername'),
@@ -48,6 +50,7 @@ const clearLaunchAction = () => {
     'roomId',
     'roomType',
     'mediaType',
+    'mediaMode',
     'fromUserId',
     'fromName',
     'fromUsername',
@@ -160,7 +163,7 @@ function GlobalCallLayer() {
     return () => clearInterval(timer);
   }, [callPanel]);
 
-  return <CallPanelRuntime />;
+  return <CallPanelGateway />;
 }
 
 export default GlobalCallLayer;
