@@ -129,6 +129,16 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: {},
     },
+    chatLockScope: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'self',
+    },
+    chatLockOwnerId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
     unreadMessage: {
       type: DataTypes.INTEGER,
       allowNull: false,
