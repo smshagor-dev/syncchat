@@ -6,7 +6,7 @@ const DEFAULT_CALL_CONFIG = Object.freeze({
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 12,
+  maxGroupParticipants: 4,
   groupSfu: {
     enabled: false,
     provider: 'livekit',
@@ -174,7 +174,7 @@ const normalizeCallConfig = (raw = {}, { decrypt = true } = {}) => ({
   audioEnabled: normalizeBoolean(raw.audioEnabled, true),
   videoEnabled: normalizeBoolean(raw.videoEnabled, true),
   groupEnabled: normalizeBoolean(raw.groupEnabled, true),
-  maxGroupParticipants: clamp(raw.maxGroupParticipants, 2, 100, 12),
+  maxGroupParticipants: clamp(raw.maxGroupParticipants, 2, 100, 4),
   groupSfu: normalizeGroupSfu(raw.groupSfu || {}, { decrypt }),
   ringingTimeoutSec: clamp(raw.ringingTimeoutSec, 10, 120, 45),
   reconnectGraceSec: clamp(raw.reconnectGraceSec, 3, 60, 12),
@@ -207,6 +207,9 @@ const validateCallConfig = (config) => {
   }
   if (config.stunUrls.length === 0 && !config.turn.enabled && !config.groupSfu.enabled) {
     throw new Error('At least one STUN, TURN, or SFU service is required');
+  }
+  if (config.groupEnabled && config.maxGroupParticipants > 4 && !config.groupSfu.enabled) {
+    throw new Error('Group calls above 4 participants require LiveKit SFU to be enabled');
   }
   if (config.turn.enabled) {
     if (config.turn.urls.length === 0) {
