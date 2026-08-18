@@ -34,6 +34,7 @@ const appConfig = require('./appConfig');
 const callingConfig = require('./callingConfig');
 const storageAdmin = require('./storageAdmin');
 const callingAdmin = require('./callingAdmin');
+const callingPushAdmin = require('./callingPushAdmin');
 const adminProfileSecurity = require('./adminProfileSecurity');
 const admin = require('./admin');
 
@@ -55,6 +56,7 @@ router.use(appConfig);
 router.use(callingConfig);
 router.use(storageAdmin);
 router.use(callingAdmin);
+router.use(callingPushAdmin);
 router.use(adminProfileSecurity);
 router.use(admin);
 
