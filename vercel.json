@@ -9,6 +9,7 @@
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/admin/storage", "destination": "/admin/storage.html" },
     { "source": "/admin/calling", "destination": "/admin/calling.html" },
+    { "source": "/admin/calling-push", "destination": "/admin/calling-push.html" },
     { "source": "/admin/:path((?!.*\\.).*)", "destination": "/admin/index.html" },
     { "source": "/:path((?!admin(?:/.*)?$)(?!.*\\.[^/]+$).*)", "destination": "/index.html" }
   ]
