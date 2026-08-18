@@ -6,6 +6,7 @@ import App from './app';
 import GlobalCallLayer from './components/calling/globalCallLayer';
 import installProfileAvatarSync from './helpers/profileAvatarSync';
 import installChatLockSync from './helpers/chatLockSync';
+import installChatDeletionSync from './helpers/chatDeletionSync';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
@@ -21,6 +22,7 @@ root.render(
 
 installProfileAvatarSync();
 installChatLockSync();
+installChatDeletionSync();
 registerServiceWorker();
 
 requestNotificationPermission();
