@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'syncchat-v2';
+const CACHE_VERSION = 'syncchat-v3';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
@@ -82,6 +82,7 @@ const normalizeCall = (payload = {}) => {
     roomId: String(call.roomId),
     roomType: call.roomType === 'group' ? 'group' : 'private',
     mediaType: call.mediaType === 'video' ? 'video' : 'audio',
+    mediaMode: call.mediaMode === 'sfu' ? 'sfu' : undefined,
     fromUserId: String(call.fromUserId || ''),
     fromName: String(call.fromName || ''),
     fromUsername: String(call.fromUsername || ''),
@@ -96,6 +97,7 @@ const buildCallLaunchUrl = (action, call) => {
   params.set('roomId', call.roomId);
   params.set('roomType', call.roomType);
   params.set('mediaType', call.mediaType);
+  if (call.mediaMode) params.set('mediaMode', call.mediaMode);
   params.set('fromUserId', call.fromUserId || '');
   params.set('fromName', call.fromName || '');
   params.set('fromUsername', call.fromUsername || '');
