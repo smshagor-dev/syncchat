@@ -68,7 +68,7 @@ const GroupModel = sequelize.define(
     },
     avatar: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
       defaultValue: DEFAULT_GROUP_AVATAR_URL,
     },
     link: {
