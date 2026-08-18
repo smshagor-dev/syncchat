@@ -1,12 +1,10 @@
 const server = require('./server');
-const connectDb = require('./db/connect');
-const { startScheduledMessageWorker } = require('./helpers/scheduledMessages');
+const { bootstrap } = require('./bootstrap');
 
 const port = process.env.PORT || 8080;
 
 (async () => {
-  await connectDb();
-  startScheduledMessageWorker();
+  await bootstrap({ startScheduledWorker: true });
   server.listen(port);
   console.log(`[${port}] server running...`);
 })();
