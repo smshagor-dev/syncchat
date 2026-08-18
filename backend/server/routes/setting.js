@@ -3,6 +3,7 @@ const multer = require('multer');
 const authenticate = require('../middleware/auth');
 const ctrl = require('../controllers/setting');
 const accountStorage = require('../controllers/accountStorage');
+const nativePush = require('../controllers/nativePush');
 
 const backupLimitMb = Number(process.env.ACCOUNT_BACKUP_UPLOAD_LIMIT_MB || 100);
 const restoreUpload = multer({
@@ -53,6 +54,8 @@ router.post('/settings/two-factor/disable', authenticate, ctrl.disableTwoFactor)
 router.get('/settings/push/public-key', authenticate, ctrl.getPushPublicKey);
 router.post('/settings/push/subscribe', authenticate, ctrl.subscribePush);
 router.post('/settings/push/unsubscribe', authenticate, ctrl.unsubscribePush);
+router.post('/settings/push/native/register', authenticate, nativePush.register);
+router.delete('/settings/push/native/unregister', authenticate, nativePush.unregister);
 router.get(
   '/settings/two-factor/recovery-codes',
   authenticate,
