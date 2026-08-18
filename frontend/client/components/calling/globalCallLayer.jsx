@@ -68,7 +68,19 @@ function GlobalCallLayer() {
     const call = normalizeCall(payload);
     if (!call || call.fromUserId === master._id) return false;
 
-    if (action === 'accept' || action === 'decline') {
+    if (action === 'decline') {
+      socket.emit('call/reject', {
+        callId: call.callId,
+        roomId: call.roomId,
+        fromUserId: master._id,
+      });
+      if (callPanel?.callId === call.callId) {
+        dispatch(setModal({ target: 'callPanel', data: false }));
+      }
+      return true;
+    }
+
+    if (action === 'accept') {
       pendingActionRef.current = { action, callId: call.callId };
     }
 
@@ -130,24 +142,23 @@ function GlobalCallLayer() {
     if (!pending || !callPanel || callPanel.callId !== pending.callId) return undefined;
 
     let attempts = 0;
-    const selector = pending.action === 'accept' ? '[aria-label="Accept"]' : '[aria-label="Reject"]';
     const timer = setInterval(() => {
       attempts += 1;
-      const button = document.querySelector(selector);
+      const button = document.querySelector('[aria-label="Accept"]');
       if (button && !button.disabled) {
         pendingActionRef.current = null;
         clearInterval(timer);
         button.click();
         return;
       }
-      if (attempts >= 40) {
+      if (attempts >= 120) {
         pendingActionRef.current = null;
         clearInterval(timer);
       }
     }, 100);
 
     return () => clearInterval(timer);
-  }, [callPanel?.callId]);
+  }, [callPanel]);
 
   return <CallPanelRuntime />;
 }
