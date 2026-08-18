@@ -5,7 +5,7 @@ const DEFAULT_CONFIG = {
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 12,
+  maxGroupParticipants: 4,
   groupSfu: {
     enabled: false,
     provider: 'livekit',
@@ -115,10 +115,10 @@ export const callAllowed = (
   if (roomType === 'group' && !cfg.groupEnabled) {
     return { allowed: false, message: 'Group calling is disabled by the administrator' };
   }
-  if (roomType === 'group' && participants > Number(cfg.maxGroupParticipants || 12)) {
+  if (roomType === 'group' && participants > Number(cfg.maxGroupParticipants || 4)) {
     return {
       allowed: false,
-      message: `Group calls are limited to ${cfg.maxGroupParticipants || 12} participants`,
+      message: `Group calls are limited to ${cfg.maxGroupParticipants || 4} participants`,
     };
   }
   if (
