@@ -1,0 +1,71 @@
+name: Verify Vercel migration
+
+on:
+  push:
+    branches:
+      - agent/migrate-mysql-to-mongodb
+    paths:
+      - '.github/workflows/verify-vercel-migration.yml'
+      - 'backend/package.json'
+      - 'backend/server/**'
+      - 'backend/api/**'
+      - 'backend/vercel.json'
+      - 'frontend/**'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/migrate-mysql-to-mongodb
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Refresh backend lockfile
+        working-directory: backend
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+          API_BASE_URL: https://api.syncchat.live/api
+          SOCKET_URL: https://api.syncchat.live
+          PUBLIC_ORIGIN: https://syncchat.live
+        run: npm run build
+
+      - name: Validate Vercel config JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('backend/vercel.json','utf8')); JSON.parse(require('fs').readFileSync('frontend/vercel.json','utf8')); console.log('Vercel config JSON OK')"
+
+      - name: Commit refreshed backend lockfile
+        run: |
+          if git diff --quiet -- backend/package-lock.json; then
+            echo 'backend/package-lock.json already current'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/package-lock.json
+          git commit -m 'refresh backend lockfile for Vercel runtime'
+          git push
