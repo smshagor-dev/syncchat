@@ -1,0 +1,7 @@
+const router = require('express').Router();
+const authenticate = require('../middleware/auth');
+const callingConfig = require('../controllers/callingConfig');
+
+router.get('/calling/config', authenticate, callingConfig.getRuntimeConfig);
+
+module.exports = router;
