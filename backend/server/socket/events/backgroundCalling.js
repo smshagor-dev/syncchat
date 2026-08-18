@@ -1,4 +1,5 @@
 const { getActiveCallByRoom } = require('../../helpers/callState');
+const { getCallConfig } = require('../../helpers/callConfig');
 const { sendPushToUsers } = require('../../helpers/pushNotifications');
 const { sendNativeCallPush } = require('../../helpers/nativePush');
 const logger = require('../../helpers/logger');
@@ -23,11 +24,23 @@ const waitForCallState = async ({ roomId, fromUserId, eventAt }) => {
   return null;
 };
 
-const buildIncomingCall = (state) => ({
+const resolveMediaMode = (state, config) => {
+  const participantCount = Array.isArray(state?.participantIds)
+    ? state.participantIds.length
+    : 0;
+  return state?.roomType === 'group' &&
+    config?.groupSfu?.enabled === true &&
+    participantCount >= Number(config.groupSfu.minParticipants || 3)
+    ? 'sfu'
+    : 'p2p';
+};
+
+const buildIncomingCall = (state, config) => ({
   callId: state.callId,
   roomId: state.roomId,
   roomType: state.roomType || 'private',
   mediaType: state.mediaType === 'video' ? 'video' : 'audio',
+  mediaMode: resolveMediaMode(state, config),
   fromUserId: state.initiatorId,
   fromName: state.fromName || '',
   fromUsername: state.fromUsername || '',
@@ -49,7 +62,8 @@ module.exports = (socket) => {
         return;
       }
 
-      const call = buildIncomingCall(state);
+      const config = await getCallConfig();
+      const call = buildIncomingCall(state, config);
       const title = call.mediaType === 'video' ? 'Video call' : 'Voice call';
       const caller =
         call.fromName || (call.fromUsername ? `@${call.fromUsername}` : 'Someone');
@@ -78,6 +92,7 @@ module.exports = (socket) => {
       logger.info('CALL_BACKGROUND_PUSH', {
         callId: state.callId,
         roomId: state.roomId,
+        mediaMode: call.mediaMode,
         web:
           webResult.status === 'fulfilled'
             ? webResult.value
