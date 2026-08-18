@@ -5,6 +5,7 @@ const GroupModel = require('../db/models/group');
 const { toPlain } = require('../db/utils');
 const response = require('../helpers/response');
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
+const ensureProfile = require('../helpers/ensureProfile');
 const {
   buildPrivacyContext,
   sanitizeProfileForViewer,
@@ -15,7 +16,19 @@ exports.findById = async (req, res) => {
     const targetId = req.params.userId;
     const friendProfile = targetId !== req.user._id;
 
-    const profile = await ProfileModel.findOne({ where: { userId: targetId } });
+    // Old/partially migrated accounts may have a users document without a
+    // matching profiles document. Repair it from the canonical user record.
+    const profile = await ensureProfile(targetId);
+    if (!profile) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'User profile not found',
+      });
+      return;
+    }
+
     const contact = friendProfile
       ? await ContactModel.findOne({
           where: {
@@ -60,17 +73,30 @@ exports.findById = async (req, res) => {
 
 exports.edit = async (req, res) => {
   try {
-    const [affectedRows] = await ProfileModel.update(req.body, {
-      where: { userId: req.user._id },
-    });
+    const profile = await ensureProfile(req.user._id);
+    if (!profile) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'User profile not found',
+      });
+      return;
+    }
+
+    await profile.update(req.body);
 
     response({
       res,
       message: 'Profile updated successfully',
-      payload: { affectedRows },
+      payload: { affectedRows: 1 },
     });
   } catch (error0) {
-    if (error0.name === 'SequelizeUniqueConstraintError') {
+    if (
+      error0.name === 'SequelizeUniqueConstraintError' ||
+      error0.name === 'MongoServerError' ||
+      error0.code === 11000
+    ) {
       switch (Object.keys(req.body)[0]) {
         case 'username':
           error0.message = 'This username is already taken';
