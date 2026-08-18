@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { useSelector } from 'react-redux';
 import CallPanelRuntime from '../modals/callPanelRuntime';
 import GroupCallLiveKit from '../modals/groupCallLiveKit';
@@ -8,6 +9,7 @@ function CallPanelGateway() {
   const call = useSelector((state) => state.modal.callPanel);
   const chat = useSelector((state) => state.room.chat);
   const [config, setConfig] = useState(null);
+  const [sessionMode, setSessionMode] = useState(null);
   const [error, setError] = useState('');
 
   const roomType = call?.roomType || chat?.data?.roomType || 'private';
@@ -17,13 +19,26 @@ function CallPanelGateway() {
   useEffect(() => {
     if (!call) {
       setConfig(null);
+      setSessionMode(null);
       setError('');
       return undefined;
     }
     let dead = false;
-    getCallingConfig({ force: true })
-      .then((value) => {
-        if (!dead) setConfig(value);
+    const tasks = [getCallingConfig({ force: true })];
+    if (call.callId) {
+      tasks.push(
+        axios
+          .get(`/calling/session/${encodeURIComponent(call.callId)}`)
+          .then((res) => res?.data?.payload || null)
+          .catch(() => null)
+      );
+    }
+
+    Promise.all(tasks)
+      .then(([runtimeConfig, session]) => {
+        if (dead) return;
+        setConfig(runtimeConfig);
+        setSessionMode(session?.mediaMode || call?.mediaMode || null);
       })
       .catch((error0) => {
         if (!dead) setError(error0?.response?.data?.message || error0.message);
@@ -39,7 +54,8 @@ function CallPanelGateway() {
 
   const useSfu =
     roomType === 'group' &&
-    (call?.mediaMode === 'sfu' || shouldUseGroupSfu(config, participants));
+    (sessionMode === 'sfu' ||
+      (!call.callId && shouldUseGroupSfu(config, participants)));
 
   return useSfu ? <GroupCallLiveKit config={config} /> : <CallPanelRuntime />;
 }
