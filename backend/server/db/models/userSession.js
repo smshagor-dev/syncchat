@@ -108,4 +108,24 @@ const UserSessionModel = sequelize.define(
   }
 );
 
+// Aggregate queries from the Mongo-backed Sequelize compatibility layer return
+// plain objects. Preserve the small Sequelize `.get(field)` contract expected by
+// existing admin code without changing JSON serialization of those rows.
+const findAll = UserSessionModel.findAll.bind(UserSessionModel);
+UserSessionModel.findAll = async (...args) => {
+  const rows = await findAll(...args);
+  if (!Array.isArray(rows)) return rows;
+
+  return rows.map((row) => {
+    if (row && typeof row === 'object' && typeof row.get !== 'function') {
+      Object.defineProperty(row, 'get', {
+        configurable: true,
+        enumerable: false,
+        value: (field) => row[field],
+      });
+    }
+    return row;
+  });
+};
+
 module.exports = UserSessionModel;
