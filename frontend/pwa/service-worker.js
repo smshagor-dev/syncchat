@@ -6,7 +6,6 @@ const APP_SHELL = [
   '/manifest.json',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
-  '/favicon.ico',
 ];
 
 self.addEventListener('install', (event) => {
