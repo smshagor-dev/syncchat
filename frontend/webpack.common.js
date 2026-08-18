@@ -8,6 +8,7 @@ module.exports = {
     app: './client/index.jsx',
     admin: './admin/index.jsx',
     storage: './admin/storage.jsx',
+    calling: './admin/calling.jsx',
   },
   cache: {
     type: 'filesystem',
@@ -50,5 +51,6 @@ module.exports = {
     new HtmlWebpackPlugin({ template: './client/index.html', chunks: ['app'], filename: 'index.html' }),
     new HtmlWebpackPlugin({ template: './admin/index.html', chunks: ['admin'], filename: 'admin/index.html' }),
     new HtmlWebpackPlugin({ template: './admin/storage.html', chunks: ['storage'], filename: 'admin/storage.html' }),
+    new HtmlWebpackPlugin({ template: './admin/calling.html', chunks: ['calling'], filename: 'admin/calling.html' }),
   ],
 };

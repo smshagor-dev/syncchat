@@ -31,7 +31,9 @@ const community = require('./community');
 const report = require('./report');
 const contentControls = require('./contentControls');
 const appConfig = require('./appConfig');
+const callingConfig = require('./callingConfig');
 const storageAdmin = require('./storageAdmin');
+const callingAdmin = require('./callingAdmin');
 const adminProfileSecurity = require('./adminProfileSecurity');
 const admin = require('./admin');
 
@@ -50,7 +52,9 @@ router.use(community);
 router.use(report);
 router.use(contentControls);
 router.use(appConfig);
+router.use(callingConfig);
 router.use(storageAdmin);
+router.use(callingAdmin);
 router.use(adminProfileSecurity);
 router.use(admin);
 

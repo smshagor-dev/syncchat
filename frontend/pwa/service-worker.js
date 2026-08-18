@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'syncchat-v1';
+const CACHE_VERSION = 'syncchat-v3';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
@@ -74,6 +74,37 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+const normalizeCall = (payload = {}) => {
+  const call = payload?.data?.call || payload?.call || {};
+  if (!call.callId || !call.roomId) return null;
+  return {
+    callId: String(call.callId),
+    roomId: String(call.roomId),
+    roomType: call.roomType === 'group' ? 'group' : 'private',
+    mediaType: call.mediaType === 'video' ? 'video' : 'audio',
+    mediaMode: call.mediaMode === 'sfu' ? 'sfu' : undefined,
+    fromUserId: String(call.fromUserId || ''),
+    fromName: String(call.fromName || ''),
+    fromUsername: String(call.fromUsername || ''),
+    ringingTimeoutSec: Math.max(10, Number(call.ringingTimeoutSec || 45)),
+  };
+};
+
+const buildCallLaunchUrl = (action, call) => {
+  const params = new URLSearchParams();
+  params.set('callAction', action || 'open');
+  params.set('callId', call.callId);
+  params.set('roomId', call.roomId);
+  params.set('roomType', call.roomType);
+  params.set('mediaType', call.mediaType);
+  if (call.mediaMode) params.set('mediaMode', call.mediaMode);
+  params.set('fromUserId', call.fromUserId || '');
+  params.set('fromName', call.fromName || '');
+  params.set('fromUsername', call.fromUsername || '');
+  params.set('ringingTimeoutSec', String(call.ringingTimeoutSec || 45));
+  return `/?${params.toString()}`;
+};
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -82,27 +113,66 @@ self.addEventListener('push', (event) => {
     payload = { body: event.data?.text?.() || '' };
   }
 
+  const call = normalizeCall(payload);
+  const isIncomingCall = payload.category === 'call' && payload?.data?.type === 'incoming_call' && call;
   const title = payload.title || 'SyncChat';
   const options = {
     body: payload.body || payload.message || 'You have a new message.',
     icon: payload.icon || '/pwa-192x192.png',
     badge: payload.badge || '/pwa-192x192.png',
-    tag: payload.tag || 'syncchat-message',
+    tag: isIncomingCall ? `syncchat-call-${call.callId}` : payload.tag || 'syncchat-message',
     data: {
       url: payload.url || payload.data?.url || '/',
+      category: payload.category || 'message',
       ...(payload.data || {}),
     },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  if (isIncomingCall) {
+    options.requireInteraction = true;
+    options.renotify = true;
+    options.vibrate = [220, 120, 220, 120, 420];
+    options.actions = [
+      { action: 'accept-call', title: 'Accept' },
+      { action: 'decline-call', title: 'Decline' },
+    ];
+    options.data.call = call;
+  }
+
+  event.waitUntil(
+    (async () => {
+      if (isIncomingCall) {
+        const windows = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        });
+        const hasVisibleClient = windows.some(
+          (client) => client.visibilityState === 'visible'
+        );
+        if (hasVisibleClient) return;
+      }
+      await self.registration.showNotification(title, options);
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.url || '/';
+
+  const data = event.notification?.data || {};
+  const call = data.category === 'call' ? normalizeCall({ data }) : null;
+  const callAction =
+    event.action === 'accept-call'
+      ? 'accept'
+      : event.action === 'decline-call'
+        ? 'decline'
+        : 'open';
+  const targetUrl = call
+    ? buildCallLaunchUrl(callAction, call)
+    : data.url || '/';
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((client) => {
         try {
           return new URL(client.url).origin === self.location.origin;
@@ -112,7 +182,15 @@ self.addEventListener('notificationclick', (event) => {
       });
 
       if (existing) {
-        existing.navigate(targetUrl).catch(() => undefined);
+        if (call) {
+          existing.postMessage({
+            type: 'syncchat/call-action',
+            action: callAction,
+            call,
+          });
+        } else {
+          await existing.navigate(targetUrl).catch(() => undefined);
+        }
         return existing.focus();
       }
       return self.clients.openWindow(targetUrl);
