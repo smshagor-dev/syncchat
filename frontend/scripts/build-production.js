@@ -6,6 +6,7 @@ const rootDir = path.join(__dirname, '..');
 const webpackCliPath = path.join(rootDir, 'node_modules', 'webpack-cli', 'bin', 'cli.js');
 const webpackConfigPath = path.join(rootDir, 'webpack.prod.js');
 const publicRoot = path.join(rootDir, 'client', 'public');
+const pwaSourceRoot = path.join(rootDir, 'pwa');
 
 const log = (message, extra = null) => {
   if (extra === null || typeof extra === 'undefined') {
@@ -39,6 +40,7 @@ log('Starting production build', {
   webpackCliPath,
   webpackConfigPath,
   publicRoot,
+  pwaSourceRoot,
   nodeEnv: 'production',
   nodeOptions: process.env.NODE_OPTIONS || '',
 });
@@ -99,6 +101,35 @@ if (!fs.existsSync(path.join(publicRoot, 'index.html'))) {
   });
 }
 
+if (!fs.existsSync(pwaSourceRoot)) {
+  fail('PWA source assets are missing.', { pwaSourceRoot });
+}
+
+fs.cpSync(pwaSourceRoot, publicRoot, {
+  recursive: true,
+  force: true,
+});
+
+const requiredPwaAssets = [
+  'manifest.json',
+  'service-worker.js',
+  'installPrompt.js',
+  'pwa-192x192.png',
+  'pwa-512x512.png',
+  'favicon.ico',
+];
+
+const missingPwaAssets = requiredPwaAssets.filter(
+  (file) => !fs.existsSync(path.join(publicRoot, file))
+);
+if (missingPwaAssets.length) {
+  fail('Production build is missing required PWA assets.', {
+    missingPwaAssets,
+    publicRoot,
+  });
+}
+
+log('PWA assets copied successfully.');
 log('Production build completed successfully.');
 
 process.exit(0);
