@@ -1,19 +1,29 @@
 const router = require('express').Router();
 const multer = require('multer');
-const os = require('os');
 const authenticate = require('../middleware/auth');
 const ctrl = require('../controllers/setting');
-const restoreUpload = multer({ dest: os.tmpdir() });
+const accountStorage = require('../controllers/accountStorage');
+
+const backupLimitMb = Number(process.env.ACCOUNT_BACKUP_UPLOAD_LIMIT_MB || 100);
+const restoreUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize:
+      Number.isFinite(backupLimitMb) && backupLimitMb > 0
+        ? backupLimitMb * 1024 * 1024
+        : 100 * 1024 * 1024,
+  },
+});
 
 router.get('/settings', authenticate, ctrl.find);
 router.get('/settings/blocked-contacts', authenticate, ctrl.blockedContacts);
 router.get('/settings/hidden-chats', authenticate, ctrl.hiddenChats);
-router.get('/settings/account-export', authenticate, ctrl.accountExportStatus);
+router.get('/settings/account-export', authenticate, accountStorage.accountExportStatus);
 router.get('/settings/device-sessions', authenticate, ctrl.deviceSessions);
 router.put('/settings', authenticate, ctrl.update);
 router.post('/settings/device-link-request', authenticate, ctrl.createDeviceLinkRequest);
-router.post('/settings/account-export', authenticate, ctrl.requestAccountExport);
-router.post('/settings/account-backup', authenticate, ctrl.downloadEncryptedBackup);
+router.post('/settings/account-export', authenticate, accountStorage.requestAccountExport);
+router.post('/settings/account-backup', authenticate, accountStorage.downloadEncryptedBackup);
 router.post(
   '/settings/device-sessions/logout-others',
   authenticate,
@@ -23,7 +33,7 @@ router.post(
   '/settings/account-restore',
   authenticate,
   restoreUpload.single('archive'),
-  ctrl.restoreEncryptedBackup
+  accountStorage.restoreEncryptedBackup
 );
 router.delete(
   '/settings/device-sessions/current',
