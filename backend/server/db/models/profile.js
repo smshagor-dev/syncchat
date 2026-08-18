@@ -72,4 +72,13 @@ const ProfileModel = sequelize.define(
   }
 );
 
+const createProfile = ProfileModel.create.bind(ProfileModel);
+ProfileModel.create = (values = {}) =>
+  createProfile({
+    ...values,
+    avatar: String(values.avatar || '').trim()
+      ? values.avatar
+      : DEFAULT_USER_AVATAR_URL,
+  });
+
 module.exports = ProfileModel;
