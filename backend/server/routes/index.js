@@ -19,6 +19,7 @@ router.get('/health', (req, res) => {
 const cron = require('./cron');
 const user = require('./user');
 const chat = require('./chat');
+const chatV2 = require('./chatV2');
 const contact = require('./contact');
 const setting = require('./setting');
 const profile = require('./profile');
@@ -35,12 +36,14 @@ const callingConfig = require('./callingConfig');
 const storageAdmin = require('./storageAdmin');
 const callingAdmin = require('./callingAdmin');
 const callingPushAdmin = require('./callingPushAdmin');
+const chatAiAdmin = require('./chatAiAdmin');
 const adminProfileSecurity = require('./adminProfileSecurity');
 const admin = require('./admin');
 
 router.use(cron);
 router.use(user);
 router.use(chat);
+router.use(chatV2);
 router.use(contact);
 router.use(setting);
 router.use(profile);
@@ -57,6 +60,7 @@ router.use(callingConfig);
 router.use(storageAdmin);
 router.use(callingAdmin);
 router.use(callingPushAdmin);
+router.use(chatAiAdmin);
 router.use(adminProfileSecurity);
 router.use(admin);
 
