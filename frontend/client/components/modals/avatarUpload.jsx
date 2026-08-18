@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
 import base64Encode from '../../helpers/base64Encode';
@@ -8,13 +9,39 @@ import config from '../../config';
 function AvatarUpload() {
   const dispatch = useDispatch();
   const modal = useSelector((state) => state.modal);
+  const refreshAvatar = useSelector((state) => state.chore.refreshAvatar);
   const uploadData =
     modal.avatarUpload && typeof modal.avatarUpload === 'object'
       ? modal.avatarUpload
       : { targetId: null, isGroup: false, isChannel: false };
 
   const [respond, setRespond] = useState({ success: true, message: null });
+  const [currentAvatar, setCurrentAvatar] = useState('');
   const galleryInputRef = useRef(null);
+
+  useEffect(() => {
+    if (
+      !modal.avatarUpload ||
+      uploadData.isGroup ||
+      uploadData.isChannel ||
+      !uploadData.targetId
+    ) {
+      setCurrentAvatar('');
+      return undefined;
+    }
+
+    const abortCtrl = new AbortController();
+    axios
+      .get(`/profiles/${uploadData.targetId}`, { signal: abortCtrl.signal })
+      .then(({ data }) => setCurrentAvatar(String(data?.payload?.avatar || '')))
+      .catch(() => {});
+    return () => abortCtrl.abort();
+  }, [
+    modal.avatarUpload,
+    uploadData.targetId,
+    uploadData.isGroup,
+    uploadData.isChannel,
+  ]);
 
   const handleGallery = async (e) => {
     try {
@@ -58,6 +85,21 @@ function AvatarUpload() {
     }
   };
 
+  const openProfilePhotos = () => {
+    const avatar = String(refreshAvatar || currentAvatar || '');
+    if (!avatar) return;
+    dispatch(setModal({ target: 'avatarUpload', data: false }));
+    setTimeout(() => {
+      dispatch(setModal({ target: 'photoFull', data: avatar }));
+    }, 0);
+  };
+
+  const title = uploadData.isChannel
+    ? 'Channel Photo'
+    : uploadData.isGroup
+      ? 'Group Photo'
+      : 'Profile Photo';
+
   return (
     <div
       className={`
@@ -82,9 +124,7 @@ function AvatarUpload() {
         {/* header */}
         <div className="flex items-start justify-between gap-3">
           <span>
-            <h1 className="text-2xl font-bold">
-              {uploadData.isGroup ? 'Group Photo' : 'Profile Photo'}
-            </h1>
+            <h1 className="text-2xl font-bold">{title}</h1>
             {respond.message && (
               <p
                 className={`mt-1 text-sm ${
@@ -117,7 +157,7 @@ function AvatarUpload() {
             <i>
               <bi.BiImage size={40} />
             </i>
-            <p className="mt-1 opacity-60">Galerry</p>
+            <p className="mt-1 opacity-60">Gallery</p>
           </button>
           <input
             ref={galleryInputRef}
@@ -151,6 +191,17 @@ function AvatarUpload() {
             </i>
             <p className="mt-1 opacity-60">Camera</p>
           </button>
+          {!uploadData.isGroup && !uploadData.isChannel && (
+            <button
+              type="button"
+              className="col-span-2 w-full p-3 rounded-md flex gap-3 justify-center items-center bg-spill-100/60 dark:bg-spill-900/40 hover:bg-spill-200/80 dark:hover:bg-spill-900/80 border border-solid border-spill-400 dark:border-spill-600 disabled:opacity-50"
+              disabled={!String(refreshAvatar || currentAvatar || '')}
+              onClick={openProfilePhotos}
+            >
+              <bi.BiImages size={24} />
+              <span className="font-semibold">View profile photos</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
