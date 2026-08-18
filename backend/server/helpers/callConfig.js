@@ -169,36 +169,44 @@ const normalizeGroupSfu = (raw = {}, { decrypt = true } = {}) => {
   };
 };
 
-const normalizeCallConfig = (raw = {}, { decrypt = true } = {}) => ({
-  enabled: normalizeBoolean(raw.enabled, true),
-  audioEnabled: normalizeBoolean(raw.audioEnabled, true),
-  videoEnabled: normalizeBoolean(raw.videoEnabled, true),
-  groupEnabled: normalizeBoolean(raw.groupEnabled, true),
-  maxGroupParticipants: clamp(raw.maxGroupParticipants, 2, 100, 4),
-  groupSfu: normalizeGroupSfu(raw.groupSfu || {}, { decrypt }),
-  ringingTimeoutSec: clamp(raw.ringingTimeoutSec, 10, 120, 45),
-  reconnectGraceSec: clamp(raw.reconnectGraceSec, 3, 60, 12),
-  iceTransportPolicy: normalizeIceTransportPolicy(raw.iceTransportPolicy),
-  stunUrls: normalizeUrlList(raw.stunUrls, ['stun', 'stuns']),
-  turn: normalizeTurn(raw.turn || {}, { decrypt }),
-  audioProfile: {
-    echoCancellation: normalizeBoolean(raw.audioProfile?.echoCancellation, true),
-    noiseSuppression: normalizeBoolean(raw.audioProfile?.noiseSuppression, true),
-    autoGainControl: normalizeBoolean(raw.audioProfile?.autoGainControl, true),
-  },
-  videoProfile: {
-    width: clamp(raw.videoProfile?.width, 320, 1920, 1280),
-    height: clamp(raw.videoProfile?.height, 180, 1080, 720),
-    frameRate: clamp(raw.videoProfile?.frameRate, 10, 60, 30),
-    minWidth: clamp(raw.videoProfile?.minWidth, 160, 1280, 320),
-    minHeight: clamp(raw.videoProfile?.minHeight, 90, 720, 180),
-    minFrameRate: clamp(raw.videoProfile?.minFrameRate, 5, 30, 15),
-    adaptive: normalizeBoolean(raw.videoProfile?.adaptive, true),
-  },
-  lastTestedAt: raw.lastTestedAt || null,
-  lastTestStatus: String(raw.lastTestStatus || 'never'),
-  lastTestMessage: String(raw.lastTestMessage || ''),
-});
+const normalizeCallConfig = (raw = {}, { decrypt = true } = {}) => {
+  const groupSfu = normalizeGroupSfu(raw.groupSfu || {}, { decrypt });
+  const requestedMaxGroupParticipants = clamp(raw.maxGroupParticipants, 2, 100, 4);
+  const maxGroupParticipants = groupSfu.enabled
+    ? requestedMaxGroupParticipants
+    : Math.min(4, requestedMaxGroupParticipants);
+
+  return {
+    enabled: normalizeBoolean(raw.enabled, true),
+    audioEnabled: normalizeBoolean(raw.audioEnabled, true),
+    videoEnabled: normalizeBoolean(raw.videoEnabled, true),
+    groupEnabled: normalizeBoolean(raw.groupEnabled, true),
+    maxGroupParticipants,
+    groupSfu,
+    ringingTimeoutSec: clamp(raw.ringingTimeoutSec, 10, 120, 45),
+    reconnectGraceSec: clamp(raw.reconnectGraceSec, 3, 60, 12),
+    iceTransportPolicy: normalizeIceTransportPolicy(raw.iceTransportPolicy),
+    stunUrls: normalizeUrlList(raw.stunUrls, ['stun', 'stuns']),
+    turn: normalizeTurn(raw.turn || {}, { decrypt }),
+    audioProfile: {
+      echoCancellation: normalizeBoolean(raw.audioProfile?.echoCancellation, true),
+      noiseSuppression: normalizeBoolean(raw.audioProfile?.noiseSuppression, true),
+      autoGainControl: normalizeBoolean(raw.audioProfile?.autoGainControl, true),
+    },
+    videoProfile: {
+      width: clamp(raw.videoProfile?.width, 320, 1920, 1280),
+      height: clamp(raw.videoProfile?.height, 180, 1080, 720),
+      frameRate: clamp(raw.videoProfile?.frameRate, 10, 60, 30),
+      minWidth: clamp(raw.videoProfile?.minWidth, 160, 1280, 320),
+      minHeight: clamp(raw.videoProfile?.minHeight, 90, 720, 180),
+      minFrameRate: clamp(raw.videoProfile?.minFrameRate, 5, 30, 15),
+      adaptive: normalizeBoolean(raw.videoProfile?.adaptive, true),
+    },
+    lastTestedAt: raw.lastTestedAt || null,
+    lastTestStatus: String(raw.lastTestStatus || 'never'),
+    lastTestMessage: String(raw.lastTestMessage || ''),
+  };
+};
 
 const validateCallConfig = (config) => {
   if (!config.enabled) return;
@@ -207,9 +215,6 @@ const validateCallConfig = (config) => {
   }
   if (config.stunUrls.length === 0 && !config.turn.enabled && !config.groupSfu.enabled) {
     throw new Error('At least one STUN, TURN, or SFU service is required');
-  }
-  if (config.groupEnabled && config.maxGroupParticipants > 4 && !config.groupSfu.enabled) {
-    throw new Error('Group calls above 4 participants require LiveKit SFU to be enabled');
   }
   if (config.turn.enabled) {
     if (config.turn.urls.length === 0) {
