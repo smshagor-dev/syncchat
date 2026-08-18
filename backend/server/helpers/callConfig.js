@@ -6,7 +6,18 @@ const DEFAULT_CALL_CONFIG = Object.freeze({
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 4,
+  maxGroupParticipants: 12,
+  groupSfu: {
+    enabled: false,
+    provider: 'livekit',
+    url: '',
+    apiKey: '',
+    apiSecret: '',
+    tokenTtlSec: 3600,
+    minParticipants: 3,
+    adaptiveStream: true,
+    dynacast: true,
+  },
   ringingTimeoutSec: 45,
   reconnectGraceSec: 12,
   iceTransportPolicy: 'all',
@@ -70,6 +81,13 @@ const normalizeUrlList = (value, allowedSchemes) => {
     .slice(0, 12);
 };
 
+const normalizeLiveKitUrl = (value) => {
+  const raw = String(value || '').trim().replace(/\/+$/, '');
+  if (!raw) return '';
+  if (!/^(https?|wss?):\/\//i.test(raw)) return '';
+  return raw.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+};
+
 const secretMaterial = () =>
   String(
     process.env.CALL_CONFIG_SECRET ||
@@ -82,7 +100,7 @@ const encryptionKey = () => {
   const secret = secretMaterial();
   if (!secret) {
     throw new Error(
-      'CALL_CONFIG_SECRET, STORAGE_CONFIG_SECRET, or JWT_SECRET is required to protect TURN credentials'
+      'CALL_CONFIG_SECRET, STORAGE_CONFIG_SECRET, or JWT_SECRET is required to protect calling credentials'
     );
   }
   return crypto.createHash('sha256').update(secret).digest();
@@ -105,7 +123,7 @@ const decryptSecret = (value) => {
   if (!stored.startsWith('enc:v1:')) return stored;
   const [, version, ivB64, tagB64, dataB64] = stored.split(':');
   if (version !== 'v1' || !ivB64 || !tagB64 || !dataB64) {
-    throw new Error('Stored TURN credential is invalid');
+    throw new Error('Stored calling credential is invalid');
   }
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm',
@@ -136,12 +154,28 @@ const normalizeTurn = (raw = {}, { decrypt = true } = {}) => {
   };
 };
 
+const normalizeGroupSfu = (raw = {}, { decrypt = true } = {}) => {
+  const apiSecretRaw = String(raw.apiSecret || '');
+  return {
+    enabled: raw.enabled === true,
+    provider: 'livekit',
+    url: normalizeLiveKitUrl(raw.url),
+    apiKey: String(raw.apiKey || '').trim(),
+    apiSecret: decrypt ? decryptSecret(apiSecretRaw) : apiSecretRaw,
+    tokenTtlSec: clamp(raw.tokenTtlSec, 300, 21600, 3600),
+    minParticipants: clamp(raw.minParticipants, 3, 100, 3),
+    adaptiveStream: normalizeBoolean(raw.adaptiveStream, true),
+    dynacast: normalizeBoolean(raw.dynacast, true),
+  };
+};
+
 const normalizeCallConfig = (raw = {}, { decrypt = true } = {}) => ({
   enabled: normalizeBoolean(raw.enabled, true),
   audioEnabled: normalizeBoolean(raw.audioEnabled, true),
   videoEnabled: normalizeBoolean(raw.videoEnabled, true),
   groupEnabled: normalizeBoolean(raw.groupEnabled, true),
-  maxGroupParticipants: clamp(raw.maxGroupParticipants, 2, 8, 4),
+  maxGroupParticipants: clamp(raw.maxGroupParticipants, 2, 100, 12),
+  groupSfu: normalizeGroupSfu(raw.groupSfu || {}, { decrypt }),
   ringingTimeoutSec: clamp(raw.ringingTimeoutSec, 10, 120, 45),
   reconnectGraceSec: clamp(raw.reconnectGraceSec, 3, 60, 12),
   iceTransportPolicy: normalizeIceTransportPolicy(raw.iceTransportPolicy),
@@ -171,8 +205,8 @@ const validateCallConfig = (config) => {
   if (!config.audioEnabled && !config.videoEnabled) {
     throw new Error('At least audio or video calling must be enabled');
   }
-  if (config.stunUrls.length === 0 && !config.turn.enabled) {
-    throw new Error('At least one STUN or TURN server is required');
+  if (config.stunUrls.length === 0 && !config.turn.enabled && !config.groupSfu.enabled) {
+    throw new Error('At least one STUN, TURN, or SFU service is required');
   }
   if (config.turn.enabled) {
     if (config.turn.urls.length === 0) {
@@ -183,6 +217,15 @@ const validateCallConfig = (config) => {
       if (!config.turn.credential) throw new Error('TURN credential is required');
     } else if (!config.turn.sharedSecret) {
       throw new Error('TURN shared secret is required');
+    }
+  }
+  if (config.groupSfu.enabled) {
+    if (!config.groupEnabled) throw new Error('Group calling must be enabled before SFU mode');
+    if (!config.groupSfu.url) throw new Error('LiveKit server URL is required');
+    if (!config.groupSfu.apiKey) throw new Error('LiveKit API key is required');
+    if (!config.groupSfu.apiSecret) throw new Error('LiveKit API secret is required');
+    if (config.groupSfu.minParticipants > config.maxGroupParticipants) {
+      throw new Error('SFU minimum participants cannot exceed the group participant limit');
     }
   }
 };
@@ -202,12 +245,22 @@ const refreshCallConfigCache = () => {
 
 const getCallConfig = async () => {
   const now = Date.now();
-  if (cached && now - cachedAt < CACHE_TTL_MS) return { ...cached, turn: { ...cached.turn } };
+  if (cached && now - cachedAt < CACHE_TTL_MS) {
+    return {
+      ...cached,
+      turn: { ...cached.turn },
+      groupSfu: { ...cached.groupSfu },
+    };
+  }
   const row = await loadRow();
   const plain = row?.get ? row.get({ plain: true }) : row;
   cached = normalizeCallConfig(plain || DEFAULT_CALL_CONFIG);
   cachedAt = now;
-  return { ...cached, turn: { ...cached.turn } };
+  return {
+    ...cached,
+    turn: { ...cached.turn },
+    groupSfu: { ...cached.groupSfu },
+  };
 };
 
 const getCallConfigForAdmin = async () => {
@@ -223,18 +276,33 @@ const getCallConfigForAdmin = async () => {
       credentialSet: Boolean(config.turn.credential),
       sharedSecretSet: Boolean(config.turn.sharedSecret),
     },
+    groupSfu: {
+      enabled: config.groupSfu.enabled,
+      provider: 'livekit',
+      url: config.groupSfu.url,
+      apiKey: config.groupSfu.apiKey,
+      tokenTtlSec: config.groupSfu.tokenTtlSec,
+      minParticipants: config.groupSfu.minParticipants,
+      adaptiveStream: config.groupSfu.adaptiveStream,
+      dynacast: config.groupSfu.dynacast,
+      apiSecretSet: Boolean(config.groupSfu.apiSecret),
+    },
   };
 };
 
 const mergeCallConfigInput = async (raw = {}) => {
   const current = await getCallConfig();
   const turnInput = raw.turn || {};
+  const sfuInput = raw.groupSfu || {};
   const hasCredential =
     Object.prototype.hasOwnProperty.call(turnInput, 'credential') &&
     String(turnInput.credential || '').length > 0;
   const hasSharedSecret =
     Object.prototype.hasOwnProperty.call(turnInput, 'sharedSecret') &&
     String(turnInput.sharedSecret || '').length > 0;
+  const hasSfuSecret =
+    Object.prototype.hasOwnProperty.call(sfuInput, 'apiSecret') &&
+    String(sfuInput.apiSecret || '').length > 0;
 
   const next = normalizeCallConfig({
     ...current,
@@ -248,6 +316,11 @@ const mergeCallConfigInput = async (raw = {}) => {
       sharedSecret: hasSharedSecret
         ? String(turnInput.sharedSecret)
         : current.turn.sharedSecret,
+    },
+    groupSfu: {
+      ...current.groupSfu,
+      ...sfuInput,
+      apiSecret: hasSfuSecret ? String(sfuInput.apiSecret) : current.groupSfu.apiSecret,
     },
   });
 
@@ -264,6 +337,17 @@ const saveCallConfig = async (raw = {}) => {
     videoEnabled: next.videoEnabled,
     groupEnabled: next.groupEnabled,
     maxGroupParticipants: next.maxGroupParticipants,
+    groupSfu: {
+      enabled: next.groupSfu.enabled,
+      provider: 'livekit',
+      url: next.groupSfu.url,
+      apiKey: next.groupSfu.apiKey,
+      apiSecret: encryptSecret(next.groupSfu.apiSecret),
+      tokenTtlSec: next.groupSfu.tokenTtlSec,
+      minParticipants: next.groupSfu.minParticipants,
+      adaptiveStream: next.groupSfu.adaptiveStream,
+      dynacast: next.groupSfu.dynacast,
+    },
     ringingTimeoutSec: next.ringingTimeoutSec,
     reconnectGraceSec: next.reconnectGraceSec,
     iceTransportPolicy: next.iceTransportPolicy,
@@ -329,6 +413,14 @@ const getCallRuntimeConfig = async (userId) => {
     videoEnabled: config.videoEnabled,
     groupEnabled: config.groupEnabled,
     maxGroupParticipants: config.maxGroupParticipants,
+    groupSfu: {
+      enabled: config.groupSfu.enabled,
+      provider: 'livekit',
+      url: config.groupSfu.url,
+      minParticipants: config.groupSfu.minParticipants,
+      adaptiveStream: config.groupSfu.adaptiveStream,
+      dynacast: config.groupSfu.dynacast,
+    },
     ringingTimeoutSec: config.ringingTimeoutSec,
     reconnectGraceSec: config.reconnectGraceSec,
     iceTransportPolicy: config.iceTransportPolicy,
