@@ -32,7 +32,22 @@ const AdminCallConfigModel = sequelize.define(
     maxGroupParticipants: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 4,
+      defaultValue: 12,
+    },
+    groupSfu: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {
+        enabled: false,
+        provider: 'livekit',
+        url: '',
+        apiKey: '',
+        apiSecret: '',
+        tokenTtlSec: 3600,
+        minParticipants: 3,
+        adaptiveStream: true,
+        dynacast: true,
+      },
     },
     ringingTimeoutSec: {
       type: DataTypes.INTEGER,
