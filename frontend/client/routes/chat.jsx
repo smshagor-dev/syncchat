@@ -10,7 +10,7 @@ import AttachContactModal from '../components/modals/attachContact';
 import AttachPollModal from '../components/modals/attachPoll';
 import AttachEventModal from '../components/modals/attachEvent';
 import AttachStickerModal from '../components/modals/attachSticker';
-import CallPanel from '../components/modals/callPanel';
+import CallPanel from '../components/modals/callPanelV2';
 import CallStart from '../components/modals/callStart';
 import CallUiPreview from '../components/mockups/callUiPreview';
 import RoomAppearance from '../components/modals/roomAppearance';
@@ -33,7 +33,6 @@ function Chat() {
 
   const requestNotification = async () => {
     if (Notification.permission !== 'granted') {
-      // ask the user for permission
       await Notification.requestPermission();
     }
   };
@@ -58,7 +57,6 @@ function Chat() {
       className="absolute inset-0 overflow-hidden bg-slate-100 text-slate-800 dark:bg-spill-950 dark:text-white/90"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-          // close all modals only when clicking page backdrop
           dispatch(setModal({ target: '*' }));
         }
       }}

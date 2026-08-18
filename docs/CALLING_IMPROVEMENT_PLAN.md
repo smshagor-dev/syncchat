@@ -23,15 +23,22 @@ Move SyncChat calling from a basic WebRTC proof-of-concept to an admin-managed, 
 
 ## Phase 2 — Runtime client integration
 
-- [ ] Load `/api/calling/config` before creating `RTCPeerConnection`
-- [ ] Replace hard-coded Google STUN configuration
-- [ ] Apply DB-managed audio/video constraints
-- [ ] Enforce global/audio/video/group feature switches
-- [ ] Add call timeout and cancel state
-- [ ] Add busy and missed-call states
-- [ ] Add ICE restart and reconnect grace window
-- [ ] Add front/back camera switching
-- [ ] Add `RTCPeerConnection.getStats()` quality monitoring
+- [x] Load `/api/calling/config` before creating `RTCPeerConnection`
+- [x] Replace hard-coded Google STUN configuration
+- [x] Apply DB-managed audio/video constraints
+- [x] Enforce global/audio/video/group feature switches
+- [x] Add call timeout and cancel state
+- [x] Add busy and missed-call states
+- [x] Add ICE restart and reconnect grace window
+- [x] Add front/back camera switching
+- [x] Add `RTCPeerConnection.getStats()` quality monitoring
+
+Phase 2 notes:
+- Runtime ICE servers and TURN credentials now come from the authenticated DB-backed calling endpoint.
+- Call start is rejected server-side when admin policy disables a call type or exceeds the group participant limit.
+- One-to-one busy detection, ring timeout/missed handling, caller cancellation, and explicit call lifecycle events are now supported.
+- WebRTC peers attempt ICE restart before cleanup when the network disconnects.
+- Client quality sampling reports RTT, jitter, and packet-loss quality status in the call UI.
 
 ## Phase 3 — Durable call state
 

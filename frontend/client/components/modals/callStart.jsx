@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import * as bi from 'react-icons/bi';
 import { setModal } from '../../redux/features/modal';
+import { callAllowed, getCallingConfig } from '../../helpers/callingConfig';
 
 function CallStart() {
   const dispatch = useDispatch();
@@ -16,6 +17,8 @@ function CallStart() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState([]);
+  const [callConfig, setCallConfig] = useState(null);
+  const [configError, setConfigError] = useState('');
 
   const close = () => dispatch(setModal({ target: 'callStart', data: false }));
 
@@ -24,6 +27,7 @@ function CallStart() {
       setContacts([]);
       setSelected([]);
       setSearch('');
+      setConfigError('');
       return () => {};
     }
 
@@ -31,14 +35,26 @@ function CallStart() {
     const load = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get('/contacts', {
-          signal: abortCtrl.signal,
-        });
-        setContacts(Array.isArray(data?.payload) ? data.payload : []);
+        setConfigError('');
+        const [contactsRes, runtimeConfig] = await Promise.all([
+          axios.get('/contacts', { signal: abortCtrl.signal }),
+          getCallingConfig(),
+        ]);
+        setContacts(
+          Array.isArray(contactsRes?.data?.payload)
+            ? contactsRes.data.payload
+            : []
+        );
+        setCallConfig(runtimeConfig);
       } catch (error0) {
         if (error0.name !== 'CanceledError') {
+          const message =
+            error0?.response?.data?.message ||
+            error0.message ||
+            'Unable to load calling settings';
+          setConfigError(message);
           // eslint-disable-next-line no-console
-          console.error(error0?.response?.data?.message || error0.message);
+          console.error(message);
         }
       } finally {
         setLoading(false);
@@ -68,17 +84,41 @@ function CallStart() {
     });
   }, [contacts, search]);
 
+  const maxSelectable = Math.max(
+    1,
+    Number(callConfig?.maxGroupParticipants || 4) - 1
+  );
+
   const toggleSelect = (friendId) => {
-    setSelected((prev) =>
-      prev.includes(friendId)
-        ? prev.filter((id) => id !== friendId)
-        : [...prev, friendId]
-    );
+    setConfigError('');
+    setSelected((prev) => {
+      if (prev.includes(friendId)) {
+        return prev.filter((id) => id !== friendId);
+      }
+      if (prev.length >= maxSelectable) {
+        setConfigError(
+          `This server allows up to ${callConfig?.maxGroupParticipants || 4} participants per call`
+        );
+        return prev;
+      }
+      return [...prev, friendId];
+    });
   };
 
   const startCall = (mediaType) => {
     const picked = contacts.filter((item) => selected.includes(item.friendId));
-    if (picked.length === 0) return;
+    if (picked.length === 0 || !callConfig) return;
+
+    const roomType = picked.length > 1 ? 'group' : 'private';
+    const allowed = callAllowed(callConfig, {
+      mediaType,
+      roomType,
+      participants: picked.length + 1,
+    });
+    if (!allowed.allowed) {
+      setConfigError(allowed.message);
+      return;
+    }
 
     if (picked.length === 1) {
       const contact = picked[0];
@@ -103,6 +143,7 @@ function CallStart() {
           },
         })
       );
+      close();
       return;
     }
 
@@ -125,9 +166,25 @@ function CallStart() {
         },
       })
     );
+    close();
   };
 
   if (!active) return null;
+
+  const audioAllowed =
+    !!callConfig &&
+    callAllowed(callConfig, {
+      mediaType: 'audio',
+      roomType: selected.length > 1 ? 'group' : 'private',
+      participants: selected.length + 1,
+    }).allowed;
+  const videoAllowed =
+    !!callConfig &&
+    callAllowed(callConfig, {
+      mediaType: 'video',
+      roomType: selected.length > 1 ? 'group' : 'private',
+      participants: selected.length + 1,
+    }).allowed;
 
   return (
     <div
@@ -142,7 +199,7 @@ function CallStart() {
           <div>
             <h2 className="text-lg font-bold">Start Call</h2>
             <p className="text-xs opacity-70">
-              Select one or more contacts for audio/video call
+              Select contacts for an admin-managed audio/video call
             </p>
           </div>
           <button
@@ -153,6 +210,12 @@ function CallStart() {
             <bi.BiX />
           </button>
         </div>
+
+        {configError && (
+          <div className="mx-4 mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
+            {configError}
+          </div>
+        )}
 
         <div className="p-4 border-b border-slate-200 dark:border-spill-700">
           <label
@@ -169,11 +232,14 @@ function CallStart() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
+          <p className="mt-2 text-xs opacity-60">
+            Max participants: {callConfig?.maxGroupParticipants || 4}
+          </p>
         </div>
 
         <div className="max-h-[46vh] overflow-y-auto">
           {loading && (
-            <p className="p-4 text-sm opacity-70">Loading contacts...</p>
+            <p className="p-4 text-sm opacity-70">Loading contacts and call settings...</p>
           )}
           {!loading && filtered.length === 0 && (
             <p className="p-4 text-sm opacity-70">No contacts found.</p>
@@ -228,7 +294,7 @@ function CallStart() {
             <button
               type="button"
               className="h-9 px-3 rounded-lg bg-emerald-600 text-white disabled:opacity-50"
-              disabled={selected.length === 0}
+              disabled={selected.length === 0 || !audioAllowed}
               onClick={() => startCall('audio')}
             >
               <span className="inline-flex items-center gap-1">
@@ -238,7 +304,7 @@ function CallStart() {
             <button
               type="button"
               className="h-9 px-3 rounded-lg bg-sky-600 text-white disabled:opacity-50"
-              disabled={selected.length === 0}
+              disabled={selected.length === 0 || !videoAllowed}
               onClick={() => startCall('video')}
             >
               <span className="inline-flex items-center gap-1">
