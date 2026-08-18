@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const ctrl = require('../controllers/chat');
 const chatUpload = require('../controllers/chatUpload');
+const chatDeletion = require('../controllers/chatDeletion');
 
 router.post('/chats/upload', authenticate, upload.single('file'), chatUpload.upload);
 router.post('/chats/send-file', authenticate, ctrl.sendFile);
@@ -18,6 +19,6 @@ router.get('/chats/:roomId/pins', authenticate, ctrl.findPinned);
 router.post('/chats/:chatId/pin', authenticate, ctrl.pinMessage);
 router.delete('/chats/:chatId/pin', authenticate, ctrl.unpinMessage);
 router.get('/chats/:roomId', authenticate, ctrl.findByRoomId);
-router.delete('/chats/:roomId', authenticate, ctrl.deleteByRoomId);
+router.delete('/chats/:roomId', authenticate, chatDeletion.deleteByRoomId);
 
 module.exports = router;
