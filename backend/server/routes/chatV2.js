@@ -3,6 +3,7 @@ const router = express.Router();
 const authenticate = require('../middleware/auth');
 const ctrl = require('../controllers/chatV2');
 const suggestions = require('../controllers/chatSuggestions');
+const resumable = require('../controllers/chatResumableUpload');
 const {
   cleanupQueryE2eeKeys,
   cleanupRoomE2eeKeys,
@@ -64,7 +65,11 @@ router.put(
   ctrl.putResumableChunk
 );
 router.get('/chat-v2/uploads/:uploadId', authenticate, ctrl.getResumableUpload);
-router.post('/chat-v2/uploads/:uploadId/complete', authenticate, ctrl.completeResumableUpload);
+router.post(
+  '/chat-v2/uploads/:uploadId/complete',
+  authenticate,
+  resumable.complete
+);
 router.delete('/chat-v2/uploads/:uploadId', authenticate, ctrl.cancelResumableUpload);
 
 router.post('/chat-v2/translate', authenticate, ctrl.translateMessage);

@@ -10,14 +10,40 @@ const isSendFileRequest = (config = {}) =>
 const activeTopicFor = (roomId) =>
   String(localStorage.getItem(`syncchat:topic:${roomId}`) || '').trim() || null;
 
+const parseData = (value) => {
+  if (value && typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (error0) {
+      // Ignore non-JSON request bodies.
+    }
+  }
+  return {};
+};
+
+const getHeader = (headers, name) => {
+  if (!headers) return '';
+  if (typeof headers.get === 'function') return headers.get(name) || '';
+  const key = Object.keys(headers).find(
+    (item) => String(item).toLowerCase() === String(name).toLowerCase()
+  );
+  return key ? headers[key] : '';
+};
+
 const installChatHttpReliability = () => {
   if (installed) return;
   installed = true;
 
   axios.interceptors.request.use((config) => {
     if (!isSendFileRequest(config)) return config;
-    const data = config.data && typeof config.data === 'object' ? config.data : {};
+    const data = parseData(config.data);
+    const existingHeaderId = String(
+      getHeader(config.headers, 'X-Client-Message-Id') || ''
+    ).trim();
     const clientMessageId =
+      existingHeaderId ||
       String(data.clientMessageId || '').trim() ||
       (crypto.randomUUID ? crypto.randomUUID() : uuidv4());
     const roomId = String(data.roomId || '').trim();
