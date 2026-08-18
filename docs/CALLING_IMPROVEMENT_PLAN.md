@@ -58,10 +58,20 @@ Phase 3 notes:
 
 ## Phase 4 — Background incoming calls
 
-- [ ] Wire call start to existing web-push call category
-- [ ] Add service-worker incoming-call actions for PWA
-- [ ] Add FCM/full-screen incoming call flow for Android app
-- [ ] Add APNs/CallKit flow for iOS app
+- [x] Wire durable call start to the existing Web Push `call` category
+- [x] Add persistent PWA incoming-call notifications with Accept/Decline actions
+- [x] Route PWA notification actions back into the existing call runtime when the app is open or launched from the notification
+- [x] Add native push-device registration/unregistration API
+- [x] Add FCM HTTP v1 high-priority incoming-call backend transport
+- [x] Add APNs token-auth incoming-call backend transport, including PushKit VoIP topic support
+- [ ] Wire Android app `FirebaseMessagingService` to the SyncChat call runtime and full-screen incoming-call UI
+- [ ] Wire iOS app PushKit delivery to CallKit and the SyncChat call runtime
+
+Phase 4 notes:
+- Web/PWA, FCM, and APNs delivery are triggered only after the Redis durable active-call record exists, so all notification paths carry the canonical server-generated `callId`.
+- Web notification preferences (`mute`, global push switch, and call notifications) are respected before delivery. Native call push uses the same user-level call-notification preference checks.
+- PWA call actions preserve the call payload when focusing an existing tab or launching a closed PWA. Accept/Decline is bridged into the current call panel so it uses the same media permission, Socket.IO, Redis state, and WebRTC flow instead of a parallel call implementation.
+- Android and iOS backend transports are ready but the native client repositories are not present in this repository. The remaining app-side work is documented in `docs/MOBILE_CALL_PUSH_INTEGRATION.md`.
 
 ## Phase 5 — Group calling scale
 
@@ -74,3 +84,5 @@ Phase 3 notes:
 TURN credential/shared-secret values are stored encrypted using `CALL_CONFIG_SECRET`, falling back to `STORAGE_CONFIG_SECRET` or `JWT_SECRET`. Admin GET responses expose only whether secrets are set. Coturn shared-secret mode generates temporary HMAC credentials for authenticated users and never sends the shared secret to clients.
 
 Durable call state stores only call/session metadata in Redis and MongoDB; WebRTC media remains peer-to-peer/TURN-relayed and is not persisted by this call-state layer.
+
+Web Push VAPID, FCM service-account, and APNs provider credentials are backend-only environment secrets and must never be embedded in browser, Android, or iOS client builds.
