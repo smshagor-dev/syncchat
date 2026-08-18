@@ -1,6 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import App from './app';
+import { installProfilePasswordPanel } from './profilePassword';
 
 const removeLoginPasswordMinLength = () => {
   const passwordInput = document.querySelector('.auth-form input[type="password"]');
@@ -13,3 +14,4 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
 const root = ReactDOM.createRoot(document.querySelector('#admin-root'));
 root.render(<App />);
 removeLoginPasswordMinLength();
+installProfilePasswordPanel();
