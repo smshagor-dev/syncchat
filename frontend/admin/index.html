@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -8,5 +8,13 @@
   </head>
   <body>
     <div id="admin-root"></div>
+    <a id="ftp-storage-shortcut" href="/admin/storage" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;padding:10px 14px;border-radius:12px;background:#111827;color:#fff;text-decoration:none;font:600 13px Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)">FTP Storage</a>
+    <script>
+      try {
+        if (localStorage.getItem('admin_token')) {
+          document.getElementById('ftp-storage-shortcut').style.display = 'block';
+        }
+      } catch (error) {}
+    </script>
   </body>
 </html>

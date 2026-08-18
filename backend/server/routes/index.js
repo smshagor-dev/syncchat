@@ -31,6 +31,7 @@ const community = require('./community');
 const report = require('./report');
 const contentControls = require('./contentControls');
 const appConfig = require('./appConfig');
+const storageAdmin = require('./storageAdmin');
 const admin = require('./admin');
 
 router.use(cron);
@@ -48,6 +49,7 @@ router.use(community);
 router.use(report);
 router.use(contentControls);
 router.use(appConfig);
+router.use(storageAdmin);
 router.use(admin);
 
 module.exports = router;

@@ -1,0 +1,37 @@
+name: Refresh FTP backend lock
+
+on:
+  push:
+    branches:
+      - agent/ftp-storage
+    paths:
+      - backend/package.json
+      - .github/workflows/refresh-ftp-backend-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ftp-storage
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Refresh backend package lock
+        working-directory: backend
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit refreshed lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No lockfile changes"
+            exit 0
+          fi
+          git commit -m "refresh backend lockfile for FTP storage"
+          git push origin HEAD:agent/ftp-storage

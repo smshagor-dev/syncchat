@@ -6,12 +6,13 @@
   "scripts": {
     "predev": "node scripts/free-ports.js 8080",
     "dev": "nodemon --watch server --watch .env --ignore logs --ignore uploads server",
-    "build": "node --check server/index.js && node --check server/server.js && node --check server/bootstrap.js && node --check server/config.js && node --check server/db/sequelize.js && node --check server/db/connect.js && node --check server/helpers/socketAdapter.js && node --check server/routes/cron.js && node --check api/index.js",
+    "build": "node --check server/index.js && node --check server/server.js && node --check server/bootstrap.js && node --check server/config.js && node --check server/db/sequelize.js && node --check server/db/connect.js && node --check server/db/models/adminStorageConfig.js && node --check server/helpers/storageConfig.js && node --check server/helpers/storage.js && node --check server/helpers/videoPipeline.js && node --check server/controllers/chatUpload.js && node --check server/controllers/storageAdmin.js && node --check server/routes/storageAdmin.js && node --check server/helpers/socketAdapter.js && node --check server/routes/cron.js && node --check api/index.js",
     "start": "node server"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
     "axios": "^1.1.3",
+    "basic-ftp": "^5.0.5",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",

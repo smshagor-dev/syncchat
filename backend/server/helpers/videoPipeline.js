@@ -1,15 +1,12 @@
-const fs = require('fs');
+const { spawn } = require('child_process');
 const path = require('path');
-const { execFile } = require('child_process');
-const { toAbsoluteUploadUrl, uploadRootDir } = require('./storage');
+const { saveBufferFile } = require('./storage');
 
 const safeRequire = (moduleName) => {
   try {
     return require(moduleName);
   } catch (error0) {
-    if (error0?.code === 'MODULE_NOT_FOUND') {
-      return null;
-    }
+    if (error0?.code === 'MODULE_NOT_FOUND') return null;
     throw error0;
   }
 };
@@ -18,157 +15,154 @@ const ffmpegPath = safeRequire('ffmpeg-static');
 const ffprobeModule = safeRequire('ffprobe-static');
 const ffprobePath = ffprobeModule?.path || null;
 
-const execFileAsync = (command, args) =>
+const runPipe = ({ command, args, input }) =>
   new Promise((resolve, reject) => {
-    execFile(command, args, { windowsHide: true }, (error0, stdout, stderr) => {
-      if (error0) {
+    const child = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on('data', (chunk) => stdout.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => stderr.push(Buffer.from(chunk)));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
         reject(
-          new Error(stderr || stdout || error0.message || 'Command failed')
+          new Error(
+            Buffer.concat(stderr).toString('utf8') ||
+              `Media command failed with code ${code}`
+          )
         );
         return;
       }
-      resolve({ stdout, stderr });
+      resolve(Buffer.concat(stdout));
     });
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
   });
 
-const toUploadPublicUrl = (absolutePath) => {
-  const relative = path
-    .relative(path.resolve(uploadRootDir), path.resolve(absolutePath))
-    .replace(/\\/g, '/');
-  if (!relative || relative.startsWith('..')) {
-    throw new Error('Video output path is outside upload directory');
-  }
-  return toAbsoluteUploadUrl(`/uploads/${relative}`);
-};
-
-const ensureParentDir = async (targetPath) => {
-  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-};
-
-const probeVideo = async (absolutePath) => {
-  const { stdout } = await execFileAsync(ffprobePath, [
-    '-v',
-    'error',
-    '-print_format',
-    'json',
-    '-show_format',
-    '-show_streams',
-    absolutePath,
-  ]);
-
-  const payload = JSON.parse(stdout || '{}');
+const probeVideoBuffer = async (buffer) => {
+  if (!ffprobePath) return { duration: 0, width: 0, height: 0 };
+  const output = await runPipe({
+    command: ffprobePath,
+    args: [
+      '-v',
+      'error',
+      '-print_format',
+      'json',
+      '-show_format',
+      '-show_streams',
+      'pipe:0',
+    ],
+    input: buffer,
+  });
+  const payload = JSON.parse(output.toString('utf8') || '{}');
   const videoStream =
-    (payload.streams || []).find((stream) => stream.codec_type === 'video') ||
-    {};
-
+    (payload.streams || []).find((stream) => stream.codec_type === 'video') || {};
   return {
     duration: Math.max(
       0,
-      Math.round(
-        Number(videoStream.duration || payload.format?.duration || 0) || 0
-      )
+      Math.round(Number(videoStream.duration || payload.format?.duration || 0) || 0)
     ),
     width: Math.max(0, Number(videoStream.width) || 0),
     height: Math.max(0, Number(videoStream.height) || 0),
   };
 };
 
-const transcodeVariant = async ({
-  sourcePath,
-  outputPath,
-  maxHeight,
-  videoBitrate,
-}) => {
-  await ensureParentDir(outputPath);
-  await execFileAsync(ffmpegPath, [
-    '-y',
-    '-i',
-    sourcePath,
-    '-vf',
-    `scale=-2:'min(${maxHeight},ih)'`,
-    '-c:v',
-    'libx264',
-    '-preset',
-    'veryfast',
-    '-profile:v',
-    'main',
-    '-movflags',
-    '+faststart',
-    '-pix_fmt',
-    'yuv420p',
-    '-b:v',
-    videoBitrate,
-    '-maxrate',
-    videoBitrate,
-    '-bufsize',
-    `${Number.parseInt(videoBitrate, 10) * 2 || 3000}k`,
-    '-c:a',
-    'aac',
-    '-b:a',
-    '128k',
-    '-ac',
-    '2',
-    outputPath,
-  ]);
-};
+const transcodeBuffer = async ({ buffer, maxHeight, videoBitrate }) =>
+  runPipe({
+    command: ffmpegPath,
+    args: [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      'pipe:0',
+      '-vf',
+      `scale=-2:'min(${maxHeight},ih)'`,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-profile:v',
+      'main',
+      '-pix_fmt',
+      'yuv420p',
+      '-b:v',
+      videoBitrate,
+      '-maxrate',
+      videoBitrate,
+      '-bufsize',
+      `${Number.parseInt(videoBitrate, 10) * 2 || 3000}k`,
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-ac',
+      '2',
+      '-movflags',
+      'frag_keyframe+empty_moov+default_base_moof',
+      '-f',
+      'mp4',
+      'pipe:1',
+    ],
+    input: buffer,
+  });
 
-const generateThumbnail = async ({ sourcePath, outputPath }) => {
-  await ensureParentDir(outputPath);
-  await execFileAsync(ffmpegPath, [
-    '-y',
-    '-ss',
-    '00:00:01',
-    '-i',
-    sourcePath,
-    '-frames:v',
-    '1',
-    '-vf',
-    'scale=640:-2',
-    outputPath,
-  ]);
-};
+const thumbnailBuffer = async (buffer) =>
+  runPipe({
+    command: ffmpegPath,
+    args: [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-ss',
+      '00:00:01',
+      '-i',
+      'pipe:0',
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=640:-2',
+      '-f',
+      'image2pipe',
+      '-vcodec',
+      'mjpeg',
+      'pipe:1',
+    ],
+    input: buffer,
+  });
 
-const processUploadedVideo = async ({ absolutePath }) => {
-  if (!ffmpegPath || !ffprobePath) {
-    return {};
-  }
+const processUploadedVideoBuffer = async ({ buffer, folder, filename }) => {
+  if (!ffmpegPath || !ffprobePath || !Buffer.isBuffer(buffer)) return {};
 
-  const parsed = path.parse(absolutePath);
-  const standardPath = path.join(parsed.dir, `${parsed.name}-standard.mp4`);
-  const hdPath = path.join(parsed.dir, `${parsed.name}-hd.mp4`);
-  const thumbnailPath = path.join(parsed.dir, `${parsed.name}-thumb.jpg`);
+  const parsed = path.parse(filename || `video-${Date.now()}.mp4`);
+  const base = parsed.name.replace(/[^a-zA-Z0-9_-]/g, '') || `video-${Date.now()}`;
 
-  await Promise.all([
-    transcodeVariant({
-      sourcePath: absolutePath,
-      outputPath: standardPath,
-      maxHeight: 480,
-      videoBitrate: '1200k',
-    }),
-    transcodeVariant({
-      sourcePath: absolutePath,
-      outputPath: hdPath,
-      maxHeight: 720,
-      videoBitrate: '2800k',
-    }),
-    generateThumbnail({
-      sourcePath: absolutePath,
-      outputPath: thumbnailPath,
-    }),
+  const [standard, hd, thumbnail, metadata] = await Promise.all([
+    transcodeBuffer({ buffer, maxHeight: 480, videoBitrate: '1200k' }),
+    transcodeBuffer({ buffer, maxHeight: 720, videoBitrate: '2800k' }),
+    thumbnailBuffer(buffer),
+    probeVideoBuffer(buffer),
   ]);
 
-  const metadata = await probeVideo(standardPath);
+  const [standardSaved, hdSaved, thumbSaved] = await Promise.all([
+    saveBufferFile({ buffer: standard, folder, filename: `${base}-standard.mp4` }),
+    saveBufferFile({ buffer: hd, folder, filename: `${base}-hd.mp4` }),
+    saveBufferFile({ buffer: thumbnail, folder, filename: `${base}-thumb.jpg` }),
+  ]);
 
   return {
     duration: metadata.duration,
     width: metadata.width,
     height: metadata.height,
-    streamUrl: toUploadPublicUrl(standardPath),
-    streamHdUrl: toUploadPublicUrl(hdPath),
-    thumbnailUrl: toUploadPublicUrl(thumbnailPath),
+    streamUrl: standardSaved.url,
+    streamHdUrl: hdSaved.url,
+    thumbnailUrl: thumbSaved.url,
   };
 };
 
 module.exports = {
-  processUploadedVideo,
+  processUploadedVideoBuffer,
 };

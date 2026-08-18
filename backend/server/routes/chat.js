@@ -2,8 +2,9 @@ const router = require('express').Router();
 const authenticate = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const ctrl = require('../controllers/chat');
+const chatUpload = require('../controllers/chatUpload');
 
-router.post('/chats/upload', authenticate, upload.single('file'), ctrl.upload);
+router.post('/chats/upload', authenticate, upload.single('file'), chatUpload.upload);
 router.post('/chats/send-file', authenticate, ctrl.sendFile);
 router.post('/chats/:chatId/view-once-open', authenticate, ctrl.openViewOnce);
 router.get('/chats/scheduled', authenticate, ctrl.findScheduled);
