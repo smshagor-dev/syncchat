@@ -69,7 +69,6 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('backend/vercel.json','utf8')); JSON.parse(require('fs').readFileSync('frontend/vercel.json','utf8')); console.log('Vercel config JSON OK')"
 
       - name: Commit refreshed backend lockfile
-        if: github.event_name == 'push'
         run: |
           if git diff --quiet -- backend/package-lock.json; then
             echo 'backend/package-lock.json already current'
