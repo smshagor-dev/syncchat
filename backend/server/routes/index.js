@@ -16,6 +16,7 @@ router.get('/health', (req, res) => {
 });
 
 // routes
+const cron = require('./cron');
 const user = require('./user');
 const chat = require('./chat');
 const contact = require('./contact');
@@ -32,6 +33,7 @@ const contentControls = require('./contentControls');
 const appConfig = require('./appConfig');
 const admin = require('./admin');
 
+router.use(cron);
 router.use(user);
 router.use(chat);
 router.use(contact);
