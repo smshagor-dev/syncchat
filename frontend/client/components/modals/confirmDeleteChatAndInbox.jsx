@@ -12,6 +12,22 @@ function ConfirmDeleteChatAndInbox() {
     (state) => state.modal.confirmDeleteChatAndInbox
   );
   const chatRoom = useSelector((state) => state.room.chat);
+  const [scope, setScope] = React.useState('self');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const roomType = chatRoom?.data?.roomType || 'private';
+  const isGroup = roomType === 'group';
+  const friendName = chatRoom?.data?.profile?.fullname || 'the other participant';
+
+  React.useEffect(() => {
+    if (confirmDeleteChatAndInbox) {
+      setScope('self');
+      setLoading(false);
+      setError('');
+    }
+  }, [confirmDeleteChatAndInbox]);
+
   const emitLocalInboxDelete = (roomId) => {
     window.dispatchEvent(
       new CustomEvent('syncchat:inbox-delete', {
@@ -20,9 +36,21 @@ function ConfirmDeleteChatAndInbox() {
     );
   };
 
+  const closeModal = () =>
+    dispatch(
+      setModal({
+        target: 'confirmDeleteChatAndInbox',
+        data: false,
+      })
+    );
+
   const handleDeleteChatAndInbox = async () => {
     try {
-      await axios.delete(`/chats/${confirmDeleteChatAndInbox.roomId}`);
+      setLoading(true);
+      setError('');
+      await axios.delete(`/chats/${confirmDeleteChatAndInbox.roomId}`, {
+        data: { scope },
+      });
       emitLocalInboxDelete(confirmDeleteChatAndInbox.roomId);
 
       dispatch(setRefreshInbox(uuidv4()));
@@ -36,23 +64,16 @@ function ConfirmDeleteChatAndInbox() {
         dispatch(
           setChatRoom({
             isOpen: false,
-            refreshId: null,
+            refreshId: uuidv4(),
             data: null,
           })
         );
       }
 
-      setTimeout(() => {
-        // close confirm-delete-inbox modal
-        dispatch(
-          setModal({
-            target: 'confirmDeleteChatAndInbox',
-            data: false,
-          })
-        );
-      }, 300);
+      closeModal();
     } catch (error0) {
-      console.error(error0.message);
+      setLoading(false);
+      setError(error0?.response?.data?.message || error0.message);
     }
   };
 
@@ -72,31 +93,78 @@ function ConfirmDeleteChatAndInbox() {
         aria-hidden
         className={`${
           !confirmDeleteChatAndInbox && 'scale-0'
-        } transition relative w-[400px] m-6 p-4 rounded-md bg-white dark:bg-spill-800`}
+        } transition relative w-[420px] max-w-[calc(100vw-2rem)] m-6 p-4 rounded-xl bg-white dark:bg-spill-800`}
         onClick={(e) => {
           e.stopPropagation();
         }}
       >
         <h1 className="text-2xl font-bold mb-1">Delete Chat</h1>
-        <p>Are you sure you want to delete this chat?</p>
+        <p className="text-sm opacity-70">
+          Choose where this conversation should be removed.
+        </p>
+
+        <div className="mt-4 grid gap-2">
+          <button
+            type="button"
+            className={`rounded-xl border p-4 text-left ${
+              scope === 'self'
+                ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/30'
+                : 'border-slate-200 dark:border-spill-600'
+            }`}
+            onClick={() => setScope('self')}
+          >
+            <p className="font-semibold">Delete for me</p>
+            <p className="mt-1 text-xs opacity-60">
+              Only your copy is removed. The other participant keeps the chat.
+            </p>
+          </button>
+
+          {!isGroup && (
+            <button
+              type="button"
+              className={`rounded-xl border p-4 text-left ${
+                scope === 'both'
+                  ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/30'
+                  : 'border-slate-200 dark:border-spill-600'
+              }`}
+              onClick={() => setScope('both')}
+            >
+              <p className="font-semibold text-rose-600 dark:text-rose-400">
+                Delete for both
+              </p>
+              <p className="mt-1 text-xs opacity-60">
+                Permanently remove the conversation for you and {friendName}.
+              </p>
+            </button>
+          )}
+
+          {error && (
+            <p className="pt-1 text-sm text-rose-600 dark:text-rose-400">{error}</p>
+          )}
+        </div>
+
         <span className="mt-4 flex gap-2 justify-end">
           <button
             type="button"
             className="py-2 px-4 rounded-md hover:bg-gray-100 dark:hover:bg-spill-700"
-            onClick={() => {
-              dispatch(
-                setModal({ target: 'confirmDeleteChatAndInbox', data: false })
-              );
-            }}
+            onClick={closeModal}
+            disabled={loading}
           >
             <p>Cancel</p>
           </button>
           <button
             type="button"
-            className="py-2 px-4 rounded-md text-white bg-rose-600 hover:bg-rose-700"
+            className="py-2 px-4 rounded-md text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
             onClick={handleDeleteChatAndInbox}
+            disabled={loading}
           >
-            <p className="font-bold">Delete Chat</p>
+            <p className="font-bold">
+              {loading
+                ? 'Deleting...'
+                : scope === 'both'
+                  ? 'Delete for both'
+                  : 'Delete for me'}
+            </p>
           </button>
         </span>
       </div>
