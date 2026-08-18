@@ -5,6 +5,7 @@ import store from './redux/store';
 import App from './app';
 import GlobalCallLayer from './components/calling/globalCallLayer';
 import installProfileAvatarSync from './helpers/profileAvatarSync';
+import installChatLockSync from './helpers/chatLockSync';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
@@ -19,6 +20,7 @@ root.render(
 );
 
 installProfileAvatarSync();
+installChatLockSync();
 registerServiceWorker();
 
 requestNotificationPermission();
