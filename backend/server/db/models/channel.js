@@ -107,4 +107,13 @@ const ChannelModel = sequelize.define(
   }
 );
 
+const createChannel = ChannelModel.create.bind(ChannelModel);
+ChannelModel.create = (values = {}) =>
+  createChannel({
+    ...values,
+    avatar: String(values.avatar || '').trim()
+      ? values.avatar
+      : DEFAULT_CHANNEL_AVATAR_URL,
+  });
+
 module.exports = ChannelModel;
