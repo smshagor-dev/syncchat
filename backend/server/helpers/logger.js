@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const now = () => new Date().toISOString();
+const isVercel = Boolean(process.env.VERCEL);
 const logDir = path.resolve(__dirname, '..', '..', 'logs');
 const logFile = path.join(logDir, 'server.log');
 const QUIET_CONSOLE_PREFIXES = ['CHAT_', 'SOCKET_', 'HTTP_'];
@@ -48,8 +49,22 @@ const sanitize = (value, depth = 0) => {
   return trim(value);
 };
 
+const writeFileLog = (line) => {
+  // Vercel's deployed function bundle is read-only. Runtime logs should go to
+  // stdout/stderr there and are collected automatically by Vercel.
+  if (isVercel) return;
+
+  try {
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(logFile, `${line}\n`, 'utf8');
+  } catch (error) {
+    // Logging must never make an application request fail.
+    // eslint-disable-next-line no-console
+    console.error(`${now()} [WARN] FILE_LOG_WRITE_FAILED`, error.message);
+  }
+};
+
 const print = (level, tag, payload) => {
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   const isQuietTag = QUIET_CONSOLE_PREFIXES.some((prefix) =>
     String(tag || '').startsWith(prefix)
   );
@@ -60,7 +75,7 @@ const print = (level, tag, payload) => {
       // eslint-disable-next-line no-console
       console.log(line);
     }
-    fs.appendFileSync(logFile, `${line}\n`, 'utf8');
+    writeFileLog(line);
     return;
   }
 
@@ -70,7 +85,7 @@ const print = (level, tag, payload) => {
     // eslint-disable-next-line no-console
     console.log(`${now()} [${level}] ${tag}`, safePayload);
   }
-  fs.appendFileSync(logFile, `${line}\n`, 'utf8');
+  writeFileLog(line);
 };
 
 exports.info = (tag, payload) => print('INFO', tag, payload);
