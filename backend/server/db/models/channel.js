@@ -58,7 +58,7 @@ const ChannelModel = sequelize.define(
     },
     avatar: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
       defaultValue: DEFAULT_CHANNEL_AVATAR_URL,
     },
     link: {
