@@ -115,12 +115,17 @@ const GroupModel = sequelize.define(
 );
 
 const createGroup = GroupModel.create.bind(GroupModel);
-GroupModel.create = (values = {}) =>
-  createGroup({
-    ...values,
-    avatar: String(values.avatar || '').trim()
+GroupModel.create = (values = {}) => {
+  const rawAvatar = String(values.avatar || '').trim();
+  const persistedAvatar =
+    rawAvatar && !rawAvatar.startsWith('data:')
       ? values.avatar
-      : DEFAULT_GROUP_AVATAR_URL,
+      : DEFAULT_GROUP_AVATAR_URL;
+
+  return createGroup({
+    ...values,
+    avatar: persistedAvatar,
   });
+};
 
 module.exports = GroupModel;
