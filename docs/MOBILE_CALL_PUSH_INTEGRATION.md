@@ -108,7 +108,7 @@ The Android app should:
 6. On **Decline**, emit the existing SyncChat reject flow for the same `callId`.
 7. Refresh the backend registration whenever Firebase rotates the token, and unregister it on logout when appropriate.
 
-Do not place Firebase service-account credentials in the Android app. `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, and `FCM_PRIVATE_KEY` belong only on the backend.
+Do not place Firebase service-account credentials in the Android app. The Firebase project ID, client email, and private key are configured by an administrator in SyncChat and stored server-side in MongoDB; the private key is encrypted at rest.
 
 ## iOS client work
 
@@ -123,30 +123,46 @@ The iOS app should:
 5. On decline/end, emit the existing reject/end flow and finish the CallKit transaction.
 6. Re-register whenever PushKit rotates the token.
 
-Do not place the APNs `.p8` private key in the iOS app. `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_BUNDLE_ID`, and `APNS_PRIVATE_KEY` belong only on the backend.
+Do not place the APNs `.p8` private key in the iOS app. Team ID, key ID, bundle ID, private key, and production/sandbox selection are configured by an administrator in SyncChat and stored server-side in MongoDB; the private key is encrypted at rest.
 
-## Backend environment
+## Admin configuration
+
+Native call-push provider credentials are configured from:
+
+`/admin/calling-push`
+
+The admin API is:
+
+- `GET /api/admin/calling/native-push`
+- `PATCH /api/admin/calling/native-push`
+
+Android settings stored in MongoDB:
+
+- enabled
+- Firebase project ID
+- Firebase client email
+- encrypted Firebase private key
+
+Apple settings stored in MongoDB:
+
+- enabled
+- APNs team ID
+- APNs key ID
+- app bundle ID
+- encrypted `.p8` private key
+- `production` or `sandbox` environment
+
+Private keys are encrypted using `CALL_CONFIG_SECRET`, falling back to `STORAGE_CONFIG_SECRET` and then `JWT_SECRET`. Keep that encryption secret stable across deployments. Blank private-key fields in the admin UI preserve the currently stored encrypted key.
+
+The old `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`, `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_BUNDLE_ID`, `APNS_PRIVATE_KEY`, and `APNS_ENVIRONMENT` environment variables are no longer required for native call push.
+
+Web/PWA push remains environment-backed:
 
 ```dotenv
-# Web/PWA
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:support@syncchat.app
-
-# Android FCM HTTP v1
-FCM_PROJECT_ID=
-FCM_CLIENT_EMAIL=
-FCM_PRIVATE_KEY=
-
-# iOS APNs token auth
-APNS_TEAM_ID=
-APNS_KEY_ID=
-APNS_BUNDLE_ID=
-APNS_PRIVATE_KEY=
-APNS_ENVIRONMENT=sandbox
 ```
-
-Private-key values may be stored with literal `\\n` sequences; the backend restores them to PEM newlines at runtime. LiveKit API credentials are not native-app environment variables; they are configured in the DB-backed SyncChat admin page, and the API secret remains backend-only.
 
 ## Delivery behavior
 
