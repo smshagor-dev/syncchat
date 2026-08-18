@@ -162,8 +162,11 @@ const mongoType = (type) => {
 };
 const fieldSchema = (raw) => {
   const d = objectLike(raw) ? raw : { type: raw };
-  const out = { type: mongoType(d.type) };
-  if (d.allowNull === false) out.required = true;
+  const mappedType = mongoType(d.type);
+  const out = { type: mappedType };
+  const emptyStringDefault = d.allowNull === false && mappedType === String && d.defaultValue === '';
+  if (d.allowNull === false && !emptyStringDefault) out.required = true;
+  if (emptyStringDefault) out.set = (value) => value == null ? '' : value;
   if (d.unique) out.unique = true;
   if (d.index) out.index = true;
   const def = defaultValue(d); if (def !== undefined) out.default = def;
