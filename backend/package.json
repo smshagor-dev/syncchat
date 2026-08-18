@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/free-ports.js 8080",
     "dev": "nodemon --watch server --watch .env --ignore logs --ignore uploads server",
-    "build": "node --check server/index.js && node --check server/server.js && node --check server/bootstrap.js && node --check server/config.js && node --check server/db/sequelize.js && node --check server/db/connect.js && node --check server/helpers/socketAdapter.js && node --check api/index.js",
+    "build": "node --check server/index.js && node --check server/server.js && node --check server/bootstrap.js && node --check server/config.js && node --check server/db/sequelize.js && node --check server/db/connect.js && node --check server/helpers/socketAdapter.js && node --check server/routes/cron.js && node --check api/index.js",
     "start": "node server"
   },
   "dependencies": {
