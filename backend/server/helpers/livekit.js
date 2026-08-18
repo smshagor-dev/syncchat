@@ -36,6 +36,12 @@ const getLiveKitJoinCredentials = async ({ callId, userId, displayName }) => {
     throw error0;
   }
 
+  if (Array.isArray(state.removedUserIds) && state.removedUserIds.includes(userId)) {
+    const error0 = new Error('You were removed from this group call');
+    error0.statusCode = 403;
+    throw error0;
+  }
+
   const sfu = config.groupSfu || {};
   if (!sfu.enabled || sfu.provider !== 'livekit') {
     const error0 = new Error('Group SFU is not enabled');
