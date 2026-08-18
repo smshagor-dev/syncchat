@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../sequelize');
+const { DEFAULT_USER_AVATAR_URL } = require('../../helpers/avatarDefaults');
 
 const ProfileModel = sequelize.define(
   'profiles',
@@ -37,7 +38,7 @@ const ProfileModel = sequelize.define(
     avatar: {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: null,
+      defaultValue: DEFAULT_USER_AVATAR_URL,
     },
     bio: {
       type: DataTypes.TEXT,
@@ -70,5 +71,14 @@ const ProfileModel = sequelize.define(
     version: false,
   }
 );
+
+const createProfile = ProfileModel.create.bind(ProfileModel);
+ProfileModel.create = (values = {}) =>
+  createProfile({
+    ...values,
+    avatar: String(values.avatar || '').trim()
+      ? values.avatar
+      : DEFAULT_USER_AVATAR_URL,
+  });
 
 module.exports = ProfileModel;

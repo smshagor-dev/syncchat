@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/calling-improvement-db-admin
+      - agent/native-push-db-config
   pull_request:
     branches:
       - main

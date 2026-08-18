@@ -7,9 +7,43 @@ const response = require('../helpers/response');
 const { toAbsoluteUploadUrl } = require('../helpers/storage');
 const ensureProfile = require('../helpers/ensureProfile');
 const {
+  listProfilePhotos,
+  resolveProfileByPhotoUrl,
+  removeProfilePhoto,
+} = require('../helpers/profilePhotos');
+const {
   buildPrivacyContext,
   sanitizeProfileForViewer,
 } = require('../helpers/privacy');
+
+const EDITABLE_PROFILE_FIELDS = new Set([
+  'username',
+  'fullname',
+  'bio',
+  'phone',
+  'dialCode',
+  'socialAccounts',
+]);
+
+const photoVisibility = async ({ profile, viewerId }) => {
+  const ownerId = String(profile?.userId || '');
+  const context = await buildPrivacyContext({
+    viewerId,
+    targetIds: [ownerId],
+  });
+  const sanitized = sanitizeProfileForViewer({
+    profile,
+    viewerId,
+    setting: context.settingMap.get(ownerId),
+    isViewerContact: context.isViewerContact(ownerId),
+  });
+
+  return {
+    ownerId,
+    canSee: sanitized.canSeeAvatar !== false,
+    currentAvatar: sanitized.avatar,
+  };
+};
 
 exports.findById = async (req, res) => {
   try {
@@ -84,7 +118,20 @@ exports.edit = async (req, res) => {
       return;
     }
 
-    await profile.update(req.body);
+    const updates = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key]) => EDITABLE_PROFILE_FIELDS.has(key))
+    );
+    if (!Object.keys(updates).length) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'No editable profile fields supplied',
+      });
+      return;
+    }
+
+    await profile.update(updates);
 
     response({
       res,
@@ -97,7 +144,7 @@ exports.edit = async (req, res) => {
       error0.name === 'MongoServerError' ||
       error0.code === 11000
     ) {
-      switch (Object.keys(req.body)[0]) {
+      switch (Object.keys(req.body || {})[0]) {
         case 'username':
           error0.message = 'This username is already taken';
           break;
@@ -109,6 +156,143 @@ exports.edit = async (req, res) => {
       }
     }
 
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.profilePhotos = async (req, res) => {
+  try {
+    const ownerId = String(req.params.userId || '');
+    const profile = await ensureProfile(ownerId);
+    if (!profile) {
+      response({
+        res,
+        statusCode: 404,
+        success: false,
+        message: 'User profile not found',
+      });
+      return;
+    }
+
+    const visibility = await photoVisibility({
+      profile,
+      viewerId: req.user._id,
+    });
+    const canDelete = visibility.ownerId === String(req.user._id || '');
+    const photos = visibility.canSee ? await listProfilePhotos(ownerId) : [];
+
+    response({
+      res,
+      payload: {
+        matched: true,
+        ownerId,
+        canDelete,
+        canSee: visibility.canSee,
+        currentAvatar: visibility.currentAvatar,
+        photos,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.resolvePhotoHistory = async (req, res) => {
+  try {
+    const url = String(req.query?.url || '').trim();
+    if (!url) {
+      response({
+        res,
+        statusCode: 400,
+        success: false,
+        message: 'Profile photo URL is required',
+      });
+      return;
+    }
+
+    const profile = await resolveProfileByPhotoUrl(url);
+    if (!profile) {
+      response({
+        res,
+        payload: {
+          matched: false,
+          ownerId: null,
+          canDelete: false,
+          canSee: false,
+          currentAvatar: url,
+          photos: [],
+        },
+      });
+      return;
+    }
+
+    const visibility = await photoVisibility({
+      profile,
+      viewerId: req.user._id,
+    });
+    const canDelete = visibility.ownerId === String(req.user._id || '');
+    const photos = visibility.canSee
+      ? await listProfilePhotos(visibility.ownerId)
+      : [];
+
+    response({
+      res,
+      payload: {
+        matched: true,
+        ownerId: visibility.ownerId,
+        canDelete,
+        canSee: visibility.canSee,
+        currentAvatar: visibility.currentAvatar,
+        photos,
+      },
+    });
+  } catch (error0) {
+    response({
+      res,
+      statusCode: error0.statusCode || 500,
+      success: false,
+      message: error0.message,
+    });
+  }
+};
+
+exports.deleteProfilePhoto = async (req, res) => {
+  try {
+    const result = await removeProfilePhoto({
+      userId: req.user._id,
+      photoId: req.params.photoId,
+    });
+
+    if (global?.io) {
+      global.io.emit('profile/avatar-changed', {
+        userId: req.user._id,
+        at: new Date().toISOString(),
+      });
+    }
+
+    response({
+      res,
+      message: 'Profile photo deleted',
+      payload: {
+        matched: true,
+        ownerId: req.user._id,
+        canDelete: true,
+        canSee: true,
+        currentAvatar: result.currentAvatar,
+        photos: result.photos,
+      },
+    });
+  } catch (error0) {
     response({
       res,
       statusCode: error0.statusCode || 500,

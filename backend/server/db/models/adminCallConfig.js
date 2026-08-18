@@ -49,6 +49,26 @@ const AdminCallConfigModel = sequelize.define(
         dynacast: true,
       },
     },
+    nativePush: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {
+        android: {
+          enabled: false,
+          projectId: '',
+          clientEmail: '',
+          privateKey: '',
+        },
+        ios: {
+          enabled: false,
+          teamId: '',
+          keyId: '',
+          bundleId: '',
+          privateKey: '',
+          environment: 'production',
+        },
+      },
+    },
     ringingTimeoutSec: {
       type: DataTypes.INTEGER,
       allowNull: false,

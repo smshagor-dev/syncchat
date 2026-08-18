@@ -3,6 +3,7 @@ const ContactModel = require('../db/models/contact');
 const SettingModel = require('../db/models/setting');
 const { asArray, toPlainMany, toPlain } = require('../db/utils');
 const { toAbsoluteUploadUrl } = require('./storage');
+const { DEFAULT_USER_AVATAR_URL } = require('./avatarDefaults');
 
 const PRIVACY_OPTIONS = ['everyone', 'my_contacts', 'nobody'];
 
@@ -149,10 +150,16 @@ const sanitizeProfileForViewer = ({
       isContact: isViewerContact,
     });
 
+  const visibleAvatar =
+    canSeeAvatar && payload?.avatar
+      ? toAbsoluteUploadUrl(payload.avatar)
+      : DEFAULT_USER_AVATAR_URL;
+
   return {
     ...payload,
-    avatar: canSeeAvatar ? toAbsoluteUploadUrl(payload?.avatar) : null,
+    avatar: visibleAvatar || DEFAULT_USER_AVATAR_URL,
     online: canSeeOnline ? !!payload?.online : false,
+    canSeeAvatar,
     canSeeOnline,
     canSeeLastSeen,
     lastSeenAt: canSeeLastSeen ? payload?.updatedAt || null : null,

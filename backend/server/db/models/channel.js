@@ -3,6 +3,7 @@ const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 const { DEFAULT_GROUP_PERMISSIONS } = require('../../helpers/groupPermissions');
 const { DEFAULT_MODERATION_SETTINGS } = require('../../helpers/moderation');
+const { DEFAULT_CHANNEL_AVATAR_URL } = require('../../helpers/avatarDefaults');
 
 const ChannelModel = sequelize.define(
   'channels',
@@ -58,7 +59,7 @@ const ChannelModel = sequelize.define(
     avatar: {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: null,
+      defaultValue: DEFAULT_CHANNEL_AVATAR_URL,
     },
     link: {
       type: DataTypes.STRING(64),
@@ -105,5 +106,19 @@ const ChannelModel = sequelize.define(
     version: false,
   }
 );
+
+const createChannel = ChannelModel.create.bind(ChannelModel);
+ChannelModel.create = (values = {}) => {
+  const rawAvatar = String(values.avatar || '').trim();
+  const persistedAvatar =
+    rawAvatar && !rawAvatar.startsWith('data:')
+      ? values.avatar
+      : DEFAULT_CHANNEL_AVATAR_URL;
+
+  return createChannel({
+    ...values,
+    avatar: persistedAvatar,
+  });
+};
 
 module.exports = ChannelModel;

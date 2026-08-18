@@ -3,6 +3,7 @@ const sequelize = require('../sequelize');
 const uniqueId = require('../../helpers/uniqueId');
 const { DEFAULT_GROUP_PERMISSIONS } = require('../../helpers/groupPermissions');
 const { DEFAULT_MODERATION_SETTINGS } = require('../../helpers/moderation');
+const { DEFAULT_GROUP_AVATAR_URL } = require('../../helpers/avatarDefaults');
 
 const GroupModel = sequelize.define(
   'groups',
@@ -68,7 +69,7 @@ const GroupModel = sequelize.define(
     avatar: {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: null,
+      defaultValue: DEFAULT_GROUP_AVATAR_URL,
     },
     link: {
       type: DataTypes.STRING(64),
@@ -112,5 +113,19 @@ const GroupModel = sequelize.define(
     version: false,
   }
 );
+
+const createGroup = GroupModel.create.bind(GroupModel);
+GroupModel.create = (values = {}) => {
+  const rawAvatar = String(values.avatar || '').trim();
+  const persistedAvatar =
+    rawAvatar && !rawAvatar.startsWith('data:')
+      ? values.avatar
+      : DEFAULT_GROUP_AVATAR_URL;
+
+  return createGroup({
+    ...values,
+    avatar: persistedAvatar,
+  });
+};
 
 module.exports = GroupModel;

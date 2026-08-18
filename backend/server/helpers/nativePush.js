@@ -1,17 +1,23 @@
+const crypto = require('crypto');
 const http2 = require('http2');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const NativePushDeviceModel = require('../db/models/nativePushDevice');
 const SettingModel = require('../db/models/setting');
 const { toPlainMany } = require('../db/utils');
+const { getNativePushConfig } = require('./nativePushConfig');
 const logger = require('./logger');
 
 let fcmTokenCache = null;
 let apnsProviderTokenCache = null;
 
 const uniq = (values) => [...new Set((values || []).filter(Boolean))];
-const env = (name) => String(process.env[name] || '').trim();
 const restorePem = (value) => String(value || '').replace(/\\n/g, '\n');
+const fingerprint = (values) =>
+  crypto
+    .createHash('sha256')
+    .update((values || []).map((value) => String(value || '')).join('\u0000'))
+    .digest('hex');
 
 const shouldNotifyCalls = (setting) => {
   if (!setting) return true;
@@ -65,33 +71,50 @@ const getEligibleDevices = async (userIds) => {
   });
 };
 
-const fcmConfigured = () =>
-  Boolean(env('FCM_PROJECT_ID') && env('FCM_CLIENT_EMAIL') && env('FCM_PRIVATE_KEY'));
+const fcmConfigured = (android = {}) =>
+  Boolean(
+    android.enabled === true &&
+      android.projectId &&
+      android.clientEmail &&
+      android.privateKey
+  );
 
-const getFcmAccessToken = async () => {
+const getFcmAccessToken = async (android) => {
+  if (!fcmConfigured(android)) return null;
   const now = Date.now();
-  if (fcmTokenCache && fcmTokenCache.expiresAt - 60_000 > now) {
+  const configFingerprint = fingerprint([
+    android.projectId,
+    android.clientEmail,
+    android.privateKey,
+  ]);
+  if (
+    fcmTokenCache &&
+    fcmTokenCache.fingerprint === configFingerprint &&
+    fcmTokenCache.expiresAt - 60_000 > now
+  ) {
     return fcmTokenCache.token;
   }
-  if (!fcmConfigured()) return null;
 
   const issuedAt = Math.floor(now / 1000);
   const assertion = jwt.sign(
     {
-      iss: env('FCM_CLIENT_EMAIL'),
+      iss: android.clientEmail,
       scope: 'https://www.googleapis.com/auth/firebase.messaging',
       aud: 'https://oauth2.googleapis.com/token',
       iat: issuedAt,
       exp: issuedAt + 3600,
     },
-    restorePem(env('FCM_PRIVATE_KEY')),
+    restorePem(android.privateKey),
     { algorithm: 'RS256' }
   );
 
   const body = new URLSearchParams({
-    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    grant_type: 'urn:ietf:params:oauth-grant-type:jwt-bearer',
     assertion,
   });
+  // Google requires this exact OAuth grant type URI.
+  body.set('grant_type', 'urn:ietf:params:oauth:grant-type:jwt-bearer');
+
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -99,25 +122,28 @@ const getFcmAccessToken = async () => {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.access_token) {
-    const error = new Error(payload.error_description || payload.error || 'Unable to authenticate FCM');
+    const error = new Error(
+      payload.error_description || payload.error || 'Unable to authenticate FCM'
+    );
     error.statusCode = response.status;
     throw error;
   }
 
   fcmTokenCache = {
     token: payload.access_token,
+    fingerprint: configFingerprint,
     expiresAt: now + Math.max(60, Number(payload.expires_in || 3600)) * 1000,
   };
   return fcmTokenCache.token;
 };
 
-const sendFcm = async (device, call) => {
-  const accessToken = await getFcmAccessToken();
-  if (!accessToken) return { ok: false, skipped: true, reason: 'fcm_missing' };
+const sendFcm = async (device, call, android) => {
+  const accessToken = await getFcmAccessToken(android);
+  if (!accessToken) return { ok: false, skipped: true, reason: 'fcm_not_configured' };
 
   const data = buildCallData(call);
   const response = await fetch(
-    `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env('FCM_PROJECT_ID'))}/messages:send`,
+    `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(android.projectId)}/messages:send`,
     {
       method: 'POST',
       headers: {
@@ -149,48 +175,63 @@ const sendFcm = async (device, call) => {
   return { ok: false, unregister, status: response.status, message };
 };
 
-const apnsConfigured = () =>
+const apnsConfigured = (ios = {}) =>
   Boolean(
-    env('APNS_TEAM_ID') &&
-      env('APNS_KEY_ID') &&
-      env('APNS_BUNDLE_ID') &&
-      env('APNS_PRIVATE_KEY')
+    ios.enabled === true &&
+      ios.teamId &&
+      ios.keyId &&
+      ios.bundleId &&
+      ios.privateKey
   );
 
-const getApnsProviderToken = () => {
+const getApnsProviderToken = (ios) => {
+  if (!apnsConfigured(ios)) return null;
   const now = Date.now();
-  if (apnsProviderTokenCache && apnsProviderTokenCache.expiresAt - 60_000 > now) {
+  const configFingerprint = fingerprint([
+    ios.teamId,
+    ios.keyId,
+    ios.bundleId,
+    ios.privateKey,
+    ios.environment,
+  ]);
+  if (
+    apnsProviderTokenCache &&
+    apnsProviderTokenCache.fingerprint === configFingerprint &&
+    apnsProviderTokenCache.expiresAt - 60_000 > now
+  ) {
     return apnsProviderTokenCache.token;
   }
-  if (!apnsConfigured()) return null;
 
-  const token = jwt.sign({}, restorePem(env('APNS_PRIVATE_KEY')), {
+  const token = jwt.sign({}, restorePem(ios.privateKey), {
     algorithm: 'ES256',
-    issuer: env('APNS_TEAM_ID'),
+    issuer: ios.teamId,
     header: {
       alg: 'ES256',
-      kid: env('APNS_KEY_ID'),
+      kid: ios.keyId,
     },
   });
   apnsProviderTokenCache = {
     token,
+    fingerprint: configFingerprint,
     expiresAt: now + 50 * 60 * 1000,
   };
   return token;
 };
 
-const sendApns = async (device, call) => {
-  const providerToken = getApnsProviderToken();
-  if (!providerToken) return { ok: false, skipped: true, reason: 'apns_missing' };
+const sendApns = async (device, call, ios) => {
+  const providerToken = getApnsProviderToken(ios);
+  if (!providerToken) return { ok: false, skipped: true, reason: 'apns_not_configured' };
 
-  const production = env('APNS_ENVIRONMENT').toLowerCase() === 'production';
+  const production = String(ios.environment || 'production').toLowerCase() === 'production';
   const origin = production
     ? 'https://api.push.apple.com'
     : 'https://api.sandbox.push.apple.com';
   const isVoip = device.tokenType === 'voip';
-  const topic = isVoip ? `${env('APNS_BUNDLE_ID')}.voip` : env('APNS_BUNDLE_ID');
+  const topic = isVoip ? `${ios.bundleId}.voip` : ios.bundleId;
   const data = buildCallData(call);
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(10, Number(call.ringingTimeoutSec || 45));
+  const expiresAt =
+    Math.floor(Date.now() / 1000) +
+    Math.max(10, Number(call.ringingTimeoutSec || 45));
   const body = JSON.stringify({
     aps: isVoip
       ? { 'content-available': 1 }
@@ -256,7 +297,8 @@ const sendApns = async (device, call) => {
           return {};
         }
       })();
-      const reason = payload.reason || `APNs request failed with ${status || 'unknown status'}`;
+      const reason =
+        payload.reason || `APNs request failed with ${status || 'unknown status'}`;
       const unregister = status === 410 || /BadDeviceToken|Unregistered/i.test(reason);
       if (unregister) await device.destroy().catch(() => {});
       finish({ ok: false, unregister, status, message: reason });
@@ -266,15 +308,18 @@ const sendApns = async (device, call) => {
 };
 
 const sendNativeCallPush = async ({ userIds, call }) => {
-  const devices = await getEligibleDevices(userIds);
-  if (!devices.length) return { sent: 0, attempted: 0 };
+  const [devices, providerConfig] = await Promise.all([
+    getEligibleDevices(userIds),
+    getNativePushConfig(),
+  ]);
+  if (!devices.length) return { sent: 0, attempted: 0, skipped: 0 };
 
   const results = await Promise.allSettled(
     devices.map(async (device) => {
       const result =
         device.provider === 'apns'
-          ? await sendApns(device, call)
-          : await sendFcm(device, call);
+          ? await sendApns(device, call, providerConfig.ios)
+          : await sendFcm(device, call, providerConfig.android);
       if (!result.ok && !result.skipped) {
         logger.warn('NATIVE_CALL_PUSH_ERROR', {
           userId: device.userId,

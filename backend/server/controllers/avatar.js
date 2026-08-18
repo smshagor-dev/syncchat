@@ -1,5 +1,4 @@
 const sharp = require('sharp');
-const ProfileModel = require('../db/models/profile');
 const GroupModel = require('../db/models/group');
 const ChannelModel = require('../db/models/channel');
 const response = require('../helpers/response');
@@ -10,6 +9,18 @@ const {
 } = require('../helpers/storage');
 const { loadAppConfig } = require('../helpers/appConfig');
 const ensureProfile = require('../helpers/ensureProfile');
+const { appendProfilePhoto } = require('../helpers/profilePhotos');
+const {
+  isDefaultGroupAvatar,
+  isDefaultChannelAvatar,
+} = require('../helpers/avatarDefaults');
+
+const isEntityAdmin = (entity, userId) => {
+  const normalizedUserId = String(userId || '');
+  if (!entity || !normalizedUserId) return false;
+  if (String(entity.adminId || '') === normalizedUserId) return true;
+  return Array.isArray(entity.adminsId) && entity.adminsId.includes(normalizedUserId);
+};
 
 exports.upload = async (req, res) => {
   try {
@@ -74,16 +85,22 @@ exports.upload = async (req, res) => {
       .toBuffer();
 
     const uploadOwnerId = isGroup || isChannel ? targetId : req.user._id;
-    const uploaded = await saveBufferFile({
-      buffer: processedBuffer,
-      folder: 'avatars',
-      filename: `${uploadOwnerId}-${Date.now()}.webp`,
-    });
 
+    // Validate group/channel ownership before writing the file so unauthorized
+    // requests cannot create orphan media in FTP storage.
+    let channel = null;
+    let group = null;
     if (isChannel) {
-      const channel = await ChannelModel.findOne({
+      channel = await ChannelModel.findOne({
         where: { _id: targetId },
-        attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
+        attributes: [
+          '_id',
+          'avatar',
+          'roomId',
+          'participantsId',
+          'adminId',
+          'adminsId',
+        ],
       });
       if (!channel) {
         response({
@@ -94,7 +111,57 @@ exports.upload = async (req, res) => {
         });
         return;
       }
-      if (channel?.avatar) await deleteLocalFileByUrl(channel.avatar);
+      if (!isEntityAdmin(channel, req.user._id)) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'Only channel admins can change the channel photo',
+        });
+        return;
+      }
+    } else if (isGroup) {
+      group = await GroupModel.findOne({
+        where: { _id: targetId },
+        attributes: [
+          '_id',
+          'avatar',
+          'roomId',
+          'participantsId',
+          'adminId',
+          'adminsId',
+        ],
+      });
+      if (!group) {
+        response({
+          res,
+          statusCode: 404,
+          success: false,
+          message: 'Group not found',
+        });
+        return;
+      }
+      if (!isEntityAdmin(group, req.user._id)) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'Only group admins can change the group photo',
+        });
+        return;
+      }
+    }
+
+    const uploaded = await saveBufferFile({
+      buffer: processedBuffer,
+      folder: 'avatars',
+      filename: `${uploadOwnerId}-${Date.now()}.webp`,
+    });
+
+    if (isChannel) {
+      if (channel?.avatar && !isDefaultChannelAvatar(channel.avatar)) {
+        await deleteLocalFileByUrl(channel.avatar);
+      }
 
       await ChannelModel.update(
         { avatar: uploaded.publicPath },
@@ -113,20 +180,9 @@ exports.upload = async (req, res) => {
         }
       }
     } else if (isGroup) {
-      const group = await GroupModel.findOne({
-        where: { _id: targetId },
-        attributes: ['_id', 'avatar', 'roomId', 'participantsId'],
-      });
-      if (!group) {
-        response({
-          res,
-          statusCode: 404,
-          success: false,
-          message: 'Group not found',
-        });
-        return;
+      if (group?.avatar && !isDefaultGroupAvatar(group.avatar)) {
+        await deleteLocalFileByUrl(group.avatar);
       }
-      if (group?.avatar) await deleteLocalFileByUrl(group.avatar);
 
       await GroupModel.update(
         { avatar: uploaded.publicPath },
@@ -146,8 +202,8 @@ exports.upload = async (req, res) => {
         }
       }
     } else {
-      // A user may only update their own avatar. If this account predates the
-      // MongoDB profile migration, reconstruct its missing profile first.
+      // User profile photos are retained as history. They are removed from FTP
+      // only when the owner explicitly deletes them from the profile-photo viewer.
       const userId = req.user._id;
       const profile = await ensureProfile(userId);
       if (!profile) {
@@ -159,9 +215,19 @@ exports.upload = async (req, res) => {
         });
         return;
       }
-      if (profile?.avatar) await deleteLocalFileByUrl(profile.avatar);
 
-      await profile.update({ avatar: uploaded.publicPath });
+      await appendProfilePhoto({
+        profile,
+        url: uploaded.publicPath,
+        source: 'upload',
+      });
+
+      if (global?.io) {
+        global.io.emit('profile/avatar-changed', {
+          userId,
+          at: new Date().toISOString(),
+        });
+      }
     }
 
     response({
