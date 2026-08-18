@@ -75,14 +75,26 @@ Phase 4 notes:
 
 ## Phase 5 — Group calling scale
 
-- [ ] Replace P2P mesh for larger calls with an SFU
-- [ ] Evaluate self-hosted LiveKit vs mediasoup
-- [ ] Add adaptive subscriptions and group-call moderation
+- [x] Replace P2P mesh for larger calls with an SFU path
+- [x] Evaluate self-hosted LiveKit vs mediasoup and select LiveKit for the first production SFU integration
+- [x] Add adaptive subscriptions / publishing optimization and group-call moderation
+
+Phase 5 notes:
+- SyncChat keeps the existing WebRTC P2P runtime for 1-to-1 and small group calls. Group calls above four participants are never allowed to fall back to mesh; the backend caps the effective limit at four unless the admin-managed SFU is enabled.
+- LiveKit SFU settings are stored in the existing MongoDB-backed Calling & WebRTC admin configuration. The LiveKit API secret is AES-256-GCM encrypted using `CALL_CONFIG_SECRET` (falling back to the existing calling secret chain) and is never returned to browser clients.
+- The admin can configure the LiveKit URL, API key, API secret, maximum group size, SFU threshold, short-lived token TTL, adaptive stream, and Dynacast. The admin validation endpoint checks the configured SFU hostname and TCP endpoint in addition to ICE validation.
+- `POST /api/calling/sfu-token` issues a short-lived LiveKit room token only after authenticating the SyncChat user, loading the durable Redis call state, confirming the call is a group call, checking participant membership, and confirming the user was not removed by the host.
+- `GET /api/calling/session/:callId` returns the canonical backend-selected media mode (`p2p` or `sfu`) so foreground socket calls, PWA-launched calls, and reconnects make the same media-routing decision.
+- Each LiveKit room is derived from the server-generated SyncChat `callId`; the user UUID is the LiveKit participant identity. The browser never receives the LiveKit API secret.
+- The group runtime uses LiveKit `adaptiveStream` and `dynacast`, renders remote participants as independent tiles, highlights active speakers, exposes connection quality/reconnect state, and supports microphone mute, camera toggle, front/back camera switching, and speaker muting.
+- The SyncChat call initiator is treated as the host. Host moderation supports mute and remove events. Removed users are persisted in Redis call state and cannot obtain a new SFU token for that call. The current media-server eject is client-cooperative; an authoritative LiveKit RoomService remove-participant call can be added later if moderation must resist a modified/untrusted client.
+- The browser SDK is pinned to LiveKit Client v2.21.0 through the browser UMD build to avoid dependency-lock churn in this branch. A later maintenance change may vendor/bundle the SDK instead of loading it from a CDN.
+- A real LiveKit server or LiveKit Cloud project plus valid API credentials is still required for an end-to-end SFU media test. Repository build validation alone cannot prove external media allocation or TURN reachability.
 
 ## Security notes
 
-TURN credential/shared-secret values are stored encrypted using `CALL_CONFIG_SECRET`, falling back to `STORAGE_CONFIG_SECRET` or `JWT_SECRET`. Admin GET responses expose only whether secrets are set. Coturn shared-secret mode generates temporary HMAC credentials for authenticated users and never sends the shared secret to clients.
+TURN credential/shared-secret and LiveKit API-secret values are stored encrypted using `CALL_CONFIG_SECRET`, falling back to `STORAGE_CONFIG_SECRET` or `JWT_SECRET`. Admin GET responses expose only whether secrets are set. Coturn shared-secret mode generates temporary HMAC credentials for authenticated users and never sends the shared secret to clients.
 
-Durable call state stores only call/session metadata in Redis and MongoDB; WebRTC media remains peer-to-peer/TURN-relayed and is not persisted by this call-state layer.
+Durable call state stores only call/session metadata in Redis and MongoDB. 1-to-1/small-call WebRTC media remains peer-to-peer/TURN-relayed; larger group media is routed by the configured LiveKit SFU. SyncChat does not persist call media in this calling state layer.
 
-Web Push VAPID, FCM service-account, and APNs provider credentials are backend-only environment secrets and must never be embedded in browser, Android, or iOS client builds.
+Web Push VAPID, FCM service-account, APNs provider, TURN, and LiveKit provider credentials are backend-only secrets and must never be embedded in browser, Android, or iOS client builds.
