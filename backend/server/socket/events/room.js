@@ -1,5 +1,6 @@
 const { io } = global;
 const attachCallingEvents = require('./calling');
+const attachBackgroundCallingEvents = require('./backgroundCalling');
 
 module.exports = (socket) => {
   socket.on('room/open', (args) => {
@@ -9,4 +10,5 @@ module.exports = (socket) => {
   });
 
   attachCallingEvents(socket);
+  attachBackgroundCallingEvents(socket);
 };
