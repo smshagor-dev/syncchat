@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../sequelize');
+const { DEFAULT_USER_AVATAR_URL } = require('../../helpers/avatarDefaults');
 
 const ProfileModel = sequelize.define(
   'profiles',
@@ -36,8 +37,8 @@ const ProfileModel = sequelize.define(
     },
     avatar: {
       type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: null,
+      allowNull: false,
+      defaultValue: DEFAULT_USER_AVATAR_URL,
     },
     bio: {
       type: DataTypes.TEXT,
