@@ -9,6 +9,7 @@ const {
   deleteLocalFileByUrl,
 } = require('../helpers/storage');
 const { loadAppConfig } = require('../helpers/appConfig');
+const ensureProfile = require('../helpers/ensureProfile');
 
 exports.upload = async (req, res) => {
   try {
@@ -72,10 +73,11 @@ exports.upload = async (req, res) => {
       .webp({ quality: 90 })
       .toBuffer();
 
+    const uploadOwnerId = isGroup || isChannel ? targetId : req.user._id;
     const uploaded = await saveBufferFile({
       buffer: processedBuffer,
       folder: 'avatars',
-      filename: `${targetId || req.user._id}-${Date.now()}.webp`,
+      filename: `${uploadOwnerId}-${Date.now()}.webp`,
     });
 
     if (isChannel) {
@@ -144,26 +146,22 @@ exports.upload = async (req, res) => {
         }
       }
     } else {
-      const userId = targetId || req.user._id;
-      const profile = await ProfileModel.findOne({
-        where: { userId },
-        attributes: ['avatar'],
-      });
+      // A user may only update their own avatar. If this account predates the
+      // MongoDB profile migration, reconstruct its missing profile first.
+      const userId = req.user._id;
+      const profile = await ensureProfile(userId);
       if (!profile) {
         response({
           res,
           statusCode: 404,
           success: false,
-          message: 'Profile not found',
+          message: 'User profile not found',
         });
         return;
       }
       if (profile?.avatar) await deleteLocalFileByUrl(profile.avatar);
 
-      await ProfileModel.update(
-        { avatar: uploaded.publicPath },
-        { where: { userId } }
-      );
+      await profile.update({ avatar: uploaded.publicPath });
     }
 
     response({
