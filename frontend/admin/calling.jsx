@@ -11,7 +11,7 @@ const initial = {
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 12,
+  maxGroupParticipants: 4,
   groupSfu: {
     enabled: false,
     provider: 'livekit',
@@ -121,7 +121,7 @@ function CallingAdmin() {
       audioEnabled: Boolean(form.audioEnabled),
       videoEnabled: Boolean(form.videoEnabled),
       groupEnabled: Boolean(form.groupEnabled),
-      maxGroupParticipants: Number(form.maxGroupParticipants || 12),
+      maxGroupParticipants: Number(form.maxGroupParticipants || 4),
       groupSfu: {
         enabled: Boolean(form.groupSfu.enabled),
         provider: 'livekit',
@@ -236,7 +236,7 @@ function CallingAdmin() {
         <div style={styles.row}>
           <label style={styles.field}><span style={styles.label}>Ringing timeout (sec)</span><input style={styles.input} type="number" min="10" max="120" value={form.ringingTimeoutSec} onChange={(e) => set('ringingTimeoutSec', e.target.value)} /></label>
           <label style={styles.field}><span style={styles.label}>Reconnect grace (sec)</span><input style={styles.input} type="number" min="3" max="60" value={form.reconnectGraceSec} onChange={(e) => set('reconnectGraceSec', e.target.value)} /></label>
-          <label style={styles.field}><span style={styles.label}>Max group participants</span><input style={styles.input} type="number" min="2" max="100" value={form.maxGroupParticipants} onChange={(e) => set('maxGroupParticipants', e.target.value)} /><span style={styles.help}>P2P is limited to small groups. Larger groups are routed through SFU when enabled.</span></label>
+          <label style={styles.field}><span style={styles.label}>Max group participants</span><input style={styles.input} type="number" min="2" max="100" value={form.maxGroupParticipants} onChange={(e) => set('maxGroupParticipants', e.target.value)} /><span style={styles.help}>Without SFU, the runtime caps group calls at 4. Enable LiveKit before raising this limit.</span></label>
           <label style={styles.field}><span style={styles.label}>ICE transport policy</span><select style={styles.input} value={form.iceTransportPolicy} onChange={(e) => set('iceTransportPolicy', e.target.value)}><option value="all">All (direct + relay)</option><option value="relay">TURN relay only</option></select></label>
         </div>
 
