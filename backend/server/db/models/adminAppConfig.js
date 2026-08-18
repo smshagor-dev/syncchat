@@ -16,12 +16,12 @@ const AdminAppConfigModel = sequelize.define(
     },
     appLogo: {
       type: DataTypes.STRING(512),
-      allowNull: false,
+      allowNull: true,
       defaultValue: '',
     },
     supportEmail: {
       type: DataTypes.STRING(160),
-      allowNull: false,
+      allowNull: true,
       defaultValue: '',
     },
     smtp: {
