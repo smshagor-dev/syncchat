@@ -137,7 +137,21 @@ self.addEventListener('push', (event) => {
     options.data.call = call;
   }
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      if (isIncomingCall) {
+        const windows = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        });
+        const hasVisibleClient = windows.some(
+          (client) => client.visibilityState === 'visible'
+        );
+        if (hasVisibleClient) return;
+      }
+      await self.registration.showNotification(title, options);
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
