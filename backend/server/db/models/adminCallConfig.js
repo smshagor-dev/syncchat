@@ -32,7 +32,7 @@ const AdminCallConfigModel = sequelize.define(
     maxGroupParticipants: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 12,
+      defaultValue: 4,
     },
     groupSfu: {
       type: DataTypes.JSON,
