@@ -10,7 +10,6 @@ import AttachContactModal from '../components/modals/attachContact';
 import AttachPollModal from '../components/modals/attachPoll';
 import AttachEventModal from '../components/modals/attachEvent';
 import AttachStickerModal from '../components/modals/attachSticker';
-import CallPanel from '../components/modals/callPanelRuntime';
 import CallStart from '../components/modals/callStart';
 import CallUiPreview from '../components/mockups/callUiPreview';
 import RoomAppearance from '../components/modals/roomAppearance';
@@ -116,7 +115,6 @@ function Chat() {
       <modal.confirmDeleteChatAndInbox />
       <ShareContactModal />
       <FeedbackModal />
-      <CallPanel />
       <CallStart />
       <RoomAppearance />
     </div>
