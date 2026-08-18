@@ -37,7 +37,7 @@ const ProfileModel = sequelize.define(
     },
     avatar: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
       defaultValue: DEFAULT_USER_AVATAR_URL,
     },
     bio: {
