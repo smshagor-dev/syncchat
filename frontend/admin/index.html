@@ -12,11 +12,15 @@
   </head>
   <body>
     <div id="admin-root"></div>
-    <a id="ftp-storage-shortcut" href="/admin/storage" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;padding:10px 14px;border-radius:12px;background:#111827;color:#fff;text-decoration:none;font:600 13px Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)">FTP Storage</a>
+    <div id="admin-shortcuts" style="display:none;position:fixed;right:18px;bottom:18px;z-index:99999;gap:8px;flex-direction:column;align-items:flex-end">
+      <a href="/admin/calling-push" style="padding:10px 14px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font:600 13px Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)">Native Call Push</a>
+      <a href="/admin/calling" style="padding:10px 14px;border-radius:12px;background:#0f766e;color:#fff;text-decoration:none;font:600 13px Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)">Calling & WebRTC</a>
+      <a href="/admin/storage" style="padding:10px 14px;border-radius:12px;background:#111827;color:#fff;text-decoration:none;font:600 13px Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)">FTP Storage</a>
+    </div>
     <script>
       try {
         if (localStorage.getItem('admin_token')) {
-          document.getElementById('ftp-storage-shortcut').style.display = 'block';
+          document.getElementById('admin-shortcuts').style.display = 'flex';
         }
       } catch (error) {}
     </script>
