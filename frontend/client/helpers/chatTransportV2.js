@@ -11,14 +11,35 @@ import {
 } from './e2eeV2';
 
 const DB_NAME = 'syncchat-chat-v2';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const OUTBOX = 'outbox';
 const ROOM_STATE = 'roomState';
 const CACHE = 'messageCache';
+const LOCAL_KEYS = 'localKeys';
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 let installed = false;
 let rawEmit = null;
 let interceptorId = null;
 let flushing = false;
+
+const toBase64 = (value) => {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+};
+
+const fromBase64 = (value = '') => {
+  const binary = atob(String(value || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+};
 
 const openDb = () =>
   new Promise((resolve, reject) => {
@@ -34,6 +55,9 @@ const openDb = () =>
       if (!db.objectStoreNames.contains(CACHE)) {
         const store0 = db.createObjectStore(CACHE, { keyPath: 'cacheId' });
         store0.createIndex('roomId', 'roomId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(LOCAL_KEYS)) {
+        db.createObjectStore(LOCAL_KEYS, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -98,11 +122,62 @@ const idbGetRoomCache = async (roomId) => {
   });
 };
 
+const getLocalOutboxKey = async () => {
+  const existing = await idbGet(LOCAL_KEYS, 'e2ee-outbox');
+  if (existing?.key) return existing.key;
+  const key = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  await idbPut(LOCAL_KEYS, {
+    id: 'e2ee-outbox',
+    key,
+    createdAt: new Date().toISOString(),
+  });
+  return key;
+};
+
+const sealLocalPayload = async (payload) => {
+  const key = await getLocalOutboxKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoder.encode(JSON.stringify(payload || {}))
+  );
+  return {
+    __sealedE2eeOutbox: true,
+    iv: toBase64(iv),
+    ciphertext: toBase64(ciphertext),
+  };
+};
+
+const unsealLocalPayload = async (payload) => {
+  if (!payload?.__sealedE2eeOutbox) return payload || {};
+  const key = await getLocalOutboxKey();
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromBase64(payload.iv) },
+    key,
+    fromBase64(payload.ciphertext)
+  );
+  return JSON.parse(decoder.decode(plaintext));
+};
+
 const activeRoom = () => store.getState()?.room?.chat?.data || null;
 const activeUserId = () => String(store.getState()?.user?.master?._id || '');
 
 const topicFor = (roomId) =>
   String(localStorage.getItem(`syncchat:topic:${roomId}`) || '').trim() || null;
+
+const isCurrentRoomE2ee = (roomId) => {
+  const room = activeRoom();
+  return !!(
+    room?.roomId === roomId &&
+    room?.roomType === 'private' &&
+    room?.e2eeEnabled
+  );
+};
 
 const saveRoomSequence = async (roomId, sequence) => {
   if (!roomId) return;
@@ -115,8 +190,28 @@ const saveRoomSequence = async (roomId, sequence) => {
   }).catch(() => {});
 };
 
-const cacheMessage = async (chat) => {
-  if (!chat?._id || !chat?.roomId || chat?.isSecretSystemMessage) return;
+const isSensitiveEphemeralMessage = (chat) =>
+  !!(
+    chat?.secret ||
+    chat?.encryptedText ||
+    chat?.encryptionSessionId ||
+    chat?.expiresAt ||
+    chat?.isSecretSystemMessage ||
+    chat?.viewOnce ||
+    (chat?.viewOnceType && chat.viewOnceType !== 'none')
+  );
+
+const canCacheRawChat = (chat) => {
+  if (!chat?._id || !chat?.roomId) return false;
+  if (isSensitiveEphemeralMessage(chat)) return false;
+  if (chat?.e2eeDecrypted) return false;
+  if (chat?.e2eeEnvelope) return true;
+  if (String(chat?.text || '') === 'Encrypted message') return false;
+  return true;
+};
+
+const cacheRawMessage = async (chat) => {
+  if (!canCacheRawChat(chat)) return;
   await idbPut(CACHE, {
     cacheId: `${chat.roomId}:${chat._id}`,
     roomId: chat.roomId,
@@ -125,19 +220,20 @@ const cacheMessage = async (chat) => {
   }).catch(() => {});
 };
 
-const cachePayload = async (value) => {
-  if (!value || typeof value !== 'object') return;
+const cacheRawPayload = async (value, seen = new Set()) => {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  seen.add(value);
   if (Array.isArray(value)) {
-    await Promise.all(value.map((item) => cachePayload(item)));
+    await Promise.all(value.map((item) => cacheRawPayload(item, seen)));
     return;
   }
   if (value._id && value.roomId && ('text' in value || value.fileId || value.file)) {
-    await cacheMessage(value);
+    await cacheRawMessage(value);
   }
   await Promise.all(
     Object.values(value)
       .filter((item) => item && typeof item === 'object')
-      .map((item) => cachePayload(item))
+      .map((item) => cacheRawPayload(item, seen))
   );
 };
 
@@ -148,7 +244,10 @@ const decryptChatObject = async (value) => {
   let next = value;
   if (value.e2eeEnvelope && value.roomId) {
     try {
-      const text = await decryptEnvelope({ envelope: value.e2eeEnvelope, roomId: value.roomId });
+      const text = await decryptEnvelope({
+        envelope: value.e2eeEnvelope,
+        roomId: value.roomId,
+      });
       if (text !== null) next = { ...value, text, e2eeDecrypted: true };
     } catch (error0) {
       next = { ...value, text: 'Encrypted message', e2eeDecryptionError: true };
@@ -183,11 +282,12 @@ const prepareOutgoing = async (source) => {
     (crypto.randomUUID ? crypto.randomUUID() : uuidv4());
   payload.topicId = payload.topicId || topicFor(payload.roomId);
 
-  const room = activeRoom();
-  const e2eeEnabled =
-    room?.roomId === payload.roomId && room?.roomType === 'private' && !!room?.e2eeEnabled;
-
-  if (e2eeEnabled && String(payload.text || '').length > 0 && !payload.e2eeEnvelope) {
+  if (
+    isCurrentRoomE2ee(payload.roomId) &&
+    String(payload.text || '').length > 0 &&
+    !payload.e2eeEnvelope
+  ) {
+    const room = activeRoom();
     const owners = Array.isArray(room?.ownersId)
       ? room.ownersId
       : Array.isArray(payload.ownersId)
@@ -206,10 +306,12 @@ const prepareOutgoing = async (source) => {
 const sendOutboxItem = async (item) => {
   if (!socket.connected || !navigator.onLine || !rawEmit) return false;
   try {
-    const payload = await prepareOutgoing(item.payload);
+    const sourcePayload = await unsealLocalPayload(item.payload);
+    const payload = await prepareOutgoing(sourcePayload);
     await idbPut(OUTBOX, {
       ...item,
       payload,
+      encryptedForTransport: !!payload.e2eeEnvelope,
       status: 'sending',
       attempts: Number(item.attempts || 0) + 1,
       lastAttemptAt: new Date().toISOString(),
@@ -220,6 +322,7 @@ const sendOutboxItem = async (item) => {
     await idbPut(OUTBOX, {
       ...item,
       status: 'failed',
+      retry: false,
       error: error0.message,
       updatedAt: new Date().toISOString(),
     });
@@ -227,7 +330,7 @@ const sendOutboxItem = async (item) => {
       new CustomEvent('syncchat:outbox-failed', {
         detail: {
           clientMessageId: item.clientMessageId,
-          roomId: item.payload?.roomId || null,
+          roomId: item.roomId || null,
           message: error0.message,
         },
       })
@@ -244,6 +347,7 @@ export const flushChatOutbox = async () => {
       .filter((item) => item.status !== 'failed' || item.retry === true)
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     for (const row of rows) {
+      // Preserve message order while reconnecting.
       // eslint-disable-next-line no-await-in-loop
       await sendOutboxItem(row);
     }
@@ -255,13 +359,29 @@ export const flushChatOutbox = async () => {
 export const retryOutboxMessage = async (clientMessageId) => {
   const item = await idbGet(OUTBOX, clientMessageId);
   if (!item) return false;
-  await idbPut(OUTBOX, { ...item, status: 'queued', retry: true, error: '' });
+  await idbPut(OUTBOX, {
+    ...item,
+    status: 'queued',
+    retry: true,
+    error: '',
+    updatedAt: new Date().toISOString(),
+  });
   await flushChatOutbox();
   return true;
 };
 
-export const listOutboxMessages = () => idbGetAll(OUTBOX);
-export const readOfflineRoomMessages = (roomId) => idbGetRoomCache(roomId);
+export const listOutboxMessages = async () => {
+  const rows = await idbGetAll(OUTBOX);
+  return rows.map((item) => ({
+    ...item,
+    payload: item.payload?.__sealedE2eeOutbox
+      ? { text: '[Encrypted queued message]' }
+      : item.payload,
+  }));
+};
+
+export const readOfflineRoomMessages = async (roomId) =>
+  decryptChatObject(await idbGetRoomCache(roomId));
 
 const requestCatchUp = async () => {
   const room = activeRoom();
@@ -269,10 +389,15 @@ const requestCatchUp = async () => {
   const state = await idbGet(ROOM_STATE, room.roomId).catch(() => null);
   rawEmit(
     'chat/sync-request',
-    { roomId: room.roomId, afterSequence: Number(state?.sequence || 0), limit: 200 },
+    {
+      roomId: room.roomId,
+      afterSequence: Number(state?.sequence || 0),
+      limit: 200,
+    },
     (result) => {
       if (!result?.success) return;
       saveRoomSequence(room.roomId, result.lastSequence || 0);
+      Promise.all((result.messages || []).map((chat) => cacheRawMessage(chat))).catch(() => {});
       if ((result.messages || []).length) refreshActiveRoom();
     }
   );
@@ -289,12 +414,13 @@ const installResponseDecryption = () => {
     async (response0) => {
       try {
         if (response0?.data?.payload) {
+          const rawPayload = response0.data.payload;
+          await cacheRawPayload(rawPayload);
           // eslint-disable-next-line no-param-reassign
-          response0.data.payload = await decryptChatObject(response0.data.payload);
-          await cachePayload(response0.data.payload);
+          response0.data.payload = await decryptChatObject(rawPayload);
         }
       } catch (error0) {
-        // Keep the HTTP response usable even if cache/decryption is unavailable.
+        // Keep the HTTP response usable if optional cache/decryption is unavailable.
       }
       return response0;
     },
@@ -302,7 +428,14 @@ const installResponseDecryption = () => {
       const method = String(error0?.config?.method || '').toLowerCase();
       const url = String(error0?.config?.url || '');
       const match = url.match(/^\/chats\/([^/?]+)(?:\?|$)/);
-      const reserved = new Set(['media', 'calls', 'starred', 'scheduled', 'upload', 'send-file']);
+      const reserved = new Set([
+        'media',
+        'calls',
+        'starred',
+        'scheduled',
+        'upload',
+        'send-file',
+      ]);
       if (
         !error0?.response &&
         method === 'get' &&
@@ -310,7 +443,8 @@ const installResponseDecryption = () => {
         !reserved.has(match[1]) &&
         window.indexedDB
       ) {
-        const cached = await idbGetRoomCache(match[1]).catch(() => []);
+        const cachedRaw = await idbGetRoomCache(match[1]).catch(() => []);
+        const cached = await decryptChatObject(cachedRaw).catch(() => cachedRaw);
         if (cached.length) {
           return {
             data: {
@@ -332,6 +466,33 @@ const installResponseDecryption = () => {
   );
 };
 
+const queueOutgoing = async (source) => {
+  const clientMessageId =
+    String(source.clientMessageId || '').trim() ||
+    (crypto.randomUUID ? crypto.randomUUID() : uuidv4());
+  const payload = {
+    ...source,
+    clientMessageId,
+    topicId: source.topicId || topicFor(source.roomId),
+  };
+  const isE2ee = isCurrentRoomE2ee(payload.roomId);
+  const storedPayload = isE2ee ? await sealLocalPayload(payload) : payload;
+
+  await idbPut(OUTBOX, {
+    clientMessageId,
+    payload: storedPayload,
+    roomId: payload.roomId || null,
+    isE2ee,
+    status: 'queued',
+    retry: false,
+    attempts: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  await flushChatOutbox();
+};
+
 const installReliableEmit = () => {
   if (socket.__syncchatV2EmitWrapped) return;
   socket.__syncchatV2EmitWrapped = true;
@@ -341,25 +502,16 @@ const installReliableEmit = () => {
     if (event !== 'chat/insert') return rawEmit(event, ...args);
 
     const source = args[0] && typeof args[0] === 'object' ? { ...args[0] } : {};
-    const clientMessageId =
-      String(source.clientMessageId || '').trim() ||
-      (crypto.randomUUID ? crypto.randomUUID() : uuidv4());
-    source.clientMessageId = clientMessageId;
-    source.topicId = source.topicId || topicFor(source.roomId);
-
-    idbPut(OUTBOX, {
-      clientMessageId,
-      payload: source,
-      roomId: source.roomId || null,
-      status: 'queued',
-      retry: false,
-      attempts: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-      .then(() => flushChatOutbox())
-      .catch(() => {});
-
+    queueOutgoing(source).catch((error0) => {
+      window.dispatchEvent(
+        new CustomEvent('syncchat:outbox-failed', {
+          detail: {
+            roomId: source.roomId || null,
+            message: error0.message,
+          },
+        })
+      );
+    });
     return socket;
   };
 };
@@ -376,7 +528,9 @@ const installSocketListeners = () => {
     if (payload.accepted) {
       await idbDelete(OUTBOX, payload.clientMessageId).catch(() => {});
       await saveRoomSequence(payload.roomId, payload.sequence || 0);
-      window.dispatchEvent(new CustomEvent('syncchat:outbox-sent', { detail: payload }));
+      window.dispatchEvent(
+        new CustomEvent('syncchat:outbox-sent', { detail: payload })
+      );
     } else {
       const current = await idbGet(OUTBOX, payload.clientMessageId).catch(() => null);
       if (current) {
@@ -388,20 +542,27 @@ const installSocketListeners = () => {
           updatedAt: new Date().toISOString(),
         }).catch(() => {});
       }
-      window.dispatchEvent(new CustomEvent('syncchat:outbox-failed', { detail: payload }));
+      window.dispatchEvent(
+        new CustomEvent('syncchat:outbox-failed', { detail: payload })
+      );
     }
   });
 
   socket.on('chat/meta', async (payload = {}) => {
     await saveRoomSequence(payload.roomId, payload.sequence || 0);
-    if (payload.e2eeEnvelope && activeRoom()?.roomId === payload.roomId) refreshActiveRoom();
+    if (payload.e2eeEnvelope && activeRoom()?.roomId === payload.roomId) {
+      refreshActiveRoom();
+    }
   });
 
   socket.on('chat/insert', async (chat) => {
     if (!chat?._id) return;
-    await cacheMessage(chat);
+    await cacheRawMessage(chat);
     sendReceipt(chat, 'delivered');
-    if (document.visibilityState === 'visible' && activeRoom()?.roomId === chat.roomId) {
+    if (
+      document.visibilityState === 'visible' &&
+      activeRoom()?.roomId === chat.roomId
+    ) {
       sendReceipt(chat, 'read');
     }
   });
@@ -409,19 +570,33 @@ const installSocketListeners = () => {
   socket.on('chat/sync-result', async (result = {}) => {
     if (!result.success) return;
     await saveRoomSequence(result.roomId, result.lastSequence || 0);
-    await Promise.all((result.messages || []).map((chat) => cacheMessage(chat)));
-    if ((result.messages || []).length && activeRoom()?.roomId === result.roomId) refreshActiveRoom();
+    await Promise.all((result.messages || []).map((chat) => cacheRawMessage(chat)));
+    if (
+      (result.messages || []).length &&
+      activeRoom()?.roomId === result.roomId
+    ) {
+      refreshActiveRoom();
+    }
   });
 
-  socket.on('message-request/new', () => store.dispatch(setRefreshInbox(uuidv4())));
-  socket.on('message-request/updated', () => store.dispatch(setRefreshInbox(uuidv4())));
+  socket.on('message-request/new', () => {
+    store.dispatch(setRefreshInbox(uuidv4()));
+  });
+  socket.on('message-request/updated', () => {
+    store.dispatch(setRefreshInbox(uuidv4()));
+  });
   socket.on('chat/mention', (payload) => {
     window.dispatchEvent(new CustomEvent('syncchat:mention', { detail: payload }));
   });
 
-  window.addEventListener('online', () => flushChatOutbox().catch(() => {}));
+  window.addEventListener('online', () => {
+    flushChatOutbox().catch(() => {});
+  });
+
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') requestCatchUp().catch(() => {});
+    if (document.visibilityState === 'visible') {
+      requestCatchUp().catch(() => {});
+    }
   });
 };
 

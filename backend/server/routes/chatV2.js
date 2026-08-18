@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
 const ctrl = require('../controllers/chatV2');
+const suggestions = require('../controllers/chatSuggestions');
+const {
+  cleanupQueryE2eeKeys,
+  cleanupRoomE2eeKeys,
+} = require('../helpers/e2eeKeyDirectory');
 
 router.get('/chat-v2/messages/:chatId/receipts', authenticate, ctrl.getMessageReceipts);
 router.get('/chat-v2/messages/:chatId/history', authenticate, ctrl.getEditHistory);
@@ -12,6 +17,11 @@ router.put('/chat-v2/drafts/:roomId', authenticate, ctrl.saveDraft);
 router.delete('/chat-v2/drafts/:roomId', authenticate, ctrl.deleteDraft);
 
 router.get('/chat-v2/mentions', authenticate, ctrl.listMentions);
+router.get(
+  '/chat-v2/mention-suggestions/:roomId',
+  authenticate,
+  suggestions.mentionSuggestions
+);
 router.get('/chat-v2/search', authenticate, ctrl.searchMessages);
 
 router.get('/chat-v2/message-requests', authenticate, ctrl.listMessageRequests);
@@ -27,9 +37,24 @@ router.patch('/chat-v2/topics/item/:topicId', authenticate, ctrl.updateTopic);
 router.delete('/chat-v2/topics/item/:topicId', authenticate, ctrl.deleteTopic);
 
 router.put('/chat-v2/e2ee/device-key', authenticate, ctrl.registerE2eeKey);
-router.get('/chat-v2/e2ee/keys', authenticate, ctrl.listE2eeKeys);
-router.get('/chat-v2/e2ee/rooms/:roomId', authenticate, ctrl.getRoomE2ee);
-router.post('/chat-v2/e2ee/rooms/:roomId', authenticate, ctrl.setRoomE2ee);
+router.get(
+  '/chat-v2/e2ee/keys',
+  authenticate,
+  cleanupQueryE2eeKeys,
+  ctrl.listE2eeKeys
+);
+router.get(
+  '/chat-v2/e2ee/rooms/:roomId',
+  authenticate,
+  cleanupRoomE2eeKeys,
+  ctrl.getRoomE2ee
+);
+router.post(
+  '/chat-v2/e2ee/rooms/:roomId',
+  authenticate,
+  cleanupRoomE2eeKeys,
+  ctrl.setRoomE2ee
+);
 
 router.post('/chat-v2/uploads', authenticate, ctrl.initResumableUpload);
 router.put(

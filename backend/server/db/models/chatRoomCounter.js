@@ -8,6 +8,7 @@ const ChatRoomCounterModel = sequelize.define(
       type: DataTypes.STRING(64),
       allowNull: false,
       primaryKey: true,
+      unique: true,
     },
     sequence: {
       type: DataTypes.BIGINT,

@@ -11,6 +11,8 @@ import installChatDeletionSync from './helpers/chatDeletionSync';
 import installChatTransportV2 from './helpers/chatTransportV2';
 import installChatDraftV2 from './helpers/chatDraftV2';
 import installTopicFilterV2 from './helpers/topicFilterV2';
+import installChatHttpReliability from './helpers/chatHttpReliability';
+import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
@@ -28,9 +30,11 @@ root.render(
 installProfileAvatarSync();
 installChatLockSync();
 installChatDeletionSync();
+installChatHttpReliability();
 installChatTransportV2();
 installTopicFilterV2();
 installChatDraftV2();
+installMentionAutocompleteV2();
 registerServiceWorker();
 
 requestNotificationPermission();
