@@ -205,18 +205,6 @@ const removeProfilePhoto = async ({ userId, photoId }) => {
     deletedAt: new Date(),
   });
 
-  if (plainPhoto?.url && !isDefaultUserAvatar(plainPhoto.url)) {
-    try {
-      await deleteStorageFileByUrl(plainPhoto.url);
-    } catch (error0) {
-      logger.warn('PROFILE_PHOTO_STORAGE_DELETE_FAILED', {
-        userId: normalizedUserId,
-        photoId: normalizedPhotoId,
-        message: error0.message,
-      });
-    }
-  }
-
   if (deletingCurrent) {
     const nextPhoto = await ProfilePhotoModel.findOne({
       where: {
@@ -235,6 +223,20 @@ const removeProfilePhoto = async ({ userId, photoId }) => {
       await profile.update({ avatar: nextPhoto.url });
     } else {
       await profile.update({ avatar: DEFAULT_USER_AVATAR_URL });
+    }
+  }
+
+  // Remove physical media only after the DB no longer depends on it. If FTP
+  // deletion fails the photo stays hidden from history and can be cleaned later.
+  if (plainPhoto?.url && !isDefaultUserAvatar(plainPhoto.url)) {
+    try {
+      await deleteStorageFileByUrl(plainPhoto.url);
+    } catch (error0) {
+      logger.warn('PROFILE_PHOTO_STORAGE_DELETE_FAILED', {
+        userId: normalizedUserId,
+        photoId: normalizedPhotoId,
+        message: error0.message,
+      });
     }
   }
 
