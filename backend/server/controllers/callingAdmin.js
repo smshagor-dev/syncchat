@@ -75,9 +75,7 @@ const validateIceReachability = async (config) => {
 
   for (const value of urls) {
     const parsed = parseIceHost(value);
-    if (!net.isIP(parsed.host)) {
-      await dns.lookup(parsed.host);
-    }
+    if (!net.isIP(parsed.host)) await dns.lookup(parsed.host);
 
     let tcpReachable = null;
     if (
@@ -94,6 +92,7 @@ const validateIceReachability = async (config) => {
     }
 
     checks.push({
+      type: 'ice',
       url: parsed.raw,
       host: parsed.host,
       port: parsed.port,
@@ -103,6 +102,30 @@ const validateIceReachability = async (config) => {
   }
 
   return checks;
+};
+
+const validateSfuReachability = async (config) => {
+  if (!config.groupSfu?.enabled) return [];
+  const url = new URL(config.groupSfu.url.replace(/^ws:/i, 'http:').replace(/^wss:/i, 'https:'));
+  const host = url.hostname;
+  const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+  if (!net.isIP(host)) await dns.lookup(host);
+  try {
+    await checkTcp({ host, port }, 4000);
+  } catch (error0) {
+    throw new Error(`Unable to reach LiveKit at ${host}:${port}`);
+  }
+  return [
+    {
+      type: 'sfu',
+      provider: 'livekit',
+      url: config.groupSfu.url,
+      host,
+      port,
+      dnsResolved: true,
+      tcpReachable: true,
+    },
+  ];
 };
 
 exports.getCallConfig = async (req, res) => {
@@ -147,10 +170,15 @@ exports.testCallConfig = async (req, res) => {
   try {
     const startedAt = Date.now();
     const merged = await mergeCallConfigInput(req.body || {});
-    const checks = await validateIceReachability(merged);
+    const [iceChecks, sfuChecks] = await Promise.all([
+      validateIceReachability(merged),
+      validateSfuReachability(merged),
+    ]);
+    const checks = [...iceChecks, ...sfuChecks];
     const latencyMs = Date.now() - startedAt;
-    const message =
-      'ICE configuration is valid and server host resolution passed. TURN media allocation is verified during a real call.';
+    const message = merged.groupSfu?.enabled
+      ? 'ICE and LiveKit endpoint validation passed. Media allocation and room join are verified during a real call.'
+      : 'ICE configuration is valid and server host resolution passed. TURN media allocation is verified during a real call.';
     await markCallConfigTest({ success: true, message });
     await logAdminAction({
       req,
