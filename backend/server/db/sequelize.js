@@ -205,6 +205,7 @@ const facadeFor = (name, model) => ({
 
 const database = {
   define(name, fields, options = {}) { if (registry.has(name)) return registry.get(name).facade; const schema = schemaFor(fields, options, name); const model = mongoose.models[name] || mongoose.model(name, schema, name); const facade = facadeFor(name, model); registry.set(name, { model, facade }); return facade; },
+  getDatabaseName() { return mongoose.connection?.name || db.name; },
   async authenticate() { if (mongoose.connection.readyState === 1) return mongoose.connection; await mongoose.connect(db.uri, { dbName: db.name, autoIndex: db.autoIndex, serverSelectionTimeoutMS: db.serverSelectionTimeoutMs }); return mongoose.connection; },
   async sync() { if (db.autoIndex) await Promise.all([...registry.values()].map(({ model }) => model.createIndexes())); },
   async close() { if (mongoose.connection.readyState !== 0) await mongoose.disconnect(); },
