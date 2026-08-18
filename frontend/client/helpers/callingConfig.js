@@ -5,7 +5,15 @@ const DEFAULT_CONFIG = {
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 4,
+  maxGroupParticipants: 12,
+  groupSfu: {
+    enabled: false,
+    provider: 'livekit',
+    url: '',
+    minParticipants: 3,
+    adaptiveStream: true,
+    dynacast: true,
+  },
   ringingTimeoutSec: 45,
   reconnectGraceSec: 12,
   iceTransportPolicy: 'all',
@@ -35,6 +43,10 @@ const CACHE_TTL_MS = 30 * 1000;
 const normalize = (payload = {}) => ({
   ...DEFAULT_CONFIG,
   ...payload,
+  groupSfu: {
+    ...DEFAULT_CONFIG.groupSfu,
+    ...(payload.groupSfu || {}),
+  },
   iceServers:
     Array.isArray(payload.iceServers) && payload.iceServers.length
       ? payload.iceServers
@@ -76,6 +88,16 @@ export const getCallingConfig = async ({ force = false } = {}) => {
   return pending;
 };
 
+export const shouldUseGroupSfu = (config, participants = 0) => {
+  const cfg = normalize(config || {});
+  return (
+    cfg.groupEnabled &&
+    cfg.groupSfu?.enabled === true &&
+    cfg.groupSfu?.provider === 'livekit' &&
+    Number(participants || 0) >= Number(cfg.groupSfu?.minParticipants || 3)
+  );
+};
+
 export const callAllowed = (
   config,
   { mediaType = 'audio', roomType = 'private', participants = 2 } = {}
@@ -93,10 +115,20 @@ export const callAllowed = (
   if (roomType === 'group' && !cfg.groupEnabled) {
     return { allowed: false, message: 'Group calling is disabled by the administrator' };
   }
-  if (roomType === 'group' && participants > Number(cfg.maxGroupParticipants || 4)) {
+  if (roomType === 'group' && participants > Number(cfg.maxGroupParticipants || 12)) {
     return {
       allowed: false,
-      message: `Group calls are limited to ${cfg.maxGroupParticipants || 4} participants`,
+      message: `Group calls are limited to ${cfg.maxGroupParticipants || 12} participants`,
+    };
+  }
+  if (
+    roomType === 'group' &&
+    participants > 4 &&
+    !shouldUseGroupSfu(cfg, participants)
+  ) {
+    return {
+      allowed: false,
+      message: 'Group calls above 4 participants require the admin-managed SFU service',
     };
   }
   return { allowed: true, message: '' };
