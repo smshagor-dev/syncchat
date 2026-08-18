@@ -31,8 +31,7 @@ const withWwwVariants = (origin) => {
 };
 
 const configuredOrigins = [
-  ...String(process.env.APP_ORIGIN || '')
-    .split(','),
+  ...String(process.env.APP_ORIGIN || '').split(','),
   getClientOrigin(),
   getAdminOrigin(),
   getServerOrigin(),
@@ -50,11 +49,14 @@ module.exports = {
     origin: Array.from(new Set(configuredOrigins)),
   },
   db: {
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: Number(process.env.DB_PORT || 3306),
-    name: process.env.DB_NAME || 'syncchat',
-    user: process.env.DB_USER || 'root',
-    pass: process.env.DB_PASSWORD || '',
-    autoMigrate: process.env.DB_AUTO_MIGRATE !== 'false',
+    uri:
+      process.env.MONGODB_URI ||
+      process.env.MONGO_URI ||
+      'mongodb://127.0.0.1:27017/syncchat',
+    name: process.env.MONGODB_DB_NAME || process.env.DB_NAME || 'syncchat',
+    autoIndex: process.env.MONGODB_AUTO_INDEX !== 'false',
+    serverSelectionTimeoutMs: Number(
+      process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 10000
+    ),
   },
 };

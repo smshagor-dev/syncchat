@@ -20,7 +20,8 @@ RUN npm run build
 FROM node:24-bookworm-slim AS backend-deps
 WORKDIR /app/backend
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci --omit=dev
+# package-lock is refreshed by npm install after the MongoDB dependency migration.
+RUN npm install --omit=dev
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
