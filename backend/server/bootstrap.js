@@ -3,6 +3,7 @@ const {
   startScheduledMessageWorker,
 } = require('./helpers/scheduledMessages');
 const { configureSocketAdapter } = require('./helpers/socketAdapter');
+const ensureAvatarDefaults = require('./helpers/ensureAvatarDefaults');
 const logger = require('./helpers/logger');
 
 let bootstrapPromise = null;
@@ -12,6 +13,7 @@ const bootstrap = ({ startScheduledWorker = true } = {}) => {
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
       await connectDb();
+      await ensureAvatarDefaults();
       await configureSocketAdapter(global.io);
 
       logger.info('RUNTIME_READY', {
