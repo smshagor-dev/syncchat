@@ -11,7 +11,19 @@ const initial = {
   audioEnabled: true,
   videoEnabled: true,
   groupEnabled: true,
-  maxGroupParticipants: 4,
+  maxGroupParticipants: 12,
+  groupSfu: {
+    enabled: false,
+    provider: 'livekit',
+    url: '',
+    apiKey: '',
+    apiSecret: '',
+    apiSecretSet: false,
+    tokenTtlSec: 3600,
+    minParticipants: 3,
+    adaptiveStream: true,
+    dynacast: true,
+  },
   ringingTimeoutSec: 45,
   reconnectGraceSec: 12,
   iceTransportPolicy: 'all',
@@ -48,7 +60,7 @@ const initial = {
 
 const styles = {
   page: { minHeight: '100vh', background: '#f5f7fb', padding: '32px 16px', color: '#172033' },
-  card: { maxWidth: 980, margin: '0 auto', background: '#fff', borderRadius: 18, padding: 28, boxShadow: '0 18px 50px rgba(24,39,75,.08)' },
+  card: { maxWidth: 1060, margin: '0 auto', background: '#fff', borderRadius: 18, padding: 28, boxShadow: '0 18px 50px rgba(24,39,75,.08)' },
   section: { borderTop: '1px solid #e7ebf2', paddingTop: 22, marginTop: 22 },
   row: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 },
   field: { display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 },
@@ -84,6 +96,7 @@ function CallingAdmin() {
           ...initial,
           ...payload,
           turn: { ...initial.turn, ...(payload.turn || {}), credential: '', sharedSecret: '' },
+          groupSfu: { ...initial.groupSfu, ...(payload.groupSfu || {}), apiSecret: '' },
           audioProfile: { ...initial.audioProfile, ...(payload.audioProfile || {}) },
           videoProfile: { ...initial.videoProfile, ...(payload.videoProfile || {}) },
         });
@@ -95,6 +108,8 @@ function CallingAdmin() {
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
   const setTurn = (key, value) =>
     setForm((prev) => ({ ...prev, turn: { ...prev.turn, [key]: value } }));
+  const setGroupSfu = (key, value) =>
+    setForm((prev) => ({ ...prev, groupSfu: { ...prev.groupSfu, [key]: value } }));
   const setAudio = (key, value) =>
     setForm((prev) => ({ ...prev, audioProfile: { ...prev.audioProfile, [key]: value } }));
   const setVideo = (key, value) =>
@@ -106,7 +121,17 @@ function CallingAdmin() {
       audioEnabled: Boolean(form.audioEnabled),
       videoEnabled: Boolean(form.videoEnabled),
       groupEnabled: Boolean(form.groupEnabled),
-      maxGroupParticipants: Number(form.maxGroupParticipants || 4),
+      maxGroupParticipants: Number(form.maxGroupParticipants || 12),
+      groupSfu: {
+        enabled: Boolean(form.groupSfu.enabled),
+        provider: 'livekit',
+        url: String(form.groupSfu.url || '').trim(),
+        apiKey: String(form.groupSfu.apiKey || '').trim(),
+        tokenTtlSec: Number(form.groupSfu.tokenTtlSec || 3600),
+        minParticipants: Number(form.groupSfu.minParticipants || 3),
+        adaptiveStream: Boolean(form.groupSfu.adaptiveStream),
+        dynacast: Boolean(form.groupSfu.dynacast),
+      },
       ringingTimeoutSec: Number(form.ringingTimeoutSec || 45),
       reconnectGraceSec: Number(form.reconnectGraceSec || 12),
       iceTransportPolicy: form.iceTransportPolicy,
@@ -131,6 +156,7 @@ function CallingAdmin() {
     };
     if (form.turn.credential) data.turn.credential = form.turn.credential;
     if (form.turn.sharedSecret) data.turn.sharedSecret = form.turn.sharedSecret;
+    if (form.groupSfu.apiSecret) data.groupSfu.apiSecret = form.groupSfu.apiSecret;
     return data;
   };
 
@@ -140,6 +166,7 @@ function CallingAdmin() {
       ...prev,
       ...next,
       turn: { ...prev.turn, ...(next.turn || {}), credential: '', sharedSecret: '' },
+      groupSfu: { ...prev.groupSfu, ...(next.groupSfu || {}), apiSecret: '' },
       audioProfile: { ...prev.audioProfile, ...(next.audioProfile || {}) },
       videoProfile: { ...prev.videoProfile, ...(next.videoProfile || {}) },
     }));
@@ -152,7 +179,7 @@ function CallingAdmin() {
     try {
       const res = await axios.patch('/admin/calling/config', payload());
       applyPayload(res?.data?.payload);
-      setMessage('Calling settings saved in MongoDB. Runtime clients can now read the admin-managed ICE configuration.');
+      setMessage('Calling settings saved in MongoDB. Group SFU policy is now available to runtime clients.');
     } catch (err) {
       setError(err?.response?.data?.message || err.message);
     } finally {
@@ -167,7 +194,7 @@ function CallingAdmin() {
     try {
       const res = await axios.post('/admin/calling/config/test', payload());
       const data = res?.data?.payload || {};
-      setMessage(`ICE validation passed in ${data.latencyMs || 0} ms across ${data.checks?.length || 0} configured server URL(s).`);
+      setMessage(`Calling validation passed in ${data.latencyMs || 0} ms across ${data.checks?.length || 0} configured endpoint(s).`);
       setForm((prev) => ({
         ...prev,
         lastTestedAt: new Date().toISOString(),
@@ -191,7 +218,7 @@ function CallingAdmin() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 24 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 28 }}>Calling & WebRTC</h1>
-            <p style={{ ...styles.help, marginTop: 7 }}>DB-backed global call configuration. TURN secrets are encrypted before storage and are never returned to the admin UI.</p>
+            <p style={{ ...styles.help, marginTop: 7 }}>DB-backed call configuration for P2P WebRTC, TURN, and scalable LiveKit SFU group media. Secrets are encrypted at rest and never returned to the admin UI.</p>
           </div>
           <a href="/admin" style={{ textDecoration: 'none', fontWeight: 700 }}>← Admin</a>
         </div>
@@ -209,8 +236,26 @@ function CallingAdmin() {
         <div style={styles.row}>
           <label style={styles.field}><span style={styles.label}>Ringing timeout (sec)</span><input style={styles.input} type="number" min="10" max="120" value={form.ringingTimeoutSec} onChange={(e) => set('ringingTimeoutSec', e.target.value)} /></label>
           <label style={styles.field}><span style={styles.label}>Reconnect grace (sec)</span><input style={styles.input} type="number" min="3" max="60" value={form.reconnectGraceSec} onChange={(e) => set('reconnectGraceSec', e.target.value)} /></label>
-          <label style={styles.field}><span style={styles.label}>Max group participants</span><input style={styles.input} type="number" min="2" max="8" value={form.maxGroupParticipants} onChange={(e) => set('maxGroupParticipants', e.target.value)} /><span style={styles.help}>P2P mesh is capped at 8 here. SFU will replace this limit later.</span></label>
+          <label style={styles.field}><span style={styles.label}>Max group participants</span><input style={styles.input} type="number" min="2" max="100" value={form.maxGroupParticipants} onChange={(e) => set('maxGroupParticipants', e.target.value)} /><span style={styles.help}>P2P is limited to small groups. Larger groups are routed through SFU when enabled.</span></label>
           <label style={styles.field}><span style={styles.label}>ICE transport policy</span><select style={styles.input} value={form.iceTransportPolicy} onChange={(e) => set('iceTransportPolicy', e.target.value)}><option value="all">All (direct + relay)</option><option value="relay">TURN relay only</option></select></label>
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={{ marginTop: 0 }}>Group Media SFU</h2>
+          <p style={styles.help}>LiveKit can be self-hosted or cloud-hosted. SyncChat creates short-lived participant tokens on the backend; API secrets never reach the browser.</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, fontWeight: 700 }}><input type="checkbox" checked={form.groupSfu.enabled} onChange={(e) => setGroupSfu('enabled', e.target.checked)} />Enable LiveKit SFU for larger group calls</label>
+          <div style={styles.row}>
+            <label style={styles.field}><span style={styles.label}>Provider</span><select style={styles.input} value="livekit" disabled><option value="livekit">LiveKit</option></select></label>
+            <label style={styles.field}><span style={styles.label}>LiveKit URL</span><input style={styles.input} value={form.groupSfu.url} onChange={(e) => setGroupSfu('url', e.target.value)} placeholder="wss://media.example.com" /><span style={styles.help}>Use your self-hosted or LiveKit Cloud websocket URL.</span></label>
+            <label style={styles.field}><span style={styles.label}>API key</span><input style={styles.input} value={form.groupSfu.apiKey} onChange={(e) => setGroupSfu('apiKey', e.target.value)} placeholder="API key" /></label>
+            <label style={styles.field}><span style={styles.label}>API secret</span><input style={styles.input} type="password" value={form.groupSfu.apiSecret} onChange={(e) => setGroupSfu('apiSecret', e.target.value)} placeholder={form.groupSfu.apiSecretSet ? 'Saved — leave blank to keep' : 'API secret'} /><span style={styles.help}>{form.groupSfu.apiSecretSet ? 'Encrypted secret already stored.' : 'No API secret stored yet.'}</span></label>
+          </div>
+          <div style={styles.row}>
+            <label style={styles.field}><span style={styles.label}>Use SFU from participants</span><input style={styles.input} type="number" min="3" max="100" value={form.groupSfu.minParticipants} onChange={(e) => setGroupSfu('minParticipants', e.target.value)} /><span style={styles.help}>Recommended: 3. Calls below this threshold stay on the existing P2P path.</span></label>
+            <label style={styles.field}><span style={styles.label}>Participant token TTL (sec)</span><input style={styles.input} type="number" min="300" max="21600" value={form.groupSfu.tokenTtlSec} onChange={(e) => setGroupSfu('tokenTtlSec', e.target.value)} /></label>
+            <label style={styles.field}><span style={styles.label}>Adaptive stream</span><span><input type="checkbox" checked={form.groupSfu.adaptiveStream} onChange={(e) => setGroupSfu('adaptiveStream', e.target.checked)} /> Dynamically subscribe to useful video quality</span></label>
+            <label style={styles.field}><span style={styles.label}>Dynacast</span><span><input type="checkbox" checked={form.groupSfu.dynacast} onChange={(e) => setGroupSfu('dynacast', e.target.checked)} /> Pause unused published video layers</span></label>
+          </div>
         </div>
 
         <div style={styles.section}>
@@ -259,7 +304,7 @@ function CallingAdmin() {
         </div>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button type="button" style={{ ...styles.button, background: '#111827', color: '#fff' }} onClick={test} disabled={testing || saving}>{testing ? 'Validating…' : 'Validate ICE Config'}</button>
+          <button type="button" style={{ ...styles.button, background: '#111827', color: '#fff' }} onClick={test} disabled={testing || saving}>{testing ? 'Validating…' : 'Validate Calling Config'}</button>
           <button type="button" style={{ ...styles.button, background: '#2563eb', color: '#fff' }} onClick={save} disabled={saving || testing}>{saving ? 'Saving…' : 'Save Calling Settings'}</button>
         </div>
       </div>
