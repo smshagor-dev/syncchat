@@ -143,6 +143,7 @@ if (!config.isDev && config.serveFrontend) {
 
 global.io = new SocketServer(server, {
   cors: corsOptions,
+  transports: ['websocket'],
   maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE || 25e6),
 });
 require('./socket');
