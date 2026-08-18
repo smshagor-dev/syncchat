@@ -1,4 +1,20 @@
 const router = require('express').Router();
+const mongoose = require('mongoose');
+const { isRedisConfigured } = require('../helpers/socketAdapter');
+
+// lightweight deployment health check
+router.get('/health', (req, res) => {
+  const mongoReady = mongoose.connection.readyState === 1;
+  res.status(mongoReady ? 200 : 503).json({
+    success: mongoReady,
+    service: 'syncchat-backend',
+    runtime: process.env.VERCEL === '1' ? 'vercel' : 'node',
+    mongo: mongoReady ? 'connected' : 'not-ready',
+    redis: isRedisConfigured() ? 'configured' : 'not-configured',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // routes
 const user = require('./user');
 const chat = require('./chat');
