@@ -6,9 +6,9 @@
   "devCommand": "npm run dev --prefix frontend",
   "outputDirectory": "frontend/client/public",
   "redirects": [
-    { "source": "/favicon.ico", "destination": "/pwa-192x192.png", "permanent": false },
-    { "source": "/favicon.png", "destination": "/pwa-192x192.png", "permanent": false },
-    { "source": "/assets/images/favicon.png", "destination": "/pwa-192x192.png", "permanent": false },
+    { "source": "/favicon.ico", "destination": "/api/pwa/icon/192.png", "permanent": false },
+    { "source": "/favicon.png", "destination": "/api/pwa/icon/192.png", "permanent": false },
+    { "source": "/assets/images/favicon.png", "destination": "/api/pwa/icon/192.png", "permanent": false },
     { "source": "/default-avatar.png", "destination": "/assets/icons/user-avatar.svg", "permanent": false },
     { "source": "/assets/images/default-avatar.png", "destination": "/assets/icons/user-avatar.svg", "permanent": false },
     { "source": "/default-group-avatar.png", "destination": "/assets/icons/group-avatar.svg", "permanent": false },
@@ -18,6 +18,8 @@
     { "source": "/assets/images/default-channel-avatar.png", "destination": "/assets/icons/channel-avatar.svg", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/api/pwa/icon/192.png", "destination": "https://api.syncchat.live/api/pwa/icon/192.png" },
+    { "source": "/api/pwa/icon/512.png", "destination": "https://api.syncchat.live/api/pwa/icon/512.png" },
     { "source": "/admin/storage", "destination": "/admin/storage.html" },
     { "source": "/admin/calling", "destination": "/admin/calling.html" },
     { "source": "/admin/calling-push", "destination": "/admin/calling-push.html" },
