@@ -1,6 +1,8 @@
 const path = require('path');
+const sharp = require('sharp');
 const { getStorageConfig } = require('../helpers/storageConfig');
 const { readStorageFileToBuffer } = require('../helpers/storage');
+const { loadAppConfig } = require('../helpers/appConfig');
 
 const IMAGE_TYPES = new Map([
   ['.png', 'image/png'],
@@ -12,6 +14,8 @@ const IMAGE_TYPES = new Map([
   ['.ico', 'image/x-icon'],
   ['.avif', 'image/avif'],
 ]);
+const PWA_ICON_SIZES = new Set([192, 512]);
+const MAX_PROXY_BYTES = 20 * 1024 * 1024;
 
 const safePathname = (value = '') => {
   const raw = String(value || '').trim();
@@ -74,6 +78,21 @@ const resolveConfiguredStorageUrl = async (rawUrl = '') => {
   return `${base}/${relative}`;
 };
 
+const readValidatedImage = async (storageUrl) => {
+  const buffer = await readStorageFileToBuffer(storageUrl);
+  if (!buffer?.length) {
+    const error = new Error('Image not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (buffer.length > MAX_PROXY_BYTES) {
+    const error = new Error('Image is too large to proxy');
+    error.statusCode = 413;
+    throw error;
+  }
+  return buffer;
+};
+
 exports.image = async (req, res) => {
   try {
     const storageUrl = await resolveConfiguredStorageUrl(req.query?.url);
@@ -84,26 +103,58 @@ exports.image = async (req, res) => {
       return;
     }
 
-    const buffer = await readStorageFileToBuffer(storageUrl);
-    if (!buffer?.length) {
-      res.status(404).json({ success: false, message: 'Image not found' });
-      return;
-    }
-
-    const maxBytes = 20 * 1024 * 1024;
-    if (buffer.length > maxBytes) {
-      res.status(413).json({ success: false, message: 'Image is too large to proxy' });
-      return;
-    }
+    const buffer = await readValidatedImage(storageUrl);
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', String(buffer.length));
-    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    res.setHeader(
+      'Cache-Control',
+      'public, max-age=3600, stale-while-revalidate=86400'
+    );
     res.status(200).send(buffer);
   } catch (error0) {
     res.status(error0.statusCode || 404).json({
       success: false,
       message: error0.message || 'Image could not be loaded',
+    });
+  }
+};
+
+exports.pwaIcon = async (req, res) => {
+  try {
+    const size = Number(req.params?.size);
+    if (!PWA_ICON_SIZES.has(size)) {
+      res.status(404).json({ success: false, message: 'Unsupported PWA icon size' });
+      return;
+    }
+
+    const appConfig = await loadAppConfig();
+    const appLogo = String(appConfig?.appLogo || '').trim();
+    if (!appLogo) {
+      res.status(404).json({ success: false, message: 'App logo is not configured' });
+      return;
+    }
+
+    const storageUrl = await resolveConfiguredStorageUrl(appLogo);
+    const source = await readValidatedImage(storageUrl);
+    const icon = await sharp(source)
+      .rotate()
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Length', String(icon.length));
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    res.setHeader('X-PWA-Icon-Source', 'app-config');
+    res.status(200).send(icon);
+  } catch (error0) {
+    res.status(error0.statusCode || 422).json({
+      success: false,
+      message: error0.message || 'PWA icon could not be generated',
     });
   }
 };
