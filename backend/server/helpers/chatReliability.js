@@ -13,7 +13,7 @@ const nextSequence = async (roomId) => {
   const row = await model.findOneAndUpdate(
     { roomId },
     { $inc: { sequence: 1 }, $setOnInsert: { roomId } },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
   );
   return Number(row?.sequence || 0);
 };
@@ -91,8 +91,6 @@ const wrapReliableChatInsert = (socket) => {
         return;
       }
 
-      // The warm Redis abuse guard must pass before any optional lookup starts.
-      // Sequence allocation and mention resolution can then run concurrently.
       await assertChatSendAllowed({ userId: socket.userId, text: args.text || '' });
       const [sequence, mentions] = await Promise.all([
         nextSequence(args.roomId),
@@ -105,13 +103,12 @@ const wrapReliableChatInsert = (socket) => {
       ]);
 
       const topicId = args.topicId || null;
-      const e2eeEnvelope = args.e2eeEnvelope && typeof args.e2eeEnvelope === 'object'
-        ? args.e2eeEnvelope
-        : null;
+      const e2eeEnvelope =
+        args.e2eeEnvelope && typeof args.e2eeEnvelope === 'object'
+          ? args.e2eeEnvelope
+          : null;
       const transcript = String(args.transcript || '').slice(0, 8000);
 
-      // Persist reliability metadata in the original create instead of doing a
-      // second database update after the message has already been written.
       args.sequence = sequence;
       args.mentionUserIds = mentions.mentionedUserIds;
       args.topicId = topicId;
@@ -138,8 +135,6 @@ const wrapReliableChatInsert = (socket) => {
       const inbox = await InboxModel.findOne({ where: { roomId: args.roomId } });
       const ownerIds = asArray(toPlain(inbox)?.ownersId || args.ownersId);
 
-      // Ack as soon as the durable chat and room ownership are confirmed.
-      // Message-request and mention side effects should not hold the sender UI.
       emitMeta({
         socket,
         chat: toPlain(created),
@@ -165,7 +160,6 @@ const wrapReliableChatInsert = (socket) => {
           });
           if (request?.status === 'pending' && global?.io) {
             global.io.to(recipientId).emit('message-request/new', request);
-            // Keep requests out of the normal inbox on every connected device.
             global.io.to(recipientId).emit('inbox/delete', [args.roomId]);
           }
         }
@@ -177,7 +171,9 @@ const wrapReliableChatInsert = (socket) => {
             chatId: created._id,
             roomId: args.roomId,
             fromUserId: socket.userId,
-            text: e2eeEnvelope ? 'Encrypted mention' : String(args.text || '').slice(0, 240),
+            text: e2eeEnvelope
+              ? 'Encrypted mention'
+              : String(args.text || '').slice(0, 240),
             allMention: mentions.allMention,
             adminsMention: mentions.adminsMention,
           });
