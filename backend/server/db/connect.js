@@ -36,6 +36,9 @@ module.exports = async () => {
   } catch (err) {
     console.error('Failed to connect to MongoDB:');
     console.error(err);
-    process.exit(1);
+    // Let the runtime bootstrap promise reject instead of terminating the
+    // serverless worker. Vercel requests can then return a controlled 503 and
+    // the next cold start/request can retry after a transient DB outage.
+    throw err;
   }
 };
