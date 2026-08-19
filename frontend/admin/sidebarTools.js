@@ -1,8 +1,8 @@
 const TOOL_LINKS = [
-  { label: 'Native Call Push', href: '/admin/calling-push' },
-  { label: 'Calling & WebRTC', href: '/admin/calling' },
-  { label: 'FTP Storage', href: '/admin/storage' },
-  { label: 'Social Login', href: '/admin/social-auth' },
+  { label: 'Native Call Push', href: '/admin/calling-push.html' },
+  { label: 'Calling & WebRTC', href: '/admin/calling.html' },
+  { label: 'FTP Storage', href: '/admin/storage.html' },
+  { label: 'Social Login', href: '/admin/social-auth.html' },
 ];
 
 let observer = null;
