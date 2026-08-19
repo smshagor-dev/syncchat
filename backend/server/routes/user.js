@@ -3,7 +3,7 @@ const authenticate = require('../middleware/auth');
 
 const ctrl = require('../controllers/user');
 const authRecovery = require('../controllers/authRecovery');
-const socialAuth = require('../controllers/socialAuth');
+const socialAuth = require('../controllers/socialAuthSecure');
 
 router.post('/users/register', authRecovery.register);
 router.post('/users/login', ctrl.login);
