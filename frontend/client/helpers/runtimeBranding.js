@@ -10,7 +10,7 @@ const setIconHref = (href) => {
     icon.setAttribute('rel', 'icon');
     document.head.appendChild(icon);
   }
-  icon.setAttribute('type', 'image/png');
+  icon.removeAttribute('type');
   icon.setAttribute('href', value);
 };
 
