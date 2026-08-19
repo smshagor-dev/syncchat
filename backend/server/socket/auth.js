@@ -15,27 +15,32 @@ const touchSeen = async (session) => {
 
 const authenticateUser = async (token) => {
   const decoded = verifyToken(token);
-  const userId = decoded?._id || decoded?.id || decoded?.userId;
-  if (!userId) throw new Error('Invalid user token');
+  const userId = decoded?._id;
+  if (!userId || !decoded?.sid || decoded?.typ !== 'access') {
+    throw new Error('Invalid user session');
+  }
 
   const user = await UserModel.findOne({ where: { _id: userId } });
-  if (!user || user.status === 'banned' || user.status === 'blocked') {
+  if (
+    !user ||
+    !user.verified ||
+    ['banned', 'blocked', 'deleted'].includes(String(user.status || ''))
+  ) {
     throw new Error('User account is not active');
   }
 
-  let session = null;
-  if (decoded.sid) {
-    session = await UserSessionModel.findOne({
-      where: { _id: decoded.sid, userId },
-    });
-    if (!session || session.revokedAt) throw new Error('User session is no longer active');
-    await touchSeen(session);
+  const session = await UserSessionModel.findOne({
+    where: { _id: decoded.sid, userId },
+  });
+  if (!session || session.revokedAt) {
+    throw new Error('User session is no longer active');
   }
+  await touchSeen(session);
 
   return {
     authType: 'user',
     userId: String(userId),
-    sessionId: decoded.sid ? String(decoded.sid) : null,
+    sessionId: String(decoded.sid),
     user,
   };
 };
@@ -43,26 +48,27 @@ const authenticateUser = async (token) => {
 const authenticateAdmin = async (token) => {
   const decoded = verifyAdminToken(token);
   const adminId = decoded?.aid;
-  if (!adminId) throw new Error('Invalid admin token');
+  if (!adminId || !decoded?.sid || decoded?.typ !== 'admin-access') {
+    throw new Error('Invalid admin session');
+  }
 
   const admin = await AdminModel.findOne({ where: { _id: adminId } });
   if (!admin || admin.active === false || admin.status === 'disabled') {
     throw new Error('Admin account is not active');
   }
 
-  let session = null;
-  if (decoded.sid) {
-    session = await AdminSessionModel.findOne({
-      where: { _id: decoded.sid, adminId },
-    });
-    if (!session || session.revokedAt) throw new Error('Admin session is no longer active');
-    await touchSeen(session);
+  const session = await AdminSessionModel.findOne({
+    where: { _id: decoded.sid, adminId },
+  });
+  if (!session || session.revokedAt) {
+    throw new Error('Admin session is no longer active');
   }
+  await touchSeen(session);
 
   return {
     authType: 'admin',
     adminId: String(adminId),
-    sessionId: decoded.sid ? String(decoded.sid) : null,
+    sessionId: String(decoded.sid),
     admin,
   };
 };
@@ -98,14 +104,10 @@ const applyVerifiedIdentity = (socket, packet) => {
 
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
 
-  // Common actor fields are authoritative from the verified handshake. Target
-  // fields such as friendId/participantId/recipientsId remain client-selected.
   ['userId', 'senderId', 'fromUserId', 'actorId'].forEach((field) => {
     if (field in payload) payload[field] = socket.userId;
   });
 
-  // Legacy create events used `adminId` as the actor/creator. Do not rewrite
-  // adminId on moderation payloads because there it can describe a target.
   if ((name === 'group/create' || name === 'channel/create') && 'adminId' in payload) {
     payload.adminId = socket.userId;
   }
