@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'syncchat-v3';
+const CACHE_VERSION = 'syncchat-v4';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
@@ -6,7 +6,14 @@ const APP_SHELL = [
   '/manifest.json',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
+  '/assets/icons/group-avatar.svg',
+  '/assets/icons/channel-avatar.svg',
 ];
+
+const LEGACY_AVATAR_REDIRECTS = new Map([
+  ['/assets/images/default-group-avatar.png', '/assets/icons/group-avatar.svg'],
+  ['/assets/images/default-channel-avatar.png', '/assets/icons/channel-avatar.svg'],
+]);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -25,7 +32,11 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith('syncchat-') && ![APP_SHELL_CACHE, RUNTIME_CACHE].includes(key))
+            .filter(
+              (key) =>
+                key.startsWith('syncchat-') &&
+                ![APP_SHELL_CACHE, RUNTIME_CACHE].includes(key)
+            )
             .map((key) => caches.delete(key))
         )
       )
@@ -36,7 +47,7 @@ self.addEventListener('activate', (event) => {
 const isApiRequest = (url) =>
   url.pathname.startsWith('/api/') ||
   url.pathname.startsWith('/socket.io/') ||
-  url.pathname.startsWith('/admin/') && url.pathname.includes('/api/');
+  (url.pathname.startsWith('/admin/') && url.pathname.includes('/api/'));
 
 const cacheResponse = async (request, response) => {
   if (!response || !response.ok || response.type === 'opaque') return response;
@@ -45,12 +56,25 @@ const cacheResponse = async (request, response) => {
   return response;
 };
 
+const resolveLegacyAvatar = async (targetPath) => {
+  const cached = await caches.match(targetPath);
+  if (cached) return cached;
+  const response = await fetch(targetPath, { credentials: 'same-origin' });
+  return cacheResponse(targetPath, response);
+};
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || isApiRequest(url)) return;
+
+  const legacyAvatarTarget = LEGACY_AVATAR_REDIRECTS.get(url.pathname);
+  if (legacyAvatarTarget) {
+    event.respondWith(resolveLegacyAvatar(legacyAvatarTarget));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -61,7 +85,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const cacheableDestination = ['script', 'style', 'image', 'font'].includes(request.destination);
+  const cacheableDestination = ['script', 'style', 'image', 'font'].includes(
+    request.destination
+  );
   if (!cacheableDestination) return;
 
   event.respondWith(
@@ -114,13 +140,18 @@ self.addEventListener('push', (event) => {
   }
 
   const call = normalizeCall(payload);
-  const isIncomingCall = payload.category === 'call' && payload?.data?.type === 'incoming_call' && call;
+  const isIncomingCall =
+    payload.category === 'call' &&
+    payload?.data?.type === 'incoming_call' &&
+    call;
   const title = payload.title || 'SyncChat';
   const options = {
     body: payload.body || payload.message || 'You have a new message.',
     icon: payload.icon || '/pwa-192x192.png',
     badge: payload.badge || '/pwa-192x192.png',
-    tag: isIncomingCall ? `syncchat-call-${call.callId}` : payload.tag || 'syncchat-message',
+    tag: isIncomingCall
+      ? `syncchat-call-${call.callId}`
+      : payload.tag || 'syncchat-message',
     data: {
       url: payload.url || payload.data?.url || '/',
       category: payload.category || 'message',
@@ -172,28 +203,30 @@ self.addEventListener('notificationclick', (event) => {
     : data.url || '/';
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
-      const existing = clients.find((client) => {
-        try {
-          return new URL(client.url).origin === self.location.origin;
-        } catch (error) {
-          return false;
-        }
-      });
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then(async (clients) => {
+        const existing = clients.find((client) => {
+          try {
+            return new URL(client.url).origin === self.location.origin;
+          } catch (error) {
+            return false;
+          }
+        });
 
-      if (existing) {
-        if (call) {
-          existing.postMessage({
-            type: 'syncchat/call-action',
-            action: callAction,
-            call,
-          });
-        } else {
-          await existing.navigate(targetUrl).catch(() => undefined);
+        if (existing) {
+          if (call) {
+            existing.postMessage({
+              type: 'syncchat/call-action',
+              action: callAction,
+              call,
+            });
+          } else {
+            await existing.navigate(targetUrl).catch(() => undefined);
+          }
+          return existing.focus();
         }
-        return existing.focus();
-      }
-      return self.clients.openWindow(targetUrl);
-    })
+        return self.clients.openWindow(targetUrl);
+      })
   );
 });
