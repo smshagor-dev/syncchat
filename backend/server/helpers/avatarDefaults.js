@@ -1,4 +1,4 @@
-const DEFAULT_USER_AVATAR_URL = 'https://syncchat.smshagor.com/uploads/avatar.jpg';
+const DEFAULT_USER_AVATAR_URL = '/assets/icons/user-avatar.svg';
 const DEFAULT_GROUP_AVATAR_URL = '/assets/icons/group-avatar.svg';
 const DEFAULT_CHANNEL_AVATAR_URL = '/assets/icons/channel-avatar.svg';
 
