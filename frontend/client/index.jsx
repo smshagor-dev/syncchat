@@ -20,6 +20,7 @@ import installRuntimeBranding from './helpers/runtimeBranding';
 import './styles/chatToolsTheme.css';
 import './styles/layoutFixes.css';
 import './styles/callScreenTheme.css';
+import './styles/inboxMenuMobile.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';

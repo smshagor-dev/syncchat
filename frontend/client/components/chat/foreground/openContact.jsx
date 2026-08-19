@@ -65,7 +65,7 @@ function OpenContact() {
     },
   ];
   const someModalIsOpened = Object.values(modal || {}).some((value) => !!value);
-  const hideOnMobile = somePageIsOpened || roomOpen;
+  const hideOnMobile = somePageIsOpened || roomOpen || someModalIsOpened;
   const hideOnDesktop = somePageIsOpened || someModalIsOpened;
 
   useEffect(() => {
