@@ -17,6 +17,22 @@
   ],
   "rewrites": [
     {
+      "source": "/admin/storage",
+      "destination": "/admin/storage.html"
+    },
+    {
+      "source": "/admin/calling",
+      "destination": "/admin/calling.html"
+    },
+    {
+      "source": "/admin/calling-push",
+      "destination": "/admin/calling-push.html"
+    },
+    {
+      "source": "/admin/social-auth",
+      "destination": "/admin/social-auth.html"
+    },
+    {
       "source": "/admin/:path*",
       "destination": "/admin/index.html"
     },
