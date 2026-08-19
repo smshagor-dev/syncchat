@@ -4,15 +4,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/public",
   "redirects": [
-    { "source": "/favicon.ico", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
-    { "source": "/favicon.png", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
-    { "source": "/assets/images/favicon.png", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
+    { "source": "/favicon.ico", "destination": "/pwa-192x192.png", "permanent": false },
+    { "source": "/favicon.png", "destination": "/pwa-192x192.png", "permanent": false },
+    { "source": "/assets/images/favicon.png", "destination": "/pwa-192x192.png", "permanent": false },
     { "source": "/default-avatar.png", "destination": "/assets/icons/user-avatar.svg", "permanent": false },
     { "source": "/assets/images/default-avatar.png", "destination": "/assets/icons/user-avatar.svg", "permanent": false },
     { "source": "/default-group-avatar.png", "destination": "/assets/icons/group-avatar.svg", "permanent": false },
     { "source": "/assets/images/default-group-avatar.png", "destination": "/assets/icons/group-avatar.svg", "permanent": false },
-    { "source": "/error.ico", "destination": "https://syncchat.smshagor.com/uploads/error.ico", "permanent": false },
-    { "source": "/assets/images/error.ico", "destination": "https://syncchat.smshagor.com/uploads/error.ico", "permanent": false },
+    { "source": "/error.ico", "destination": "/pwa-192x192.png", "permanent": false },
+    { "source": "/assets/images/error.ico", "destination": "/pwa-192x192.png", "permanent": false },
     { "source": "/assets/images/default-channel-avatar.png", "destination": "/assets/icons/channel-avatar.svg", "permanent": false }
   ],
   "rewrites": [

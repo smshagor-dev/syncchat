@@ -16,6 +16,7 @@ import installChatHttpReliability from './helpers/chatHttpReliability';
 import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
 import installChatToolsSettingsBridge from './helpers/chatToolsSettingsBridge';
 import installImageFallbacks from './helpers/imageFallbacks';
+import installRuntimeBranding from './helpers/runtimeBranding';
 import './styles/chatToolsTheme.css';
 import './styles/layoutFixes.css';
 
@@ -43,6 +44,7 @@ installChatDraftV2();
 installMentionAutocompleteV2();
 installChatToolsSettingsBridge();
 installImageFallbacks();
+installRuntimeBranding();
 registerServiceWorker();
 
 requestNotificationPermission();

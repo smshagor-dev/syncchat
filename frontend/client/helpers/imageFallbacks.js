@@ -1,3 +1,5 @@
+import { toStorageImageProxyUrl } from './storageImageUrl';
+
 const FALLBACKS = [
   {
     match: /(?:default-group-avatar\.png|\/assets\/icons\/group-avatar\.svg)(?:[?#].*)?$/i,
@@ -20,6 +22,7 @@ const getLegacyFallback = (img) => {
 };
 
 const getErrorFallback = (img) => {
+  const original = String(img?.dataset?.syncchatOriginalSrc || '').trim();
   const legacyFallback = getLegacyFallback(img);
   if (legacyFallback) return legacyFallback;
 
@@ -28,15 +31,22 @@ const getErrorFallback = (img) => {
     .toLowerCase();
   if (alt === 'syncchat') return '/pwa-192x192.png';
 
+  if (/(?:^|\/)uploads\/avatars\//i.test(original)) {
+    return '/assets/icons/user-avatar.svg';
+  }
+
   return '';
 };
 
 const bindImage = (img) => {
   if (!(img instanceof HTMLImageElement)) return;
 
-  const legacyFallback = getLegacyFallback(img);
   const current = String(img.getAttribute('src') || '');
+  if (current && !img.dataset.syncchatOriginalSrc) {
+    img.dataset.syncchatOriginalSrc = current;
+  }
 
+  const legacyFallback = getLegacyFallback(img);
   if (
     legacyFallback &&
     current &&
@@ -50,11 +60,20 @@ const bindImage = (img) => {
   img.dataset.syncchatFallbackBound = '1';
 
   img.addEventListener('error', () => {
-    const fallback = getErrorFallback(img);
-    if (!fallback) return;
+    const active = String(img.getAttribute('src') || '').trim();
+    const original = String(img.dataset.syncchatOriginalSrc || active).trim();
 
-    const active = String(img.getAttribute('src') || '');
-    if (active.endsWith(fallback)) return;
+    if (img.dataset.syncchatStorageProxyTried !== '1') {
+      const proxyUrl = toStorageImageProxyUrl(original);
+      if (proxyUrl && proxyUrl !== active) {
+        img.dataset.syncchatStorageProxyTried = '1';
+        img.src = proxyUrl;
+        return;
+      }
+    }
+
+    const fallback = getErrorFallback(img);
+    if (!fallback || active.endsWith(fallback)) return;
     img.src = fallback;
   });
 };
