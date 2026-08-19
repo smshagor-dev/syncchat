@@ -91,14 +91,33 @@ const wrapReliableChatInsert = (socket) => {
         return;
       }
 
-      await assertChatSendAllowed({ userId: socket.userId, text: args.text || '' });
-      const sequence = await nextSequence(args.roomId);
-      const mentions = await resolveMentions({
+      // Mention lookup can run while the warm Redis abuse guard executes.
+      const mentionsPromise = resolveMentions({
         text: args.text || '',
         roomId: args.roomId,
         roomType: args.roomType,
         senderId: socket.userId,
       });
+
+      await assertChatSendAllowed({ userId: socket.userId, text: args.text || '' });
+      const [sequence, mentions] = await Promise.all([
+        nextSequence(args.roomId),
+        mentionsPromise,
+      ]);
+
+      const topicId = args.topicId || null;
+      const e2eeEnvelope = args.e2eeEnvelope && typeof args.e2eeEnvelope === 'object'
+        ? args.e2eeEnvelope
+        : null;
+      const transcript = String(args.transcript || '').slice(0, 8000);
+
+      // Persist reliability metadata in the original create instead of doing a
+      // second database update after the message has already been written.
+      args.sequence = sequence;
+      args.mentionUserIds = mentions.mentionedUserIds;
+      args.topicId = topicId;
+      args.e2eeEnvelope = e2eeEnvelope;
+      args.transcript = transcript;
 
       await original(args);
 
@@ -119,19 +138,21 @@ const wrapReliableChatInsert = (socket) => {
 
       const inbox = await InboxModel.findOne({ where: { roomId: args.roomId } });
       const ownerIds = asArray(toPlain(inbox)?.ownersId || args.ownersId);
-      const topicId = args.topicId || null;
-      const e2eeEnvelope = args.e2eeEnvelope && typeof args.e2eeEnvelope === 'object'
-        ? args.e2eeEnvelope
-        : null;
-      const transcript = String(args.transcript || '').slice(0, 8000);
 
-      await created.update({
-        clientMessageId: args.clientMessageId,
-        sequence,
-        mentionUserIds: mentions.mentionedUserIds,
-        topicId,
-        e2eeEnvelope,
-        transcript,
+      // Ack as soon as the durable chat and room ownership are confirmed.
+      // Message-request and mention side effects should not hold the sender UI.
+      emitMeta({
+        socket,
+        chat: toPlain(created),
+        meta: {
+          clientMessageId: args.clientMessageId,
+          sequence,
+          mentionUserIds: mentions.mentionedUserIds,
+          topicId,
+          e2eeEnvelope,
+          transcript,
+          ownerIds,
+        },
       });
 
       if (args.roomType === 'private' && ownerIds.length === 2) {
@@ -163,20 +184,6 @@ const wrapReliableChatInsert = (socket) => {
           });
         });
       }
-
-      emitMeta({
-        socket,
-        chat: toPlain(created),
-        meta: {
-          clientMessageId: args.clientMessageId,
-          sequence,
-          mentionUserIds: mentions.mentionedUserIds,
-          topicId,
-          e2eeEnvelope,
-          transcript,
-          ownerIds,
-        },
-      });
     } catch (error0) {
       logger.warn('CHAT_RELIABILITY_REJECTED', {
         userId: socket.userId,
