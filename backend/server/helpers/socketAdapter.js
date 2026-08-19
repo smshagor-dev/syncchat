@@ -44,6 +44,15 @@ const configureSocketAdapter = async (io = global.io) => {
   return adapterPromise;
 };
 
+const getSocketRedisCommandClient = async () => {
+  if (!isRedisConfigured()) return null;
+  if (redisClients?.pubClient?.isReady) return redisClients.pubClient;
+  if (!adapterPromise) return null;
+
+  const clients = await adapterPromise;
+  return clients?.pubClient?.isReady ? clients.pubClient : null;
+};
+
 const closeSocketAdapter = async () => {
   const clients = redisClients;
   redisClients = null;
@@ -58,6 +67,7 @@ const closeSocketAdapter = async () => {
 
 module.exports = {
   configureSocketAdapter,
+  getSocketRedisCommandClient,
   closeSocketAdapter,
   isRedisConfigured,
 };
