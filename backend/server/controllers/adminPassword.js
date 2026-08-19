@@ -5,6 +5,7 @@ const encrypt = require('../helpers/encrypt');
 const decrypt = require('../helpers/decrypt');
 const response = require('../helpers/response');
 const { logAdminAction } = require('../helpers/adminAudit');
+const { validatePassword } = require('../helpers/authCodes');
 
 const createError = (statusCode, message) => {
   const error = new Error(message);
@@ -21,9 +22,8 @@ exports.changePassword = async (req, res) => {
 
     if (!adminId) throw createError(401, 'Admin authentication required');
     if (!currentPassword) throw createError(400, 'Current password is required');
-    if (newPassword.length < 8) {
-      throw createError(400, 'New password must be at least 8 characters');
-    }
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) throw createError(400, passwordError);
     if (newPassword !== confirmPassword) {
       throw createError(400, 'New password and confirmation do not match');
     }
@@ -43,10 +43,7 @@ exports.changePassword = async (req, res) => {
     await admin.update({ password: encrypt(newPassword) });
 
     const currentSessionId = req.adminSession?._id || null;
-    const where = {
-      adminId,
-      revokedAt: null,
-    };
+    const where = { adminId, revokedAt: null };
     if (currentSessionId) where._id = { [Op.ne]: currentSessionId };
 
     await AdminSessionModel.update(
