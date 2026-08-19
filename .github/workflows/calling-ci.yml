@@ -6,6 +6,7 @@ on:
       - agent/calling-improvement-db-admin
       - agent/native-push-db-config
       - agent/shared-chat-lock-delete-scope
+      - agent/admin-sidebar-social-db
   pull_request:
     branches:
       - main

@@ -10,6 +10,7 @@ module.exports = {
     storage: './admin/storage.jsx',
     calling: './admin/calling.jsx',
     callingPush: './admin/callingPush.jsx',
+    socialAuth: './admin/socialAuth.jsx',
   },
   cache: {
     type: 'filesystem',
@@ -24,7 +25,11 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /node_modules/,
         loader: 'babel-loader',
-        options: { cacheDirectory: true, cacheCompression: false },
+        options: {
+          cacheDirectory: true,
+          cacheCompression: false,
+          plugins: [path.resolve(__dirname, 'babel.admin-safe-strings.js')],
+        },
       },
       { test: /\.css$/, use: ['style-loader', 'css-loader', 'postcss-loader'] },
       {
@@ -54,5 +59,6 @@ module.exports = {
     new HtmlWebpackPlugin({ template: './admin/storage.html', chunks: ['storage'], filename: 'admin/storage.html' }),
     new HtmlWebpackPlugin({ template: './admin/calling.html', chunks: ['calling'], filename: 'admin/calling.html' }),
     new HtmlWebpackPlugin({ template: './admin/callingPush.html', chunks: ['callingPush'], filename: 'admin/calling-push.html' }),
+    new HtmlWebpackPlugin({ template: './admin/socialAuth.html', chunks: ['socialAuth'], filename: 'admin/social-auth.html' }),
   ],
 };

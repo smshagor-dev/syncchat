@@ -4,6 +4,7 @@ import App from './app';
 import ChatAiConfig from './chatAiConfig';
 import { registerServiceWorker } from '../client/pwa/registerSW';
 import { installProfilePasswordPanel } from './profilePassword';
+import { installAdminSidebarTools } from './sidebarTools';
 
 const removeLoginPasswordMinLength = () => {
   const passwordInput = document.querySelector('.auth-form input[type="password"]');
@@ -22,4 +23,5 @@ root.render(
 );
 removeLoginPasswordMinLength();
 installProfilePasswordPanel();
+installAdminSidebarTools();
 registerServiceWorker();
