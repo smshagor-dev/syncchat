@@ -19,6 +19,7 @@ import installImageFallbacks from './helpers/imageFallbacks';
 import installRuntimeBranding from './helpers/runtimeBranding';
 import './styles/chatToolsTheme.css';
 import './styles/layoutFixes.css';
+import './styles/callScreenTheme.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
