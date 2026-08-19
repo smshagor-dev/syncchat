@@ -1,11 +1,9 @@
-const CACHE_VERSION = 'syncchat-v5';
+const CACHE_VERSION = 'syncchat-v6';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
   '/',
   '/manifest.json',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png',
   '/assets/icons/group-avatar.svg',
   '/assets/icons/channel-avatar.svg',
 ];
@@ -150,8 +148,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'SyncChat';
   const options = {
     body: payload.body || payload.message || 'You have a new message.',
-    icon: payload.icon || '/pwa-192x192.png',
-    badge: payload.badge || '/pwa-192x192.png',
+    icon: payload.icon || '/api/pwa/icon/192.png',
+    badge: payload.badge || '/api/pwa/icon/192.png',
     tag: isIncomingCall
       ? `syncchat-call-${call.callId}`
       : payload.tag || 'syncchat-message',
