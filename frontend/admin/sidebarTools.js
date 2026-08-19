@@ -2,6 +2,7 @@ const TOOL_LINKS = [
   { label: 'Native Call Push', href: '/admin/calling-push' },
   { label: 'Calling & WebRTC', href: '/admin/calling' },
   { label: 'FTP Storage', href: '/admin/storage' },
+  { label: 'SMTP Diagnostics', href: '/admin/mail' },
   { label: 'Social Login', href: '/admin/social-auth' },
 ];
 
