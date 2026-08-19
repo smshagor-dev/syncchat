@@ -91,13 +91,17 @@ function MobileNav() {
   ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-[110] bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden dark:bg-spill-900/95">
-      <div className="grid grid-cols-5 gap-1.5 rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_14px_36px_-16px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-spill-700/80 dark:bg-spill-900/95 dark:shadow-[0_14px_36px_-16px_rgba(2,6,23,0.7)]">
+    <nav
+      data-syncchat-mobile-nav
+      aria-label="Primary mobile navigation"
+      className="pointer-events-none fixed inset-x-0 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-[110] px-3 md:hidden"
+    >
+      <div className="pointer-events-auto grid grid-cols-5 gap-1.5 rounded-[26px] border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_18px_44px_-14px_rgba(15,23,42,0.48)] backdrop-blur-xl dark:border-spill-700/80 dark:bg-spill-900/95 dark:shadow-[0_18px_44px_-14px_rgba(2,6,23,0.78)]">
         {items.map((item) => (
           <button
             key={item.key}
             type="button"
-            className={`group relative flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] font-semibold transition ${
+            className={`group relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-2 text-[11px] font-semibold transition ${
               item.active
                 ? 'bg-gradient-to-b from-sky-500/20 to-sky-600/10 text-sky-700 dark:from-sky-500/25 dark:to-sky-500/10 dark:text-sky-300'
                 : 'text-slate-500 hover:bg-slate-100 dark:text-spill-300 dark:hover:bg-spill-800/80'
@@ -113,7 +117,7 @@ function MobileNav() {
             >
               <item.icon size={16} />
             </span>
-            <span>{item.label}</span>
+            <span className="max-w-full truncate">{item.label}</span>
             {item.active && (
               <span className="absolute -top-1 h-1.5 w-8 rounded-full bg-sky-500/90 dark:bg-sky-400/90" />
             )}
