@@ -18,7 +18,9 @@
   window.SyncChatPWA = api;
 
   window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
+    // Do not call preventDefault(): the browser remains free to expose its
+    // native install affordance while we still retain the event for callers
+    // that explicitly invoke window.SyncChatPWA.install().
     deferredPrompt = event;
     window.dispatchEvent(new CustomEvent('syncchat:pwa-install-ready'));
   });
