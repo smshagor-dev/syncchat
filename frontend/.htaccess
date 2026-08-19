@@ -3,16 +3,6 @@ RewriteEngine On
 # If Apache is serving this repository root, route public web requests
 # to the generated frontend assets under client/public.
 
-# Standalone admin tool pages. Keep these before the generic admin SPA rule.
-RewriteCond %{REQUEST_URI} !^/client/public/
-RewriteRule ^admin/storage/?$ client/public/admin/storage.html [L]
-RewriteCond %{REQUEST_URI} !^/client/public/
-RewriteRule ^admin/calling/?$ client/public/admin/calling.html [L]
-RewriteCond %{REQUEST_URI} !^/client/public/
-RewriteRule ^admin/calling-push/?$ client/public/admin/calling-push.html [L]
-RewriteCond %{REQUEST_URI} !^/client/public/
-RewriteRule ^admin/social-auth/?$ client/public/admin/social-auth.html [L]
-
 # Admin subdomain SPA entry.
 RewriteCond %{HTTP_HOST} ^admin\. [NC]
 RewriteCond %{REQUEST_URI} !^/client/public/
