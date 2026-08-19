@@ -22,6 +22,7 @@
     { "source": "/admin/calling", "destination": "/admin/calling.html" },
     { "source": "/admin/calling-push", "destination": "/admin/calling-push.html" },
     { "source": "/admin/social-auth", "destination": "/admin/social-auth.html" },
+    { "source": "/admin/mail", "destination": "/admin/mail.html" },
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/admin/:path((?!.*\\.).*)", "destination": "/admin/index.html" },
     { "source": "/:path((?!admin(?:/.*)?$)(?!.*\\.[^/]+$).*)", "destination": "/index.html" }
