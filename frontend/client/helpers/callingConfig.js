@@ -70,15 +70,16 @@ export const clearCallingConfigCache = () => {
 export const getCallingConfig = async ({ force = false } = {}) => {
   const now = Date.now();
   if (!force && cache && now - cacheAt < CACHE_TTL_MS) return cache;
-  // A force refresh can bypass a completed cache, but it should still reuse an
-  // in-flight request so the call gateway/runtime never duplicate the same HTTP
-  // round trip during first-call initialization.
   if (pending) return pending;
 
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Cache-Control': 'no-cache',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   pending = axios
-    .get('/calling/config', {
-      headers: { 'Cache-Control': 'no-cache' },
-    })
+    .get('/calling/config', { headers })
     .then((res) => {
       cache = normalize(res?.data?.payload || {});
       cacheAt = Date.now();
