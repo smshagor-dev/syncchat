@@ -1,10 +1,11 @@
-const path = require('path');
+const crypto = require('crypto');
 const ProfileModel = require('../db/models/profile');
 const response = require('../helpers/response');
 const logger = require('../helpers/logger');
 const { saveBufferFile, deleteStorageFileByUrl } = require('../helpers/storage');
 const { processUploadedVideoBuffer } = require('../helpers/videoPipeline');
 const { loadAppConfig } = require('../helpers/appConfig');
+const { validateUploadBuffer } = require('../helpers/fileSignature');
 
 const sanitizeFolderName = (value, fallback = 'unknown') => {
   const safe = String(value || '')
@@ -12,14 +13,6 @@ const sanitizeFolderName = (value, fallback = 'unknown') => {
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, '');
   return safe || fallback;
-};
-
-const inferType = (mime = '') => {
-  const value = String(mime || '').toLowerCase();
-  if (value.startsWith('image/')) return 'image';
-  if (value.startsWith('video/')) return 'video';
-  if (value.startsWith('audio/')) return 'audio';
-  return 'document';
 };
 
 exports.upload = async (req, res) => {
@@ -59,7 +52,15 @@ exports.upload = async (req, res) => {
       return;
     }
 
-    const type = inferType(uploadFile.mimetype);
+    // Browser MIME and filename metadata are untrusted. Detect the actual file
+    // signature before writing anything to persistent FTP/FTPS storage.
+    const detected = validateUploadBuffer({
+      buffer: uploadFile.buffer,
+      filename: uploadFile.originalname,
+      mime: uploadFile.mimetype,
+    });
+    const { type, format } = detected;
+
     const allowedTypes = Array.isArray(appConfig?.uploadLimits?.allowedTypes)
       ? appConfig.uploadLimits.allowedTypes
       : ['image', 'video', 'audio', 'document'];
@@ -93,10 +94,9 @@ exports.upload = async (req, res) => {
       sanitizeFolderName(req.user?._id, 'unknown')
     );
     const folder = `chat/${usernameFolder}`;
+    const safeFormat = String(format || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 12) || 'bin';
+    const filename = `${Date.now()}-${crypto.randomUUID()}.${safeFormat}`;
 
-    const originalExt = path.extname(uploadFile.originalname || '').toLowerCase();
-    const safeExt = /^\.[a-z0-9]{1,12}$/i.test(originalExt) ? originalExt : '';
-    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
     saved = await saveBufferFile({
       buffer: uploadFile.buffer,
       folder,
@@ -119,11 +119,10 @@ exports.upload = async (req, res) => {
       }
     }
 
-    const format = safeExt.replace('.', '') || 'bin';
     logger.info('CHAT_UPLOAD_FTP_SUCCESS', {
       userId: req.user?._id || null,
-      url: saved.url,
       type,
+      format: safeFormat,
       size: Number(uploadFile.size || uploadFile.buffer.length),
     });
 
@@ -135,7 +134,7 @@ exports.upload = async (req, res) => {
         url: saved.url,
         size: Number(uploadFile.size || uploadFile.buffer.length),
         type,
-        format,
+        format: safeFormat,
         ...videoPayload,
       },
     });
@@ -145,8 +144,9 @@ exports.upload = async (req, res) => {
     }
     logger.error('CHAT_UPLOAD_FTP_ERROR', {
       userId: req.user?._id || null,
+      code: error0.code || null,
       message: error0.message,
-      stack: error0.stack,
+      ...(process.env.NODE_ENV !== 'production' ? { stack: error0.stack } : {}),
     });
     response({
       res,

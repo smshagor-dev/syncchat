@@ -46,7 +46,9 @@ const corsOptions = {
 };
 
 app.use((req, res, next) => {
-  const requestId = String(req.headers['x-request-id'] || '').trim().slice(0, 128) || crypto.randomUUID();
+  const requestId =
+    String(req.headers['x-request-id'] || '').trim().slice(0, 128) ||
+    crypto.randomUUID();
   req.requestId = requestId;
   res.setHeader('X-Request-ID', requestId);
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -56,9 +58,15 @@ app.use((req, res, next) => {
     'Permissions-Policy',
     'camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()'
   );
-  res.setHeader('Content-Security-Policy', "object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+  res.setHeader(
+    'Content-Security-Policy',
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+  );
   if (process.env.NODE_ENV === 'production') {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains'
+    );
   }
   next();
 });
@@ -66,7 +74,9 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', parameterLimit: 10000, extended: false }));
+app.use(
+  express.urlencoded({ limit: '10mb', parameterLimit: 10000, extended: false })
+);
 
 // Vercel starts database/runtime bootstrap next to the exported Express app.
 // Await that shared promise before an HTTP request reaches DB-backed middleware.
@@ -127,7 +137,8 @@ app.use((req, res, next) => {
 const rateBuckets = new Map();
 let globalRateRequests = 0;
 const getRateKey = (req) => `${getClientIp(req)}::${req.method}::${req.path}`;
-const hashRateKey = (key) => crypto.createHash('sha256').update(key).digest('hex');
+const hashRateKey = (key) =>
+  crypto.createHash('sha256').update(key).digest('hex');
 
 const consumeGlobalRateLimit = async ({ key, windowSeconds }) => {
   try {
@@ -143,7 +154,9 @@ const consumeGlobalRateLimit = async ({ key, windowSeconds }) => {
       };
     }
   } catch (error0) {
-    logger.warn('GLOBAL_RATE_LIMIT_REDIS_FALLBACK', { message: error0.message });
+    logger.warn('GLOBAL_RATE_LIMIT_REDIS_FALLBACK', {
+      message: error0.message,
+    });
   }
 
   const windowMs = windowSeconds * 1000;
@@ -187,7 +200,10 @@ app.use(async (req, res, next) => {
       });
       if (state.count > securityConfig.rateLimits.maxRequests) {
         res.setHeader('Retry-After', String(state.retryAfter));
-        res.status(429).json({ success: false, message: 'Rate limit exceeded' });
+        res.status(429).json({
+          success: false,
+          message: 'Rate limit exceeded',
+        });
         return;
       }
     }
@@ -206,12 +222,15 @@ app.use(async (req, res, next) => {
     const pathName = String(req.path || '');
     if (!pathName.startsWith('/api')) return next();
     const trimmed = pathName.replace(/^\/api\/?/, '');
-    if (trimmed.startsWith('admin') || trimmed.startsWith('app-config')) return next();
+    if (trimmed.startsWith('admin') || trimmed.startsWith('app-config')) {
+      return next();
+    }
     const appConfig = await loadAppConfig();
     if (appConfig?.maintenance?.enabled) {
       res.status(503).json({
         success: false,
-        message: appConfig.maintenance.message || 'Maintenance in progress',
+        message:
+          appConfig.maintenance.message || 'Maintenance in progress',
       });
       return;
     }
@@ -227,14 +246,25 @@ app.use('/api', routes);
 app.use((error, req, res, next) => {
   if (!(error instanceof multer.MulterError)) return next(error);
   if (error.code === 'LIMIT_FILE_SIZE') {
-    const limitMb = Number(process.env.CHAT_UPLOAD_HARD_LIMIT_MB || process.env.CHAT_UPLOAD_LIMIT_MB || 250);
-    res.status(413).json({ success: false, message: `File too large. Max ${limitMb} MB allowed.` });
+    const limitMb = Number(
+      process.env.CHAT_UPLOAD_HARD_LIMIT_MB ||
+        process.env.CHAT_UPLOAD_LIMIT_MB ||
+        250
+    );
+    res.status(413).json({
+      success: false,
+      message: `File too large. Max ${limitMb} MB allowed.`,
+    });
     return;
   }
-  res.status(400).json({ success: false, message: error.message || 'Upload failed' });
+  res.status(400).json({
+    success: false,
+    message: error.message || 'Upload failed',
+  });
 });
 
-const normalizeRoutePath = (value = '') => String(value || '').replace(/^\/+|\/+$/g, '');
+const normalizeRoutePath = (value = '') =>
+  String(value || '').replace(/^\/+|\/+$/g, '');
 const matchesPath = (pathname = '', target = '') => {
   if (!target) return false;
   if (pathname === target) return true;
@@ -251,23 +281,35 @@ const adminStandalonePages = new Map([
   ['admin/calling', 'calling.html'],
   ['admin/calling-push', 'calling-push.html'],
   ['admin/social-auth', 'social-auth.html'],
+  ['admin/mail', 'mail.html'],
 ]);
 
 if (!config.isDev && config.serveFrontend) {
-  const publicRoot = path.resolve(__dirname, '..', '..', 'frontend', 'client', 'public');
+  const publicRoot = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'frontend',
+    'client',
+    'public'
+  );
   const clientIndex = path.join(publicRoot, 'index.html');
   const adminRoot = path.join(publicRoot, 'admin');
   const adminIndex = path.join(adminRoot, 'index.html');
-  const hasFrontendBuild = fs.existsSync(clientIndex) && fs.existsSync(adminIndex);
+  const hasFrontendBuild =
+    fs.existsSync(clientIndex) && fs.existsSync(adminIndex);
   if (!hasFrontendBuild) {
-    console.warn('[startup] Frontend build files were not found. Client/admin routes will not be available.');
+    console.warn(
+      '[startup] Frontend build files were not found. Client/admin routes will not be available.'
+    );
   } else {
     app.use(express.static(publicRoot));
     app.get('*', async (req, res) => {
       const pathname = normalizeRoutePath(req.path);
       const requestHostname = getRequestHostname(req);
       const isAdminHost =
-        !!configuredAdminHostname && requestHostname === configuredAdminHostname;
+        !!configuredAdminHostname &&
+        requestHostname === configuredAdminHostname;
       if (matchesPath(pathname, 'api') || matchesPath(pathname, 'socket.io')) {
         res.status(404).send('Not found');
         return;
@@ -298,7 +340,9 @@ app.use((error, req, res, next) => {
     method: req.method,
     path: req.path,
     message: error?.message || 'Unknown error',
-    ...(process.env.NODE_ENV !== 'production' ? { stack: error?.stack } : {}),
+    ...(process.env.NODE_ENV !== 'production'
+      ? { stack: error?.stack }
+      : {}),
   });
   res.status(error?.statusCode || 500).json({
     success: false,

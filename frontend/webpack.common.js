@@ -11,6 +11,7 @@ module.exports = {
     calling: './admin/calling.jsx',
     callingPush: './admin/callingPush.jsx',
     socialAuth: './admin/socialAuth.jsx',
+    mail: './admin/mail.jsx',
   },
   cache: {
     type: 'filesystem',
@@ -45,20 +46,65 @@ module.exports = {
       __API_BASE_URL__: JSON.stringify(process.env.API_BASE_URL || ''),
       __SOCKET_URL__: JSON.stringify(process.env.SOCKET_URL || ''),
       __PUBLIC_ORIGIN__: JSON.stringify(process.env.PUBLIC_ORIGIN || ''),
-      __CLIENT_API_BASE_URL__: JSON.stringify(process.env.CLIENT_API_BASE_URL || process.env.API_BASE_URL || ''),
-      __CLIENT_SOCKET_URL__: JSON.stringify(process.env.CLIENT_SOCKET_URL || process.env.SOCKET_URL || ''),
-      __CLIENT_PUBLIC_ORIGIN__: JSON.stringify(process.env.CLIENT_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''),
-      __ADMIN_API_BASE_URL__: JSON.stringify(process.env.ADMIN_API_BASE_URL || process.env.API_BASE_URL || ''),
-      __ADMIN_SOCKET_URL__: JSON.stringify(process.env.ADMIN_SOCKET_URL || process.env.SOCKET_URL || ''),
-      __ADMIN_PUBLIC_ORIGIN__: JSON.stringify(process.env.ADMIN_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''),
-      __CHAT_UPLOAD_LIMIT_MB__: JSON.stringify(Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100)),
-      __AVATAR_UPLOAD_LIMIT_MB__: JSON.stringify(Number(process.env.AVATAR_UPLOAD_LIMIT_MB || 10)),
+      __CLIENT_API_BASE_URL__: JSON.stringify(
+        process.env.CLIENT_API_BASE_URL || process.env.API_BASE_URL || ''
+      ),
+      __CLIENT_SOCKET_URL__: JSON.stringify(
+        process.env.CLIENT_SOCKET_URL || process.env.SOCKET_URL || ''
+      ),
+      __CLIENT_PUBLIC_ORIGIN__: JSON.stringify(
+        process.env.CLIENT_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''
+      ),
+      __ADMIN_API_BASE_URL__: JSON.stringify(
+        process.env.ADMIN_API_BASE_URL || process.env.API_BASE_URL || ''
+      ),
+      __ADMIN_SOCKET_URL__: JSON.stringify(
+        process.env.ADMIN_SOCKET_URL || process.env.SOCKET_URL || ''
+      ),
+      __ADMIN_PUBLIC_ORIGIN__: JSON.stringify(
+        process.env.ADMIN_PUBLIC_ORIGIN || process.env.PUBLIC_ORIGIN || ''
+      ),
+      __CHAT_UPLOAD_LIMIT_MB__: JSON.stringify(
+        Number(process.env.CHAT_UPLOAD_LIMIT_MB || 100)
+      ),
+      __AVATAR_UPLOAD_LIMIT_MB__: JSON.stringify(
+        Number(process.env.AVATAR_UPLOAD_LIMIT_MB || 10)
+      ),
     }),
-    new HtmlWebpackPlugin({ template: './client/index.html', chunks: ['app'], filename: 'index.html' }),
-    new HtmlWebpackPlugin({ template: './admin/index.html', chunks: ['admin'], filename: 'admin/index.html' }),
-    new HtmlWebpackPlugin({ template: './admin/storage.html', chunks: ['storage'], filename: 'admin/storage.html' }),
-    new HtmlWebpackPlugin({ template: './admin/calling.html', chunks: ['calling'], filename: 'admin/calling.html' }),
-    new HtmlWebpackPlugin({ template: './admin/callingPush.html', chunks: ['callingPush'], filename: 'admin/calling-push.html' }),
-    new HtmlWebpackPlugin({ template: './admin/socialAuth.html', chunks: ['socialAuth'], filename: 'admin/social-auth.html' }),
+    new HtmlWebpackPlugin({
+      template: './client/index.html',
+      chunks: ['app'],
+      filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/index.html',
+      chunks: ['admin'],
+      filename: 'admin/index.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/storage.html',
+      chunks: ['storage'],
+      filename: 'admin/storage.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/calling.html',
+      chunks: ['calling'],
+      filename: 'admin/calling.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/callingPush.html',
+      chunks: ['callingPush'],
+      filename: 'admin/calling-push.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/socialAuth.html',
+      chunks: ['socialAuth'],
+      filename: 'admin/social-auth.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: './admin/mail.html',
+      chunks: ['mail'],
+      filename: 'admin/mail.html',
+    }),
   ],
 };

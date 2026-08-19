@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 module.exports = (length, options = null) => {
   let schema = '';
 
@@ -5,13 +7,14 @@ module.exports = (length, options = null) => {
   if (options?.lowercase ?? true) schema += 'abcdefghijklmnopqrstuvwxyz';
   if (options?.number ?? true) schema += '0123456789';
 
-  let unique = '';
-  let i = 0;
-
-  while (i < length) {
-    unique += schema.charAt(Math.floor(Math.random() * schema.length));
-    i += 1;
+  const targetLength = Math.max(1, Math.min(512, Number(length) || 1));
+  if (!schema.length) {
+    throw new Error('At least one unique ID character class must be enabled');
   }
 
+  let unique = '';
+  while (unique.length < targetLength) {
+    unique += schema.charAt(crypto.randomInt(0, schema.length));
+  }
   return unique;
 };

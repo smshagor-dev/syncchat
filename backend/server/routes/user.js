@@ -2,6 +2,7 @@ const router = require('express').Router();
 const authenticate = require('../middleware/auth');
 
 const ctrl = require('../controllers/user');
+const accountSecurity = require('../controllers/accountSecurity');
 const authRecovery = require('../controllers/authRecovery');
 const socialAuth = require('../controllers/socialAuthSecure');
 
@@ -20,6 +21,6 @@ router.post('/users/verify/resend', authenticate, authRecovery.resendVerifyOtp);
 router.post('/users/feedback', authenticate, ctrl.feedback);
 router.get('/users', authenticate, ctrl.find);
 router.delete('/users', authenticate, ctrl.delete);
-router.patch('/users/change-pass', authenticate, ctrl.changePass);
+router.patch('/users/change-pass', authenticate, accountSecurity.changePassword);
 
 module.exports = router;

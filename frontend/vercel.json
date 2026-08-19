@@ -33,6 +33,10 @@
       "destination": "/admin/social-auth.html"
     },
     {
+      "source": "/admin/mail",
+      "destination": "/admin/mail.html"
+    },
+    {
       "source": "/admin/:path*",
       "destination": "/admin/index.html"
     },

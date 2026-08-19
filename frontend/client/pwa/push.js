@@ -11,8 +11,13 @@ const urlBase64ToUint8Array = (base64String) => {
   for (let i = 0; i < rawData.length; i += 1) {
     outputArray[i] = rawData.charCodeAt(i);
   }
-
   return outputArray;
+};
+
+export const requestPushPermission = async () => {
+  if (!('Notification' in window)) return 'unsupported';
+  if (Notification.permission !== 'default') return Notification.permission;
+  return Notification.requestPermission();
 };
 
 export const ensurePushSubscription = async ({ enabled }) => {
@@ -33,15 +38,12 @@ export const ensurePushSubscription = async ({ enabled }) => {
     return { status: 'disabled' };
   }
 
-  if (Notification.permission === 'denied') {
-    return { status: 'denied' };
-  }
-
-  if (Notification.permission === 'default') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      return { status: permission };
-    }
+  if (!('Notification' in window)) return { status: 'unsupported' };
+  if (Notification.permission === 'denied') return { status: 'denied' };
+  if (Notification.permission !== 'granted') {
+    // Permission prompts must be initiated by an explicit user action; an app
+    // mount/effect should never trigger the browser prompt automatically.
+    return { status: 'permission-required' };
   }
 
   if (existing) {
@@ -54,9 +56,7 @@ export const ensurePushSubscription = async ({ enabled }) => {
 
   const { data } = await axios.get('/settings/push/public-key');
   const publicKey = data?.payload?.publicKey;
-  if (!publicKey) {
-    return { status: 'missing-key' };
-  }
+  if (!publicKey) return { status: 'missing-key' };
 
   const subscription = await reg.pushManager.subscribe({
     userVisibleOnly: true,
