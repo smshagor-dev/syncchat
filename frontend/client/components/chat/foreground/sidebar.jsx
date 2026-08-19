@@ -106,6 +106,7 @@ function Sidebar({
   const quickActionsTop = [
     {
       target: 'chats',
+      label: 'Chats',
       icon: <bi.BiMessageSquareDetail size={22} />,
       badge: unreadChats > 0 ? unreadCount : null,
       badgeTone: 'bg-emerald-500 text-emerald-950',
@@ -114,6 +115,7 @@ function Sidebar({
     },
     {
       target: 'calls',
+      label: 'Calls',
       icon: <bi.BiPhoneCall size={21} />,
       badge: null,
       badgeTone: 'bg-rose-500 text-rose-50',
@@ -122,6 +124,7 @@ function Sidebar({
     },
     {
       target: 'status',
+      label: 'Status',
       icon: <ri.RiDonutChartLine size={21} />,
       badge: null,
       active: !!page.status,
@@ -129,6 +132,7 @@ function Sidebar({
     },
     {
       target: 'contacts',
+      label: 'Contacts',
       icon: <bi.BiGroup size={22} />,
       badge: null,
       active: !!page.contact,
@@ -136,6 +140,7 @@ function Sidebar({
     },
     {
       target: 'communities',
+      label: 'Communities',
       icon: <ri.RiCommunityLine size={21} />,
       badge: null,
       active: !!page.communities,
@@ -143,6 +148,7 @@ function Sidebar({
     },
     {
       target: 'channels',
+      label: 'Channels',
       icon: <ri.RiBroadcastLine size={21} />,
       badge: unreadChannels > 0 ? unreadChannelCount : null,
       badgeTone: 'bg-sky-400 text-sky-950',
@@ -151,6 +157,7 @@ function Sidebar({
     },
     {
       target: 'archive',
+      label: 'Archive',
       icon: <bi.BiArchiveIn size={21} />,
       badge: null,
       active: !!page.archive,
@@ -158,6 +165,7 @@ function Sidebar({
     },
     {
       target: 'list',
+      label: 'Lists',
       icon: <bi.BiListUl size={21} />,
       badge: null,
       active: !!page.list,
@@ -168,12 +176,16 @@ function Sidebar({
   const quickActionsBottom = [
     {
       target: 'media',
+      label: 'Media',
       icon: <bi.BiImageAlt size={20} />,
+      active: !!page.media,
       onClick: () => dispatch(setPage({ target: 'media', data: true })),
     },
     {
       target: 'feedback',
+      label: 'Feedback',
       icon: <bi.BiMessageDetail size={20} />,
+      active: false,
       onClick: () => dispatch(setModal({ target: 'feedback', data: true })),
     },
   ];
@@ -183,29 +195,37 @@ function Sidebar({
     if (mobileOpen) onCloseMobile();
   };
 
+  const menuButtonClass = (active = false, mobile = false) =>
+    `relative flex ${mobile ? 'min-h-[52px] w-[78px]' : 'min-h-[50px] w-[72px]'} flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center transition ${
+      active
+        ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
+        : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
+    }`;
+
+  const menuLabelClass =
+    'block max-w-full truncate text-[10px] font-medium leading-none tracking-tight';
+
   return (
     <>
-      <aside className="hidden md:flex h-full w-[72px] flex-col items-center border-r border-slate-700/70 bg-slate-900 py-3 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
-        <div className="flex w-full flex-col items-center gap-2">
+      <aside className="hidden md:flex h-full w-[84px] shrink-0 flex-col items-center overflow-y-auto border-r border-slate-700/70 bg-slate-900 py-2 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
+        <div className="flex w-full flex-col items-center gap-1.5 px-1">
           {quickActionsTop.map((item) => (
             <button
               key={item.target}
               type="button"
-              title={item.target}
-              className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
-                item.active
-                  ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
-              }`}
+              title={item.label}
+              aria-label={item.label}
+              className={menuButtonClass(item.active)}
               onClick={(e) => {
                 e.stopPropagation();
                 item.onClick();
               }}
             >
               {item.icon}
+              <span className={menuLabelClass}>{item.label}</span>
               {item.badge && (
                 <span
-                  className={`absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
+                  className={`absolute right-1.5 top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
                 >
                   {item.badge}
                 </span>
@@ -214,38 +234,44 @@ function Sidebar({
           ))}
         </div>
 
-        <div className="my-4 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+        <div className="my-2 h-px w-10 shrink-0 bg-slate-700 dark:bg-spill-700" />
 
-        <div className="mt-auto flex w-full flex-col items-center gap-2">
+        <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
           {quickActionsBottom.map((item) => (
             <button
               key={item.target}
               type="button"
-              title={item.target}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+              title={item.label}
+              aria-label={item.label}
+              className={menuButtonClass(item.active)}
               onClick={(e) => {
                 e.stopPropagation();
                 item.onClick();
               }}
             >
               {item.icon}
+              <span className={menuLabelClass}>{item.label}</span>
             </button>
           ))}
           <button
             type="button"
-            title="settings"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+            title="Settings"
+            aria-label="Settings"
+            className={menuButtonClass(!!page.setting)}
             onClick={(e) => {
               e.stopPropagation();
               dispatch(setPage({ target: 'setting' }));
             }}
           >
             <bi.BiCog size={20} />
+            <span className={menuLabelClass}>Settings</span>
           </button>
-          <div className="my-2 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+          <div className="my-1 h-px w-10 shrink-0 bg-slate-700 dark:bg-spill-700" />
           <button
             type="button"
-            className="overflow-hidden rounded-full border-2 border-slate-700 transition hover:border-sky-400 dark:border-spill-600"
+            title="Profile"
+            aria-label="Profile"
+            className={menuButtonClass(!!page.profile)}
             onClick={(e) => {
               e.stopPropagation();
               dispatch(
@@ -256,11 +282,14 @@ function Sidebar({
               );
             }}
           >
-            <img
-              src={sidebarAvatar}
-              alt=""
-              className="h-9 w-9 rounded-full object-cover"
-            />
+            <span className="overflow-hidden rounded-full border-2 border-slate-700 transition group-hover:border-sky-400 dark:border-spill-600">
+              <img
+                src={sidebarAvatar}
+                alt=""
+                className="h-8 w-8 rounded-full object-cover"
+              />
+            </span>
+            <span className={menuLabelClass}>Profile</span>
           </button>
         </div>
       </aside>
@@ -272,36 +301,35 @@ function Sidebar({
             aria-hidden
             onClick={onCloseMobile}
           />
-          <aside className="absolute left-0 top-0 h-[100dvh] min-h-screen w-[86px] flex flex-col items-center border-r border-slate-700/70 bg-slate-900 py-3 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
-            <div className="w-full px-2 mb-2 flex justify-end">
+          <aside className="absolute left-0 top-0 flex h-[100dvh] min-h-screen w-[94px] flex-col items-center overflow-y-auto border-r border-slate-700/70 bg-slate-900 py-2 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
+            <div className="mb-1 flex w-full justify-end px-2">
               <button
                 type="button"
-                className="p-2 rounded-full text-slate-300 hover:bg-slate-800 dark:hover:bg-spill-700"
+                aria-label="Close menu"
+                className="rounded-full p-2 text-slate-300 hover:bg-slate-800 dark:hover:bg-spill-700"
                 onClick={onCloseMobile}
               >
                 <bi.BiX size={18} />
               </button>
             </div>
-            <div className="flex w-full flex-col items-center gap-2">
+            <div className="flex w-full flex-col items-center gap-1.5 px-1">
               {quickActionsTop.map((item) => (
                 <button
                   key={`mobile-${item.target}`}
                   type="button"
-                  title={item.target}
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
-                    item.active
-                      ? 'bg-sky-600/25 text-white ring-1 ring-sky-400/70'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700'
-                  }`}
+                  title={item.label}
+                  aria-label={item.label}
+                  className={menuButtonClass(item.active, true)}
                   onClick={(e) => {
                     e.stopPropagation();
                     runSidebarAction(item.onClick);
                   }}
                 >
                   {item.icon}
+                  <span className={menuLabelClass}>{item.label}</span>
                   {item.badge && (
                     <span
-                      className={`absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
+                      className={`absolute right-2 top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${item.badgeTone}`}
                     >
                       {item.badge}
                     </span>
@@ -309,26 +337,29 @@ function Sidebar({
                 </button>
               ))}
             </div>
-            <div className="my-4 h-px w-9 bg-slate-700 dark:bg-spill-700" />
-            <div className="mt-auto flex w-full flex-col items-center gap-2">
+            <div className="my-2 h-px w-10 shrink-0 bg-slate-700 dark:bg-spill-700" />
+            <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
               {quickActionsBottom.map((item) => (
                 <button
                   key={`mobile-${item.target}`}
                   type="button"
-                  title={item.target}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+                  title={item.label}
+                  aria-label={item.label}
+                  className={menuButtonClass(item.active, true)}
                   onClick={(e) => {
                     e.stopPropagation();
                     runSidebarAction(item.onClick);
                   }}
                 >
                   {item.icon}
+                  <span className={menuLabelClass}>{item.label}</span>
                 </button>
               ))}
               <button
                 type="button"
-                title="settings"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-800 hover:text-white dark:hover:bg-spill-700"
+                title="Settings"
+                aria-label="Settings"
+                className={menuButtonClass(!!page.setting, true)}
                 onClick={(e) => {
                   e.stopPropagation();
                   runSidebarAction(() =>
@@ -337,11 +368,14 @@ function Sidebar({
                 }}
               >
                 <bi.BiCog size={20} />
+                <span className={menuLabelClass}>Settings</span>
               </button>
-              <div className="my-2 h-px w-9 bg-slate-700 dark:bg-spill-700" />
+              <div className="my-1 h-px w-10 shrink-0 bg-slate-700 dark:bg-spill-700" />
               <button
                 type="button"
-                className="overflow-hidden rounded-full border-2 border-slate-700 transition hover:border-sky-400 dark:border-spill-600"
+                title="Profile"
+                aria-label="Profile"
+                className={menuButtonClass(!!page.profile, true)}
                 onClick={(e) => {
                   e.stopPropagation();
                   runSidebarAction(() =>
@@ -354,11 +388,14 @@ function Sidebar({
                   );
                 }}
               >
-                <img
-                  src={sidebarAvatar}
-                  alt=""
-                  className="h-9 w-9 rounded-full object-cover"
-                />
+                <span className="overflow-hidden rounded-full border-2 border-slate-700 transition dark:border-spill-600">
+                  <img
+                    src={sidebarAvatar}
+                    alt=""
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                </span>
+                <span className={menuLabelClass}>Profile</span>
               </button>
             </div>
           </aside>
