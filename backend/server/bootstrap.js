@@ -4,6 +4,7 @@ const {
 } = require('./helpers/scheduledMessages');
 const { configureSocketAdapter } = require('./helpers/socketAdapter');
 const ensureAvatarDefaults = require('./helpers/ensureAvatarDefaults');
+const ensureChatIndexes = require('./helpers/chatIndexes');
 const logger = require('./helpers/logger');
 
 let bootstrapPromise = null;
@@ -13,6 +14,7 @@ const bootstrap = ({ startScheduledWorker = true } = {}) => {
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
       await connectDb();
+      await ensureChatIndexes();
       await ensureAvatarDefaults();
       await configureSocketAdapter(global.io);
 

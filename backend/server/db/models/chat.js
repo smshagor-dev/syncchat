@@ -149,7 +149,6 @@ const ChatModel = sequelize.define(
     indexes: [
       { fields: ['roomId', 'sequence'] },
       { fields: ['roomId', 'createdAt'] },
-      { fields: ['userId', 'clientMessageId'], unique: true, sparse: true },
       { fields: ['topicId', 'createdAt'] },
     ],
   }
