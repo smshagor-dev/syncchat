@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const net = require('net');
 const nodemailer = require('nodemailer');
 const { loadAppConfig } = require('./appConfig');
+const { decryptSmtpSecret } = require('./smtpSecret');
 const logger = require('./logger');
 
 const VERIFY_TTL_MS = 5 * 60 * 1000;
@@ -11,8 +12,10 @@ let cache = {
   verifiedAt: 0,
 };
 
-const cleanHeader = (value = '') => String(value || '').replace(/[\r\n]+/g, ' ').trim();
-const isEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+const cleanHeader = (value = '') =>
+  String(value || '').replace(/[\r\n]+/g, ' ').trim();
+const isEmail = (value = '') =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 const parseBoolean = (value, fallback = false) => {
   if (typeof value === 'boolean') return value;
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -29,20 +32,26 @@ const resolveSmtp = async () => {
   const host = String(db.host || env.SMTP_HOST || '').trim();
   const port = Number(db.port || env.SMTP_PORT || 587);
   const user = String(db.user || env.SMTP_USER || '').trim();
-  let pass = String(db.pass || env.SMTP_PASS || '');
+  const storedPass = String(db.pass || '').trim();
+  let pass = storedPass ? decryptSmtpSecret(storedPass) : String(env.SMTP_PASS || '');
   if (pass === '******') pass = String(env.SMTP_PASS || '');
 
-  const gmail = host.toLowerCase().includes('gmail') || user.toLowerCase().endsWith('@gmail.com');
+  const gmail =
+    host.toLowerCase().includes('gmail') ||
+    user.toLowerCase().endsWith('@gmail.com');
   if (gmail) pass = pass.replace(/\s+/g, '');
 
-  const secure = port === 465
-    ? true
-    : [25, 587, 2525].includes(port)
-      ? false
-      : parseBoolean(db.secure, parseBoolean(env.SMTP_SECURE, false));
+  const secure =
+    port === 465
+      ? true
+      : [25, 587, 2525].includes(port)
+        ? false
+        : parseBoolean(db.secure, parseBoolean(env.SMTP_SECURE, false));
 
   const fromEmail = String(db.fromEmail || env.SMTP_FROM_EMAIL || user).trim();
-  const fromName = cleanHeader(db.fromName || env.SMTP_FROM_NAME || appConfig?.appName || 'SyncChat');
+  const fromName = cleanHeader(
+    db.fromName || env.SMTP_FROM_NAME || appConfig?.appName || 'SyncChat'
+  );
 
   return {
     host,
@@ -113,9 +122,18 @@ const buildTransport = (smtp) => {
     pool: true,
     maxConnections: Math.max(1, Number(process.env.SMTP_MAX_CONNECTIONS || 3)),
     maxMessages: Math.max(10, Number(process.env.SMTP_MAX_MESSAGES || 100)),
-    connectionTimeout: Math.max(5000, Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000)),
-    greetingTimeout: Math.max(5000, Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000)),
-    socketTimeout: Math.max(10000, Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 30000)),
+    connectionTimeout: Math.max(
+      5000,
+      Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000)
+    ),
+    greetingTimeout: Math.max(
+      5000,
+      Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000)
+    ),
+    socketTimeout: Math.max(
+      10000,
+      Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 30000)
+    ),
     tls,
   });
 };
@@ -141,15 +159,24 @@ const friendlySmtpError = (error0) => {
   let message = error0?.message || 'Email delivery failed';
 
   if (code === 'EAUTH' || responseCode === 535 || responseCode === 534) {
-    message = 'SMTP authentication failed. Check the username/password or provider app password.';
+    message =
+      'SMTP authentication failed. Check the username/password or provider app password.';
   } else if (['ETIMEDOUT', 'ECONNECTION'].includes(code)) {
-    message = 'SMTP connection timed out. Check host, port, firewall and provider connectivity.';
+    message =
+      'SMTP connection timed out. Check host, port, firewall and provider connectivity.';
   } else if (code === 'ESOCKET' || code === 'ECONNREFUSED') {
-    message = 'SMTP socket connection failed. Check host, port, TLS mode and outbound SMTP access.';
-  } else if (code === 'EENVELOPE' || responseCode === 550 || responseCode === 553) {
-    message = 'SMTP rejected the sender or recipient address. Check From Email and domain authorization.';
+    message =
+      'SMTP socket connection failed. Check host, port, TLS mode and outbound SMTP access.';
+  } else if (
+    code === 'EENVELOPE' ||
+    responseCode === 550 ||
+    responseCode === 553
+  ) {
+    message =
+      'SMTP rejected the sender or recipient address. Check From Email and domain authorization.';
   } else if (code === 'ETLS' || /certificate|tls|ssl/i.test(message)) {
-    message = 'SMTP TLS negotiation failed. Check port, TLS mode and certificate configuration.';
+    message =
+      'SMTP TLS negotiation failed. Check port, TLS mode and certificate configuration.';
   }
 
   const error = new Error(message);
@@ -160,7 +187,11 @@ const friendlySmtpError = (error0) => {
 
 const verifyMailTransport = async ({ force = false } = {}) => {
   const { smtp, transporter } = await getTransport();
-  if (!force && cache.verifiedAt && Date.now() - cache.verifiedAt < VERIFY_TTL_MS) {
+  if (
+    !force &&
+    cache.verifiedAt &&
+    Date.now() - cache.verifiedAt < VERIFY_TTL_MS
+  ) {
     return { configured: true, verified: true, smtp };
   }
 
@@ -223,7 +254,8 @@ const sendMail = async ({ to, fullname, subject, html, otp, text, replyTo }) => 
 
   const body = renderTemplate({ html, fullname, otp });
   const safeSubject = cleanHeader(subject || smtp.appName || 'SyncChat');
-  const safeReplyTo = replyTo && isEmail(replyTo) ? String(replyTo).trim() : undefined;
+  const safeReplyTo =
+    replyTo && isEmail(replyTo) ? String(replyTo).trim() : undefined;
 
   try {
     const result = await transporter.sendMail({
@@ -247,7 +279,11 @@ const sendMail = async ({ to, fullname, subject, html, otp, text, replyTo }) => 
       toDomain: recipient.split('@')[1] || '',
     });
 
-    if (Array.isArray(result.rejected) && result.rejected.length > 0 && !(result.accepted || []).length) {
+    if (
+      Array.isArray(result.rejected) &&
+      result.rejected.length > 0 &&
+      !(result.accepted || []).length
+    ) {
       const error = new Error('SMTP server rejected the recipient');
       error.code = 'SMTP_RECIPIENT_REJECTED';
       throw error;
@@ -270,8 +306,12 @@ const sendMail = async ({ to, fullname, subject, html, otp, text, replyTo }) => 
 const getMailStatus = async ({ verify = false } = {}) => {
   try {
     const smtp = await resolveSmtp();
-    const configured = Boolean(smtp.host && smtp.port && smtp.user && smtp.pass && smtp.fromEmail);
-    let verified = Boolean(cache.verifiedAt && Date.now() - cache.verifiedAt < VERIFY_TTL_MS);
+    const configured = Boolean(
+      smtp.host && smtp.port && smtp.user && smtp.pass && smtp.fromEmail
+    );
+    let verified = Boolean(
+      cache.verifiedAt && Date.now() - cache.verifiedAt < VERIFY_TTL_MS
+    );
     let error = '';
     if (verify && configured) {
       try {
@@ -289,7 +329,9 @@ const getMailStatus = async ({ verify = false } = {}) => {
       host: smtp.host || '',
       port: smtp.port || null,
       secure: !!smtp.secure,
-      user: smtp.user ? `${smtp.user.slice(0, 2)}***@${smtp.user.split('@')[1] || ''}` : '',
+      user: smtp.user
+        ? `${smtp.user.slice(0, 2)}***@${smtp.user.split('@')[1] || ''}`
+        : '',
       fromEmail: smtp.fromEmail || '',
       fromName: smtp.fromName || '',
       tlsRejectUnauthorized: parseBoolean(
