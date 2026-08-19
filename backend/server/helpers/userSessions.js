@@ -3,27 +3,19 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const UserSessionModel = require('../db/models/userSession');
 const { toPlainMany } = require('../db/utils');
+const { getClientIp } = require('./clientIp');
+const {
+  JWT_SECRET,
+  JWT_ISSUER,
+  TWO_FACTOR_TOKEN_TTL,
+  USER_ACCESS_TOKEN_TTL,
+  USER_AUDIENCE,
+} = require('./jwtConfig');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'shhhhh';
 const SESSION_ACTIVITY_THROTTLE_MS = 60 * 1000;
 
-const normalizeIp = (value = '') => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  return raw.replace(/^::ffff:/, '');
-};
-
-const getClientIp = (req) => {
-  const forwarded = String(
-    req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || ''
-  )
-    .split(',')[0]
-    .trim();
-  return normalizeIp(forwarded || req.ip || req.socket?.remoteAddress || '');
-};
-
 const maskIp = (value = '') => {
-  const ip = normalizeIp(value);
+  const ip = String(value || '').trim();
   if (!ip) return 'Unknown network';
   if (ip === '127.0.0.1' || ip === '::1') return 'Localhost';
   if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) {
@@ -95,15 +87,43 @@ const buildSessionMetaFromRequest = (req) => {
   };
 };
 
-const signUserToken = ({ userId, sessionId }) =>
-  jwt.sign({ _id: userId, sid: sessionId }, JWT_SECRET);
+const signUserToken = ({ userId, sessionId }) => {
+  if (!userId || !sessionId) throw new Error('User and session are required');
+  return jwt.sign(
+    { _id: userId, sid: sessionId, typ: 'access' },
+    JWT_SECRET,
+    {
+      expiresIn: USER_ACCESS_TOKEN_TTL,
+      issuer: JWT_ISSUER,
+      audience: USER_AUDIENCE,
+      subject: String(userId),
+    }
+  );
+};
 
 const signTwoFactorTempToken = ({ userId, pendingSessionId }) =>
-  jwt.sign({ _id: userId, purpose: 'user-2fa', psid: pendingSessionId }, JWT_SECRET, {
-    expiresIn: '10m',
-  });
+  jwt.sign(
+    {
+      _id: userId,
+      purpose: 'user-2fa',
+      ...(pendingSessionId ? { psid: pendingSessionId } : {}),
+    },
+    JWT_SECRET,
+    {
+      expiresIn: TWO_FACTOR_TOKEN_TTL,
+      issuer: JWT_ISSUER,
+      audience: USER_AUDIENCE,
+      subject: String(userId),
+    }
+  );
 
-const verifyToken = (token) => jwt.verify(token, JWT_SECRET);
+const verifyToken = (token) => {
+  if (!token) throw new Error('Missing session token');
+  return jwt.verify(token, JWT_SECRET, {
+    issuer: JWT_ISSUER,
+    audience: USER_AUDIENCE,
+  });
+};
 
 const createSession = async ({ userId, req, authProvider = 'password' }) => {
   const meta = buildSessionMetaFromRequest(req);
@@ -216,6 +236,14 @@ const revokeOtherSessions = async ({ userId, currentSessionId }) => {
   return rows.length;
 };
 
+const revokeAllSessions = async ({ userId, reason = 'security-reset' }) => {
+  const rows = await UserSessionModel.findAll({
+    where: { userId, revokedAt: null },
+  });
+  await Promise.all(rows.map((row) => revokeSession({ session: row, reason })));
+  return rows.length;
+};
+
 module.exports = {
   JWT_SECRET,
   createSession,
@@ -223,6 +251,7 @@ module.exports = {
   listSessions,
   markSessionSeen,
   notifySuspiciousLogin,
+  revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
   serializeSession,
