@@ -199,7 +199,7 @@ function CallingPushAdmin() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
-            <a href="/admin/calling.html" style={{ textDecoration: 'none', fontWeight: 700 }}>
+            <a href="/admin/calling" style={{ textDecoration: 'none', fontWeight: 700 }}>
               ← Calling
             </a>
             <a href="/admin" style={{ textDecoration: 'none', fontWeight: 700 }}>
