@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
+const roomAccess = require('../middleware/roomAccess');
 const ctrl = require('../controllers/chatV2');
 const suggestions = require('../controllers/chatSuggestions');
 const resumable = require('../controllers/chatResumableUpload');
@@ -13,14 +14,15 @@ router.get('/chat-v2/messages/:chatId/receipts', authenticate, ctrl.getMessageRe
 router.get('/chat-v2/messages/:chatId/history', authenticate, ctrl.getEditHistory);
 
 router.get('/chat-v2/drafts', authenticate, ctrl.listDrafts);
-router.get('/chat-v2/drafts/:roomId', authenticate, ctrl.getDraft);
-router.put('/chat-v2/drafts/:roomId', authenticate, ctrl.saveDraft);
-router.delete('/chat-v2/drafts/:roomId', authenticate, ctrl.deleteDraft);
+router.get('/chat-v2/drafts/:roomId', authenticate, roomAccess, ctrl.getDraft);
+router.put('/chat-v2/drafts/:roomId', authenticate, roomAccess, ctrl.saveDraft);
+router.delete('/chat-v2/drafts/:roomId', authenticate, roomAccess, ctrl.deleteDraft);
 
 router.get('/chat-v2/mentions', authenticate, ctrl.listMentions);
 router.get(
   '/chat-v2/mention-suggestions/:roomId',
   authenticate,
+  roomAccess,
   suggestions.mentionSuggestions
 );
 router.get('/chat-v2/search', authenticate, ctrl.searchMessages);
@@ -32,8 +34,8 @@ router.post(
   ctrl.actionMessageRequest
 );
 
-router.get('/chat-v2/topics/:roomId', authenticate, ctrl.listTopics);
-router.post('/chat-v2/topics/:roomId', authenticate, ctrl.createTopic);
+router.get('/chat-v2/topics/:roomId', authenticate, roomAccess, ctrl.listTopics);
+router.post('/chat-v2/topics/:roomId', authenticate, roomAccess, ctrl.createTopic);
 router.patch('/chat-v2/topics/item/:topicId', authenticate, ctrl.updateTopic);
 router.delete('/chat-v2/topics/item/:topicId', authenticate, ctrl.deleteTopic);
 
@@ -47,12 +49,14 @@ router.get(
 router.get(
   '/chat-v2/e2ee/rooms/:roomId',
   authenticate,
+  roomAccess,
   cleanupRoomE2eeKeys,
   ctrl.getRoomE2ee
 );
 router.post(
   '/chat-v2/e2ee/rooms/:roomId',
   authenticate,
+  roomAccess,
   cleanupRoomE2eeKeys,
   ctrl.setRoomE2ee
 );
