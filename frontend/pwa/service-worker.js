@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'syncchat-v4';
+const CACHE_VERSION = 'syncchat-v5';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
@@ -10,8 +10,11 @@ const APP_SHELL = [
   '/assets/icons/channel-avatar.svg',
 ];
 
+// User/group legacy PNG fallbacks are intentionally not intercepted here.
+// Vercel rewrites them to the canonical HTTPS upload host so every old bundle
+// and stale database value resolves without a 404. Channel keeps the requested
+// SVG fallback until a custom channel image is uploaded.
 const LEGACY_AVATAR_REDIRECTS = new Map([
-  ['/assets/images/default-group-avatar.png', '/assets/icons/group-avatar.svg'],
   ['/assets/images/default-channel-avatar.png', '/assets/icons/channel-avatar.svg'],
 ]);
 

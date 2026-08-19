@@ -9,7 +9,7 @@ function Inactive() {
         <title>{`${config.brandName} [inactive]`}</title>
         <link
           rel="shortcut icon"
-          href="assets/images/error.ico"
+          href="https://syncchat.smshagor.com/uploads/error.ico"
           type="image/x-icon"
         />
       </Helmet>
