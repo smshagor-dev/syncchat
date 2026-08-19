@@ -20,6 +20,14 @@ function ConfirmDeleteChatAndInbox() {
   const isGroup = roomType === 'group';
   const friendName = chatRoom?.data?.profile?.fullname || 'the other participant';
 
+  const closeModal = () =>
+    dispatch(
+      setModal({
+        target: 'confirmDeleteChatAndInbox',
+        data: false,
+      })
+    );
+
   React.useEffect(() => {
     if (confirmDeleteChatAndInbox) {
       setScope('self');
@@ -28,6 +36,17 @@ function ConfirmDeleteChatAndInbox() {
     }
   }, [confirmDeleteChatAndInbox]);
 
+  React.useEffect(() => {
+    if (!confirmDeleteChatAndInbox) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !loading) closeModal();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmDeleteChatAndInbox, loading]);
+
   const emitLocalInboxDelete = (roomId) => {
     window.dispatchEvent(
       new CustomEvent('syncchat:inbox-delete', {
@@ -35,14 +54,6 @@ function ConfirmDeleteChatAndInbox() {
       })
     );
   };
-
-  const closeModal = () =>
-    dispatch(
-      setModal({
-        target: 'confirmDeleteChatAndInbox',
-        data: false,
-      })
-    );
 
   const handleDeleteChatAndInbox = async () => {
     try {
@@ -85,36 +96,53 @@ function ConfirmDeleteChatAndInbox() {
             ? 'delay-75 z-50'
             : '-z-50 opacity-0 delay-300'
         }
-        absolute w-full h-full flex justify-center items-center
+        fixed inset-0 flex items-center justify-center p-4
         bg-spill-600/40 dark:bg-black/60
       `}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget || loading) return;
+        closeModal();
+      }}
     >
       <div
-        aria-hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-chat-title"
+        aria-describedby="delete-chat-description"
         className={`${
           !confirmDeleteChatAndInbox && 'scale-0'
-        } transition relative w-[420px] max-w-[calc(100vw-2rem)] m-6 p-4 rounded-xl bg-white dark:bg-spill-800`}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
+        } transition relative w-full max-w-[420px] rounded-xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-spill-800 dark:text-slate-100`}
+        onClick={(event) => event.stopPropagation()}
       >
-        <h1 className="text-2xl font-bold mb-1">Delete Chat</h1>
-        <p className="text-sm opacity-70">
+        <h1
+          id="delete-chat-title"
+          className="mb-1 text-2xl font-bold text-slate-900 dark:text-white"
+        >
+          Delete Chat
+        </h1>
+        <p
+          id="delete-chat-description"
+          className="text-sm text-slate-600 dark:text-slate-300"
+        >
           Choose where this conversation should be removed.
         </p>
 
         <div className="mt-4 grid gap-2">
           <button
             type="button"
-            className={`rounded-xl border p-4 text-left ${
+            aria-pressed={scope === 'self'}
+            className={`min-h-[84px] w-full touch-manipulation select-none rounded-xl border p-4 text-left text-slate-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:text-slate-100 dark:focus-visible:ring-offset-spill-800 ${
               scope === 'self'
-                ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/30'
-                : 'border-slate-200 dark:border-spill-600'
+                ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-950/40'
+                : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-spill-600 dark:bg-spill-800 dark:hover:bg-spill-700'
             }`}
             onClick={() => setScope('self')}
+            disabled={loading}
           >
-            <p className="font-semibold">Delete for me</p>
-            <p className="mt-1 text-xs opacity-60">
+            <p className="font-semibold text-slate-900 dark:text-white">
+              Delete for me
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
               Only your copy is removed. The other participant keeps the chat.
             </p>
           </button>
@@ -122,51 +150,53 @@ function ConfirmDeleteChatAndInbox() {
           {!isGroup && (
             <button
               type="button"
-              className={`rounded-xl border p-4 text-left ${
+              aria-pressed={scope === 'both'}
+              className={`min-h-[84px] w-full touch-manipulation select-none rounded-xl border p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-spill-800 ${
                 scope === 'both'
-                  ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/30'
-                  : 'border-slate-200 dark:border-spill-600'
+                  ? 'border-rose-500 bg-rose-50 dark:border-rose-400 dark:bg-rose-950/40'
+                  : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-spill-600 dark:bg-spill-800 dark:hover:bg-spill-700'
               }`}
               onClick={() => setScope('both')}
+              disabled={loading}
             >
               <p className="font-semibold text-rose-600 dark:text-rose-400">
                 Delete for both
               </p>
-              <p className="mt-1 text-xs opacity-60">
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
                 Permanently remove the conversation for you and {friendName}.
               </p>
             </button>
           )}
 
           {error && (
-            <p className="pt-1 text-sm text-rose-600 dark:text-rose-400">{error}</p>
+            <p className="pt-1 text-sm text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
           )}
         </div>
 
-        <span className="mt-4 flex gap-2 justify-end">
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
           <button
             type="button"
-            className="py-2 px-4 rounded-md hover:bg-gray-100 dark:hover:bg-spill-700"
+            className="min-h-[44px] touch-manipulation rounded-md px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:hover:bg-spill-700 dark:focus-visible:ring-offset-spill-800"
             onClick={closeModal}
             disabled={loading}
           >
-            <p>Cancel</p>
+            Cancel
           </button>
           <button
             type="button"
-            className="py-2 px-4 rounded-md text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
+            className="min-h-[44px] touch-manipulation rounded-md bg-rose-600 px-4 py-2 font-bold text-white transition-colors hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-spill-800"
             onClick={handleDeleteChatAndInbox}
             disabled={loading}
           >
-            <p className="font-bold">
-              {loading
-                ? 'Deleting...'
-                : scope === 'both'
-                  ? 'Delete for both'
-                  : 'Delete for me'}
-            </p>
+            {loading
+              ? 'Deleting...'
+              : scope === 'both'
+                ? 'Delete for both'
+                : 'Delete for me'}
           </button>
-        </span>
+        </div>
       </div>
     </div>
   );
