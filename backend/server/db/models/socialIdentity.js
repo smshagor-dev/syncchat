@@ -42,7 +42,6 @@ const SocialIdentityModel = sequelize.define(
         unique: true,
         fields: ['provider', 'providerUserId'],
       },
-      { name: 'social_identity_user_idx', fields: ['userId'] },
     ],
   }
 );
