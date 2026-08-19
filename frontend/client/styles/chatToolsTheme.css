@@ -1,0 +1,78 @@
+/*
+ * Chat Tools floating trigger theme hardening.
+ *
+ * GlobalChatTools is rendered at the application root, so keep this override
+ * narrowly scoped to its trigger instead of changing shared button styles.
+ */
+button[title^='Chat tools'] {
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background-color: #0369a1 !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 12px 28px rgba(2, 132, 199, 0.28),
+    0 3px 10px rgba(15, 23, 42, 0.22);
+  isolation: isolate;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+button[title^='Chat tools'] > svg {
+  display: block;
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+button[title^='Chat tools']:hover {
+  background-color: #075985 !important;
+  box-shadow:
+    0 14px 32px rgba(2, 132, 199, 0.34),
+    0 4px 12px rgba(15, 23, 42, 0.24);
+  transform: translateY(-1px);
+}
+
+button[title^='Chat tools']:active {
+  transform: translateY(0) scale(0.96);
+}
+
+button[title^='Chat tools']:focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 3px;
+}
+
+/*
+ * The application uses Tailwind's class-based dark mode. Explicit values here
+ * prevent inherited/global button or SVG colors from making the command icon
+ * disappear against the floating trigger in dark mode.
+ */
+.dark button[title^='Chat tools'] {
+  border-color: rgba(125, 211, 252, 0.56);
+  background-color: #0c4a6e !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(56, 189, 248, 0.12);
+}
+
+.dark button[title^='Chat tools']:hover {
+  border-color: rgba(125, 211, 252, 0.78);
+  background-color: #075985 !important;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(56, 189, 248, 0.2);
+}
+
+.dark button[title^='Chat tools']:focus-visible {
+  outline-color: #38bdf8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button[title^='Chat tools'] {
+    transition: none;
+  }
+}

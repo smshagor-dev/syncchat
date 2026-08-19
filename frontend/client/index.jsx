@@ -13,6 +13,7 @@ import installChatDraftV2 from './helpers/chatDraftV2';
 import installTopicFilterV2 from './helpers/topicFilterV2';
 import installChatHttpReliability from './helpers/chatHttpReliability';
 import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
+import './styles/chatToolsTheme.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
