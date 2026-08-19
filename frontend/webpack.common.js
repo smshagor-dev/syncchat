@@ -25,7 +25,11 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /node_modules/,
         loader: 'babel-loader',
-        options: { cacheDirectory: true, cacheCompression: false },
+        options: {
+          cacheDirectory: true,
+          cacheCompression: false,
+          plugins: [path.resolve(__dirname, 'babel.admin-safe-strings.js')],
+        },
       },
       { test: /\.css$/, use: ['style-loader', 'css-loader', 'postcss-loader'] },
       {
