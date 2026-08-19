@@ -7,6 +7,7 @@ on:
       - agent/native-push-db-config
       - agent/shared-chat-lock-delete-scope
       - agent/admin-sidebar-social-db
+      - production-hardening-mail-security
   pull_request:
     branches:
       - main
@@ -26,6 +27,8 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=critical
 
   frontend:
     runs-on: ubuntu-latest
@@ -41,3 +44,4 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --include=dev
       - run: npm run build
+      - run: npm audit --omit=dev --audit-level=critical
