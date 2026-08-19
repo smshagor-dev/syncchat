@@ -1,0 +1,97 @@
+/* SyncChat client layout corrections that must stay aligned with runtime dimensions. */
+
+@media (min-width: 768px) {
+  div[class*="md:grid-cols-[72px_1fr]"] {
+    grid-template-columns: 84px minmax(0, 1fr) !important;
+  }
+}
+
+.syncchat-chat-tools-floating-hidden {
+  display: none !important;
+}
+
+.syncchat-chat-tools-settings-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  background: #ffffff;
+  padding: 16px 20px;
+  text-align: left;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.syncchat-chat-tools-settings-card:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.syncchat-chat-tools-settings-card:active {
+  transform: scale(0.995);
+}
+
+.syncchat-chat-tools-settings-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.syncchat-chat-tools-settings-copy {
+  min-width: 0;
+}
+
+.syncchat-chat-tools-settings-title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.syncchat-chat-tools-settings-desc {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.syncchat-chat-tools-settings-arrow {
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dark .syncchat-chat-tools-settings-card {
+  border-color: #273645;
+  background: #141d26;
+  box-shadow: none;
+}
+
+.dark .syncchat-chat-tools-settings-card:hover {
+  border-color: #334557;
+  background: #1d2935;
+}
+
+.dark .syncchat-chat-tools-settings-icon {
+  background: rgb(14 165 233 / 0.16);
+  color: #7dd3fc;
+}
+
+.dark .syncchat-chat-tools-settings-title {
+  color: #f8fafc;
+}
+
+.dark .syncchat-chat-tools-settings-desc,
+.dark .syncchat-chat-tools-settings-arrow {
+  color: #94a3b8;
+}
