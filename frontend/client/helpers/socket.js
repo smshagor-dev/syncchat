@@ -1,16 +1,26 @@
 import { io } from 'socket.io-client';
 import config from '../config';
 
+const readToken = () => {
+  try {
+    return localStorage.getItem('token') || '';
+  } catch (error0) {
+    return '';
+  }
+};
+
 const socket = io(config.socketUrl, {
   path: '/socket.io',
   transports: ['websocket'],
-  autoConnect: false,
+  autoConnect: Boolean(readToken()),
   reconnection: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 250,
+  reconnectionDelayMax: 1500,
+  randomizationFactor: 0.25,
+  timeout: 8000,
   auth(callback) {
-    callback({ token: localStorage.getItem('token') || '' });
+    callback({ token: readToken() });
   },
 });
 

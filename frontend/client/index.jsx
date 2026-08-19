@@ -9,10 +9,12 @@ import installProfileAvatarSync from './helpers/profileAvatarSync';
 import installChatLockSync from './helpers/chatLockSync';
 import installChatDeletionSync from './helpers/chatDeletionSync';
 import installChatTransportV2 from './helpers/chatTransportV2';
+import installRealtimeDelivery from './helpers/realtimeDelivery';
 import installChatDraftV2 from './helpers/chatDraftV2';
 import installTopicFilterV2 from './helpers/topicFilterV2';
 import installChatHttpReliability from './helpers/chatHttpReliability';
 import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
+import { getCallingConfig } from './helpers/callingConfig';
 import './styles/chatToolsTheme.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
@@ -33,9 +35,11 @@ installChatLockSync();
 installChatDeletionSync();
 installChatHttpReliability();
 installChatTransportV2();
+installRealtimeDelivery();
 installTopicFilterV2();
 installChatDraftV2();
 installMentionAutocompleteV2();
+getCallingConfig().catch(() => {});
 registerServiceWorker();
 
 requestNotificationPermission();

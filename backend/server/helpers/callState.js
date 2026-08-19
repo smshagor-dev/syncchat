@@ -1,5 +1,8 @@
-const { createClient } = require('redis');
 const logger = require('./logger');
+const {
+  getSocketRedisCommandClient,
+  isRedisConfigured,
+} = require('./socketAdapter');
 
 const DEFAULT_TTL_SEC = 24 * 60 * 60;
 const MIN_TTL_SEC = 5 * 60;
@@ -12,10 +15,8 @@ const clampTtl = (value) => {
 };
 
 const stateTtlSec = clampTtl(process.env.CALL_STATE_TTL_SEC);
-const redisUrl = String(process.env.REDIS_URL || '').trim();
 const production = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 
-let redisPromise = null;
 let warnedFallback = false;
 const memory = new Map();
 
@@ -60,7 +61,7 @@ const memoryDelete = (key) => {
 };
 
 const getRedis = async () => {
-  if (!redisUrl) {
+  if (!isRedisConfigured()) {
     if (production) {
       const error = new Error(
         'REDIS_URL is required for durable production call state'
@@ -77,24 +78,12 @@ const getRedis = async () => {
     return null;
   }
 
-  if (redisPromise) return redisPromise;
+  const client = await getSocketRedisCommandClient();
+  if (client) return client;
 
-  redisPromise = (async () => {
-    const client = createClient({ url: redisUrl });
-    client.on('error', (error) => {
-      logger.error('CALL_STATE_REDIS_ERROR', { message: error.message });
-    });
-    await client.connect();
-    logger.info('CALL_STATE_REDIS_READY', {
-      ttlSec: stateTtlSec,
-    });
-    return client;
-  })().catch((error) => {
-    redisPromise = null;
-    throw error;
-  });
-
-  return redisPromise;
+  const error = new Error('Shared Redis runtime is not ready for call state');
+  error.code = 'CALL_STATE_REDIS_NOT_READY';
+  throw error;
 };
 
 const encodeState = (state, ttlSec = stateTtlSec) => ({

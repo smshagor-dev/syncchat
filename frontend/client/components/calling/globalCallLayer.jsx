@@ -115,6 +115,65 @@ function GlobalCallLayer() {
     };
   }, [dispatch, master?._id, callPanel]);
 
+  // Start server-side call reservation/ringing as soon as the outgoing panel
+  // opens. Camera/microphone acquisition can then happen in parallel instead
+  // of blocking the recipient notification path.
+  useEffect(() => {
+    if (
+      !master?._id ||
+      callPanel?.mode !== 'outgoing' ||
+      !callPanel?.roomId
+    ) {
+      return;
+    }
+
+    socket.emit('call/start', {
+      roomId: callPanel.roomId,
+      roomType: callPanel.roomType === 'group' ? 'group' : 'private',
+      fromUserId: master._id,
+      mediaType: callPanel.mediaType === 'video' ? 'video' : 'audio',
+      fromName: callPanel.fromName || master.fullname || '',
+      fromUsername: callPanel.fromUsername || master.username || '',
+      recipientsId: Array.isArray(callPanel.recipientsId)
+        ? callPanel.recipientsId
+        : [],
+    });
+  }, [
+    master?._id,
+    callPanel?.mode,
+    callPanel?.roomId,
+    callPanel?.roomType,
+    callPanel?.mediaType,
+  ]);
+
+  useEffect(() => {
+    const onStarted = (payload = {}) => {
+      if (
+        callPanel?.mode !== 'outgoing' ||
+        !payload.callId ||
+        payload.roomId !== callPanel.roomId ||
+        callPanel.callId === payload.callId
+      ) {
+        return;
+      }
+
+      dispatch(
+        setModal({
+          target: 'callPanel',
+          data: {
+            ...callPanel,
+            callId: payload.callId,
+            roomType: payload.roomType || callPanel.roomType,
+            mediaType: payload.mediaType || callPanel.mediaType,
+          },
+        })
+      );
+    };
+
+    socket.on('call/started', onStarted);
+    return () => socket.off('call/started', onStarted);
+  }, [dispatch, callPanel]);
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
 
@@ -125,9 +184,7 @@ function GlobalCallLayer() {
     };
 
     navigator.serviceWorker.addEventListener('message', onMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', onMessage);
-    };
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   }, [dispatch, master?._id, callPanel]);
 
   useEffect(() => {
