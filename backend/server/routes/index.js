@@ -5,6 +5,7 @@ const {
   isRedisConfigured,
 } = require('../helpers/socketAdapter');
 const mailer = require('../helpers/mailer');
+const smtpCredentialStorage = require('../middleware/smtpCredentialStorage');
 
 // Lightweight liveness probe: process + database connection.
 router.get('/health', (req, res) => {
@@ -104,6 +105,7 @@ router.use(chatAiAdmin);
 router.use(adminProfileSecurity);
 router.use(mailAdmin);
 router.use(adminBootstrap);
+router.use('/admin/app-config', smtpCredentialStorage);
 router.use(admin);
 
 module.exports = router;
