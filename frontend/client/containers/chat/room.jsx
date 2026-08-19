@@ -49,6 +49,27 @@ function Room() {
     }
   };
 
+  const mergePendingRows = (serverRows, currentRows) => {
+    const rows = Array.isArray(serverRows) ? serverRows : [];
+    const pending = (currentRows || []).filter(
+      (item) => item?.pending || item?.sendFailed
+    );
+    if (!pending.length) return rows;
+
+    const serverIds = new Set(rows.map((item) => item?._id).filter(Boolean));
+    const serverClientIds = new Set(
+      rows.map((item) => item?.clientMessageId).filter(Boolean)
+    );
+    return [
+      ...rows,
+      ...pending.filter(
+        (item) =>
+          !serverIds.has(item?._id) &&
+          !serverClientIds.has(item?.clientMessageId)
+      ),
+    ];
+  };
+
   const handleGetChats = async (signal) => {
     try {
       const { data } = await axios.get(`/chats/${chatRoom.data.roomId}`, {
@@ -57,11 +78,11 @@ function Room() {
       });
 
       if (data.payload.length > 0) {
-        setChats(data.payload);
+        setChats((prev) => mergePendingRows(data.payload, prev));
 
         const callback = (mutationlist, observer) => {
           const monitor = document.querySelector('#monitor');
-          monitor.scrollTop = monitor.scrollHeight;
+          if (monitor) monitor.scrollTop = monitor.scrollHeight;
 
           setLoaded(true);
 
@@ -71,14 +92,16 @@ function Room() {
         const observer = new MutationObserver(callback);
 
         const elem = document.querySelector('#monitor-content');
-        observer.observe(elem, { childList: true });
+        if (elem) observer.observe(elem, { childList: true });
+        else setLoaded(true);
 
         return;
       }
 
+      setChats((prev) => mergePendingRows([], prev));
       setLoaded(true);
     } catch (error0) {
-      console.error(error0.response.data.message);
+      console.error(error0?.response?.data?.message || error0.message);
     }
   };
 
@@ -149,7 +172,9 @@ function Room() {
           params: { skip: 0, limit: control.limit },
           signal: abortCtrl.signal,
         });
-        setChats(Array.isArray(data?.payload) ? data.payload : []);
+        setChats((prev) =>
+          mergePendingRows(Array.isArray(data?.payload) ? data.payload : [], prev)
+        );
       } catch (error0) {
         console.error(error0?.response?.data?.message || error0.message);
       } finally {
@@ -163,6 +188,106 @@ function Room() {
         'syncchat:room-refresh-chats',
         handleRefreshChats
       );
+    };
+  }, [chatRoom?.data?.roomId, control.limit]);
+
+  useEffect(() => {
+    const roomId = chatRoom?.data?.roomId;
+    if (!roomId) return undefined;
+
+    const appendWithLimit = (list, payload) => {
+      const current = Array.isArray(list) ? list : [];
+      if (current.length >= control.limit) {
+        return [...current.slice(1), payload];
+      }
+      return [...current, payload];
+    };
+
+    const onOptimistic = (event) => {
+      const payload = event?.detail;
+      if (!payload?.clientMessageId || payload.roomId !== roomId) return;
+
+      setChats((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        if (
+          list.some(
+            (item) => item?.clientMessageId === payload.clientMessageId
+          )
+        ) {
+          return list;
+        }
+        return appendWithLimit(list, payload);
+      });
+    };
+
+    const onConfirmed = (event) => {
+      const payload = event?.detail;
+      if (!payload?._id || payload.roomId !== roomId) return;
+
+      setChats((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        const index = list.findIndex(
+          (item) =>
+            item?._id === payload._id ||
+            (payload.clientMessageId &&
+              item?.clientMessageId === payload.clientMessageId)
+        );
+
+        if (index < 0) {
+          return appendWithLimit(list, {
+            ...payload,
+            pending: false,
+            sendFailed: false,
+          });
+        }
+
+        const current = list[index];
+        const preserveLocalEncryptedText =
+          current?.pending &&
+          payload?.e2eeEnvelope &&
+          payload?.text === 'Encrypted message';
+        const next = [...list];
+        next[index] = {
+          ...current,
+          ...payload,
+          text: preserveLocalEncryptedText ? current.text : payload.text,
+          pending: false,
+          sendFailed: false,
+        };
+        return next;
+      });
+    };
+
+    const onFailed = (event) => {
+      const payload = event?.detail || {};
+      if (payload.roomId && payload.roomId !== roomId) return;
+      if (!payload.clientMessageId) return;
+
+      setChats((prev) =>
+        (prev || []).map((item) =>
+          item?.clientMessageId === payload.clientMessageId
+            ? {
+                ...item,
+                pending: false,
+                sendFailed: true,
+                sendError:
+                  payload.message || payload.code || payload.reason || 'Send failed',
+              }
+            : item
+        )
+      );
+    };
+
+    window.addEventListener('syncchat:optimistic-message', onOptimistic);
+    window.addEventListener('syncchat:message-confirmed', onConfirmed);
+    window.addEventListener('syncchat:optimistic-message-failed', onFailed);
+    window.addEventListener('syncchat:outbox-failed', onFailed);
+
+    return () => {
+      window.removeEventListener('syncchat:optimistic-message', onOptimistic);
+      window.removeEventListener('syncchat:message-confirmed', onConfirmed);
+      window.removeEventListener('syncchat:optimistic-message-failed', onFailed);
+      window.removeEventListener('syncchat:outbox-failed', onFailed);
     };
   }, [chatRoom?.data?.roomId, control.limit]);
 
