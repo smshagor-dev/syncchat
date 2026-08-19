@@ -71,6 +71,27 @@ button[title^='Chat tools']:focus-visible {
   outline-color: #38bdf8;
 }
 
+/*
+ * Mobile dock clearance.
+ *
+ * Pages that already opt into `pb-16 md:pb-0` are foreground/mobile panels.
+ * The floating dock is taller than 4rem, so reserve enough scroll room for the
+ * final row (for example Settings -> Log out) to move fully above the dock.
+ */
+@media (max-width: 767px) {
+  .pb-16.md\:pb-0 {
+    padding-bottom: calc(7.25rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Chat Tools belongs on the lower-left on phones. Keep it above the dock so
+   * it cannot cover Calls or the existing new-message action on the right. */
+  button[title^='Chat tools'] {
+    right: auto !important;
+    left: max(1rem, env(safe-area-inset-left));
+    bottom: calc(6.35rem + env(safe-area-inset-bottom));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   button[title^='Chat tools'] {
     transition: none;
