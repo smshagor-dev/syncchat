@@ -72,6 +72,134 @@ button[title^='Chat tools']:focus-visible {
 }
 
 /*
+ * Chat Tools panel dark-mode contrast.
+ *
+ * GlobalChatTools renders its modal overlay immediately after the floating
+ * trigger, so the sibling selector isolates these rules to this panel only.
+ * Light mode and other application dialogs remain untouched.
+ */
+.dark button[title^='Chat tools'] + div > div {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background-color: #17232d !important;
+  color: #e8f1f7;
+  color-scheme: dark;
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(15, 23, 42, 0.25);
+  scrollbar-color: #475569 transparent;
+}
+
+.dark button[title^='Chat tools'] + div > div header,
+.dark button[title^='Chat tools'] + div > div footer {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.dark button[title^='Chat tools'] + div > div h1,
+.dark button[title^='Chat tools'] + div > div h2,
+.dark button[title^='Chat tools'] + div > div h3,
+.dark button[title^='Chat tools'] + div > div h4,
+.dark button[title^='Chat tools'] + div > div strong {
+  color: #f8fafc;
+}
+
+.dark button[title^='Chat tools'] + div > div button {
+  color: inherit;
+}
+
+.dark button[title^='Chat tools'] + div > div button.bg-sky-600,
+.dark button[title^='Chat tools'] + div > div button[class*='bg-sky-600'] {
+  color: #ffffff !important;
+}
+
+.dark button[title^='Chat tools'] + div > div button:not(:disabled):hover {
+  color: #ffffff;
+}
+
+.dark button[title^='Chat tools'] + div > div input,
+.dark button[title^='Chat tools'] + div > div select,
+.dark button[title^='Chat tools'] + div > div textarea {
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  background-color: #0f1b24 !important;
+  color: #e8f1f7 !important;
+  caret-color: #38bdf8;
+}
+
+.dark button[title^='Chat tools'] + div > div input::placeholder,
+.dark button[title^='Chat tools'] + div > div textarea::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.dark button[title^='Chat tools'] + div > div input:focus,
+.dark button[title^='Chat tools'] + div > div select:focus,
+.dark button[title^='Chat tools'] + div > div textarea:focus {
+  border-color: #38bdf8 !important;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
+.dark button[title^='Chat tools'] + div > div select option {
+  background-color: #0f1b24;
+  color: #e8f1f7;
+}
+
+.dark button[title^='Chat tools'] + div > div .text-slate-900,
+.dark button[title^='Chat tools'] + div > div .text-slate-800,
+.dark button[title^='Chat tools'] + div > div .text-slate-700 {
+  color: #e8f1f7 !important;
+}
+
+.dark button[title^='Chat tools'] + div > div .text-slate-600,
+.dark button[title^='Chat tools'] + div > div .text-slate-500,
+.dark button[title^='Chat tools'] + div > div .text-slate-400 {
+  color: #a9bac6 !important;
+}
+
+.dark button[title^='Chat tools'] + div > div [class*='bg-slate-50'],
+.dark button[title^='Chat tools'] + div > div [class*='bg-slate-100'],
+.dark button[title^='Chat tools'] + div > div [class*='bg-white'] {
+  background-color: #13212b !important;
+}
+
+.dark button[title^='Chat tools'] + div > div [class*='border-slate-'] {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.dark button[title^='Chat tools'] + div > div .opacity-60,
+.dark button[title^='Chat tools'] + div > div .opacity-70 {
+  color: #a9bac6;
+}
+
+.dark button[title^='Chat tools'] + div > div .text-rose-600,
+.dark button[title^='Chat tools'] + div > div .dark\:text-rose-400 {
+  color: #fb7185 !important;
+}
+
+.dark button[title^='Chat tools'] + div > div .text-emerald-600,
+.dark button[title^='Chat tools'] + div > div .dark\:text-emerald-400 {
+  color: #34d399 !important;
+}
+
+.dark button[title^='Chat tools'] + div > div ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark button[title^='Chat tools'] + div > div ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark button[title^='Chat tools'] + div > div ::-webkit-scrollbar-thumb {
+  border: 2px solid #17232d;
+  border-radius: 999px;
+  background: #475569;
+}
+
+.dark button[title^='Chat tools'] + div > div ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/*
  * Mobile dock clearance.
  *
  * Pages that already opt into `pb-16 md:pb-0` are foreground/mobile panels.
