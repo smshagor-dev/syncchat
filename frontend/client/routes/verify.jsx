@@ -5,55 +5,38 @@ import * as bi from 'react-icons/bi';
 import { setMaster } from '../redux/features/user';
 import config from '../config';
 
+const emptyOtp = () => ({ 0: '', 1: '', 2: '', 3: '', 4: '', 5: '' });
+
 function Verify() {
   const dispatch = useDispatch();
   const master = useSelector((state) => state.user.master);
-
   const [process, setProcess] = useState(false);
   const [resending, setResending] = useState(false);
-  const [respond, setRespond] = useState({
-    success: true,
-    message: null,
-  });
-  const [otp, setOtp] = useState({
-    0: '',
-    1: '',
-    2: '',
-    3: '',
-  });
+  const [respond, setRespond] = useState({ success: true, message: null });
+  const [otp, setOtp] = useState(emptyOtp);
 
   const handleSubmit = async (e) => {
     try {
       e.preventDefault();
       setProcess(true);
+      const code = Object.values(otp).join('');
+      if (!/^\d{6}$/.test(code)) throw new Error('Enter the complete 6-digit code');
 
-      const { data } = await axios.post('/users/verify', {
-        userId: master._id,
-        otp: Number(Object.values(otp).join('')),
-      });
-
-      setOtp({
-        0: '',
-        1: '',
-        2: '',
-        3: '',
-      });
-
+      const { data } = await axios.post('/users/verify', { otp: code });
+      setOtp(emptyOtp());
       setRespond({
         success: true,
-        message: data.message || 'OTP verified successfully',
+        message: data.message || 'Account verified successfully',
       });
       dispatch(setMaster(data.payload));
-
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      setTimeout(() => window.location.reload(), 400);
     } catch (error0) {
-      setProcess(false);
       setRespond({
         success: false,
-        message: error0?.response?.data?.message || 'Invalid OTP code',
+        message:
+          error0?.response?.data?.message || error0.message || 'Invalid verification code',
       });
+      setProcess(false);
     }
   };
 
@@ -61,14 +44,15 @@ function Verify() {
     try {
       setResending(true);
       const { data } = await axios.post('/users/verify/resend');
+      setOtp(emptyOtp());
       setRespond({
         success: true,
-        message: data.message || 'OTP resent successfully',
+        message: data.message || 'Verification code sent successfully',
       });
     } catch (error0) {
       setRespond({
         success: false,
-        message: error0?.response?.data?.message || 'Failed to resend OTP',
+        message: error0?.response?.data?.message || 'Failed to resend verification code',
       });
     } finally {
       setResending(false);
@@ -99,14 +83,11 @@ function Verify() {
 
           <div className="mb-4">
             <h2 className="font-authDisplay text-2xl font-semibold text-slate-900">
-              OTP Verification
+              Email verification
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Enter the 4-digit code sent to{' '}
-              <span className="font-semibold text-slate-700">
-                {master.email}
-              </span>
-              .
+              Enter the 6-digit code sent to{' '}
+              <span className="font-semibold text-slate-700">{master.email}</span>.
             </p>
           </div>
 
@@ -123,61 +104,65 @@ function Verify() {
           )}
 
           <form method="post" className="grid" onSubmit={handleSubmit}>
-            <div className="mt-4 flex gap-3 justify-center">
-              {[...Object.keys(otp)].map((elem, i) => (
+            <div className="mt-4 flex justify-center gap-2 sm:gap-3">
+              {Object.keys(otp).map((elem, i) => (
                 <input
                   type="text"
+                  inputMode="numeric"
                   key={elem}
                   name={elem}
                   id={`otp-${elem}`}
-                  autoComplete="one-time-code"
+                  autoComplete={i === 0 ? 'one-time-code' : 'off'}
+                  aria-label={`Verification digit ${i + 1}`}
                   className={`${
                     respond.success
                       ? 'border-slate-400 focus:border-sky-500'
                       : 'border-rose-500 focus:border-rose-600'
-                  } w-14 h-14 rounded-xl border-2 bg-slate-50 font-bold text-2xl text-center text-slate-900 shadow-sm transition focus:bg-white`}
-                  maxLength="1"
+                  } h-12 w-11 rounded-xl border-2 bg-slate-50 text-center text-xl font-bold text-slate-900 shadow-sm transition focus:bg-white sm:h-14 sm:w-14 sm:text-2xl`}
+                  maxLength={1}
                   required
-                  value={otp[i]}
+                  value={otp[elem]}
+                  onPaste={(e) => {
+                    const digits = e.clipboardData.getData('text').replace(/\D+/g, '').slice(0, 6);
+                    if (digits.length !== 6) return;
+                    e.preventDefault();
+                    const nextOtp = emptyOtp();
+                    digits.split('').forEach((digit, index) => {
+                      nextOtp[index] = digit;
+                    });
+                    setOtp(nextOtp);
+                    document.querySelector('#otp-5')?.focus();
+                  }}
                   onKeyDown={(e) => {
-                    const del = e.key === 'Backspace' || e.key === 'Delete';
-                    const previous = e.target.previousSibling;
-
-                    // numbers only
-                    if (!'0123456789'.includes(e.key)) {
-                      if (
-                        ['Tab', 'Shift', 'ArrowLeft', 'ArrowRight'].includes(
-                          e.key
-                        )
-                      ) {
-                        return;
+                    if (e.key === 'Backspace' || e.key === 'Delete') {
+                      if (!otp[elem] && e.currentTarget.previousElementSibling) {
+                        e.currentTarget.previousElementSibling.focus();
                       }
-                      // ignore the next event
-                      e.preventDefault();
-                    }
-
-                    // if the backspace and delete keys are clicked
-                    if (del) {
                       setOtp((prev) => ({ ...prev, [elem]: '' }));
-                      if (previous) previous.focus();
-
-                      // ignore the next event
+                      return;
+                    }
+                    if (
+                      !/^\d$/.test(e.key) &&
+                      !['Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+                    ) {
                       e.preventDefault();
                     }
                   }}
                   onChange={(e) => {
-                    setRespond({ success: true });
-                    setOtp((prev) => ({ ...prev, [elem]: e.target.value }));
-
-                    const next = e.target.nextSibling;
-                    if (next) next.focus();
+                    const digit = e.target.value.replace(/\D+/g, '').slice(-1);
+                    setRespond((prev) => ({ ...prev, success: true }));
+                    setOtp((prev) => ({ ...prev, [elem]: digit }));
+                    if (digit && e.currentTarget.nextElementSibling) {
+                      e.currentTarget.nextElementSibling.focus();
+                    }
                   }}
                 />
               ))}
             </div>
+
             <button
               type="submit"
-              className="mt-6 mb-2 flex justify-center rounded-xl bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-sky-200 transition hover:brightness-110"
+              className="mb-2 mt-6 flex justify-center rounded-xl bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-sky-200 transition hover:brightness-110 disabled:opacity-60"
               disabled={process}
             >
               {process ? (
@@ -185,12 +170,12 @@ function Verify() {
                   <bi.BiLoaderAlt />
                 </i>
               ) : (
-                <p>Verify code</p>
+                'Verify code'
               )}
             </button>
             <button
               type="button"
-              className="rounded-xl border border-slate-300 bg-white py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="rounded-xl border border-slate-300 bg-white py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
               onClick={handleResendOtp}
               disabled={resending}
             >
