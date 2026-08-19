@@ -116,10 +116,18 @@ const matchesPath = (pathname = '', target = '') => {
 const configuredAdminHostname = getHostnameFromOrigin(getAdminOrigin());
 const getRequestHostname = (req) => String(req.hostname || req.headers.host || '').split(':')[0].toLowerCase();
 
+const adminStandalonePages = new Map([
+  ['admin/storage', 'storage.html'],
+  ['admin/calling', 'calling.html'],
+  ['admin/calling-push', 'calling-push.html'],
+  ['admin/social-auth', 'social-auth.html'],
+]);
+
 if (!config.isDev && config.serveFrontend) {
   const publicRoot = path.resolve(__dirname, '..', '..', 'frontend', 'client', 'public');
   const clientIndex = path.join(publicRoot, 'index.html');
-  const adminIndex = path.join(publicRoot, 'admin', 'index.html');
+  const adminRoot = path.join(publicRoot, 'admin');
+  const adminIndex = path.join(adminRoot, 'index.html');
   const hasFrontendBuild = fs.existsSync(clientIndex) && fs.existsSync(adminIndex);
   if (!hasFrontendBuild) {
     console.warn('[startup] Frontend build files were not found. Client/admin routes will not be available.');
@@ -133,6 +141,16 @@ if (!config.isDev && config.serveFrontend) {
         res.status(404).send('Not found');
         return;
       }
+
+      const standaloneAdminFile = adminStandalonePages.get(pathname);
+      if (standaloneAdminFile) {
+        const standalonePath = path.join(adminRoot, standaloneAdminFile);
+        if (fs.existsSync(standalonePath)) {
+          res.sendFile(standalonePath);
+          return;
+        }
+      }
+
       if (isAdminHost || matchesPath(pathname, 'admin')) {
         res.sendFile(adminIndex);
         return;
