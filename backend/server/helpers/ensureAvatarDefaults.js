@@ -13,15 +13,25 @@ let migrationPromise = null;
 const LEGACY_USER_DEFAULTS = [
   'assets/images/default-avatar.png',
   '/assets/images/default-avatar.png',
+  '/default-avatar.png',
+  'https://syncchat.smshagor.com/uploads/avatar.jpg',
+  'https://syncchat.smshagor.com/uploads/default-avatar.png',
+  'https://syncchat.live/assets/images/default-avatar.png',
 ];
 const LEGACY_GROUP_DEFAULTS = [
   'assets/images/default-group-avatar.png',
   '/assets/images/default-group-avatar.png',
+  '/default-group-avatar.png',
+  'https://syncchat.smshagor.com/uploads/default-group-avatar.png',
+  'https://syncchat.live/assets/images/default-group-avatar.png',
   ...LEGACY_USER_DEFAULTS,
 ];
 const LEGACY_CHANNEL_DEFAULTS = [
   'assets/images/default-channel-avatar.png',
   '/assets/images/default-channel-avatar.png',
+  '/default-channel-avatar.png',
+  'https://syncchat.smshagor.com/uploads/default-channel-avatar.png',
+  'https://syncchat.live/assets/images/default-channel-avatar.png',
   ...LEGACY_GROUP_DEFAULTS,
 ];
 
