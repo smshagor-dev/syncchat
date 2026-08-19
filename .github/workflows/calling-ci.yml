@@ -7,7 +7,6 @@ on:
       - agent/native-push-db-config
       - agent/shared-chat-lock-delete-scope
       - agent/admin-sidebar-social-db
-      - production-hardening-mail-security
   pull_request:
     branches:
       - main
