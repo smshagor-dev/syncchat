@@ -44,12 +44,39 @@ const UserModel = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    // Legacy OTP fields are retained for zero-downtime compatibility. New
+    // verification flows store only HMAC hashes and expiry/attempt metadata.
     otp: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    otpHash: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
+    },
+    otpExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    otpAttempts: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    otpLastSentAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
     resetOtp: {
       type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+    },
+    resetOtpHash: {
+      type: DataTypes.STRING(64),
       allowNull: true,
       defaultValue: null,
     },
@@ -58,10 +85,32 @@ const UserModel = sequelize.define(
       allowNull: true,
       defaultValue: null,
     },
+    resetOtpAttempts: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    resetOtpLastSentAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    // Retained only for compatibility with older deployments. The hardened
+    // recovery flow never authorizes a reset from this boolean.
     resetOtpVerified: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+    },
+    resetTokenHash: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      defaultValue: null,
+    },
+    resetTokenExpires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
     },
     status: {
       type: DataTypes.STRING(16),
