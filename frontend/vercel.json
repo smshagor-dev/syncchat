@@ -3,43 +3,19 @@
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "client/public",
+  "redirects": [
+    { "source": "/favicon.ico", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
+    { "source": "/favicon.png", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
+    { "source": "/assets/images/favicon.png", "destination": "https://syncchat.smshagor.com/uploads/favicon.png", "permanent": false },
+    { "source": "/default-avatar.png", "destination": "https://syncchat.smshagor.com/uploads/default-avatar.png", "permanent": false },
+    { "source": "/assets/images/default-avatar.png", "destination": "https://syncchat.smshagor.com/uploads/default-avatar.png", "permanent": false },
+    { "source": "/default-group-avatar.png", "destination": "https://syncchat.smshagor.com/uploads/default-group-avatar.png", "permanent": false },
+    { "source": "/assets/images/default-group-avatar.png", "destination": "https://syncchat.smshagor.com/uploads/default-group-avatar.png", "permanent": false },
+    { "source": "/error.ico", "destination": "https://syncchat.smshagor.com/uploads/error.ico", "permanent": false },
+    { "source": "/assets/images/error.ico", "destination": "https://syncchat.smshagor.com/uploads/error.ico", "permanent": false },
+    { "source": "/assets/images/default-channel-avatar.png", "destination": "/assets/icons/channel-avatar.svg", "permanent": false }
+  ],
   "rewrites": [
-    {
-      "source": "/favicon.png",
-      "destination": "https://syncchat.smshagor.com/uploads/favicon.png"
-    },
-    {
-      "source": "/assets/images/favicon.png",
-      "destination": "https://syncchat.smshagor.com/uploads/favicon.png"
-    },
-    {
-      "source": "/default-avatar.png",
-      "destination": "https://syncchat.smshagor.com/uploads/default-avatar.png"
-    },
-    {
-      "source": "/assets/images/default-avatar.png",
-      "destination": "https://syncchat.smshagor.com/uploads/default-avatar.png"
-    },
-    {
-      "source": "/default-group-avatar.png",
-      "destination": "https://syncchat.smshagor.com/uploads/default-group-avatar.png"
-    },
-    {
-      "source": "/assets/images/default-group-avatar.png",
-      "destination": "https://syncchat.smshagor.com/uploads/default-group-avatar.png"
-    },
-    {
-      "source": "/error.ico",
-      "destination": "https://syncchat.smshagor.com/uploads/error.ico"
-    },
-    {
-      "source": "/assets/images/error.ico",
-      "destination": "https://syncchat.smshagor.com/uploads/error.ico"
-    },
-    {
-      "source": "/assets/images/default-channel-avatar.png",
-      "destination": "/assets/icons/channel-avatar.svg"
-    },
     {
       "source": "/admin/:path*",
       "destination": "/admin/index.html"
