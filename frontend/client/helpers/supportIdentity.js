@@ -1,3 +1,5 @@
+import config from '../config';
+
 const SUPPORT_AVATAR = '/pwa-192x192.png';
 const SUPPORT_USERNAME = 'syncchat_support';
 const SUPPORT_EMAIL = 'support@syncchat.local';
@@ -14,7 +16,9 @@ const isSupportIdentity = (value) => {
 };
 
 const getSupportAwareAvatar = (value, fallback = '') => {
-  if (isSupportIdentity(value)) return SUPPORT_AVATAR;
+  if (isSupportIdentity(value)) {
+    return String(config.brandLogo || '').trim() || SUPPORT_AVATAR;
+  }
   return value?.avatar || fallback;
 };
 
