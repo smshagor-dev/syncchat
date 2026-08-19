@@ -70,7 +70,10 @@ export const clearCallingConfigCache = () => {
 export const getCallingConfig = async ({ force = false } = {}) => {
   const now = Date.now();
   if (!force && cache && now - cacheAt < CACHE_TTL_MS) return cache;
-  if (!force && pending) return pending;
+  // A force refresh can bypass a completed cache, but it should still reuse an
+  // in-flight request so the call gateway/runtime never duplicate the same HTTP
+  // round trip during first-call initialization.
+  if (pending) return pending;
 
   pending = axios
     .get('/calling/config', {
