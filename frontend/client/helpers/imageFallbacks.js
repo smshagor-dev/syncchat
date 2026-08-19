@@ -13,10 +13,15 @@ const FALLBACKS = [
   },
 ];
 
-const getKnownFallback = (img) => {
+const getLegacyFallback = (img) => {
   const raw = String(img?.getAttribute?.('src') || '').trim();
   const match = FALLBACKS.find((item) => item.match.test(raw));
-  if (match) return match.target;
+  return match?.target || '';
+};
+
+const getErrorFallback = (img) => {
+  const legacyFallback = getLegacyFallback(img);
+  if (legacyFallback) return legacyFallback;
 
   const alt = String(img?.getAttribute?.('alt') || '')
     .trim()
@@ -29,23 +34,23 @@ const getKnownFallback = (img) => {
 const bindImage = (img) => {
   if (!(img instanceof HTMLImageElement)) return;
 
-  const knownFallback = getKnownFallback(img);
+  const legacyFallback = getLegacyFallback(img);
   const current = String(img.getAttribute('src') || '');
 
   if (
-    knownFallback &&
+    legacyFallback &&
     current &&
     !current.startsWith('data:') &&
-    !current.endsWith(knownFallback)
+    !current.endsWith(legacyFallback)
   ) {
-    img.src = knownFallback;
+    img.src = legacyFallback;
   }
 
   if (img.dataset.syncchatFallbackBound === '1') return;
   img.dataset.syncchatFallbackBound = '1';
 
   img.addEventListener('error', () => {
-    const fallback = getKnownFallback(img);
+    const fallback = getErrorFallback(img);
     if (!fallback) return;
 
     const active = String(img.getAttribute('src') || '');
