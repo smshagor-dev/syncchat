@@ -1,6 +1,10 @@
 const AdminAppConfigModel = require('../db/models/adminAppConfig');
 const { asArray } = require('../db/utils');
 const { DEFAULT_PRIVACY, normalizePrivacySettingPayload } = require('./privacy');
+const {
+  encryptSmtpSecret,
+  isEncryptedSmtpSecret,
+} = require('./smtpSecret');
 
 const DEFAULT_APP_CONFIG = {
   appName: 'SyncChat',
@@ -100,10 +104,7 @@ const normalizeUploadLimits = (raw = {}) => {
   const safeAllowed = allowedTypes.filter((item) =>
     DEFAULT_APP_CONFIG.uploadLimits.allowedTypes.includes(item)
   );
-  const hasAllowedInput = Object.prototype.hasOwnProperty.call(
-    source,
-    'allowedTypes'
-  );
+  const hasAllowedInput = Object.prototype.hasOwnProperty.call(source, 'allowedTypes');
 
   return {
     chatMb: clampNumber(source.chatMb, { min: 1, max: 2048, fallback: 100 }),
@@ -249,9 +250,7 @@ const normalizeSeo = (raw = {}) => {
 };
 
 const normalizeAppConfig = (raw = {}, fallback = DEFAULT_APP_CONFIG) => ({
-  appName: String(raw.appName || fallback.appName || 'SyncChat')
-    .trim()
-    .slice(0, 80),
+  appName: String(raw.appName || fallback.appName || 'SyncChat').trim().slice(0, 80),
   appLogo: String(raw.appLogo || fallback.appLogo || '').trim().slice(0, 512),
   supportEmail: String(raw.supportEmail || fallback.supportEmail || '').trim(),
   smtp: normalizeSmtp(raw.smtp, fallback.smtp),
@@ -263,17 +262,22 @@ const normalizeAppConfig = (raw = {}, fallback = DEFAULT_APP_CONFIG) => ({
   defaultNotifications: normalizeDefaultNotifications(
     raw.defaultNotifications || fallback.defaultNotifications || {}
   ),
-  uploadLimits: normalizeUploadLimits(
-    raw.uploadLimits || fallback.uploadLimits || {}
-  ),
-  mediaProfile: normalizeMediaProfile(
-    raw.mediaProfile || fallback.mediaProfile || {}
-  ),
-  maintenance: normalizeMaintenance(
-    raw.maintenance || fallback.maintenance || {}
-  ),
+  uploadLimits: normalizeUploadLimits(raw.uploadLimits || fallback.uploadLimits || {}),
+  mediaProfile: normalizeMediaProfile(raw.mediaProfile || fallback.mediaProfile || {}),
+  maintenance: normalizeMaintenance(raw.maintenance || fallback.maintenance || {}),
   seo: normalizeSeo(raw.seo || fallback.seo || {}),
 });
+
+const migrateLegacySmtpSecret = async (row, plain) => {
+  const smtp = plain?.smtp && typeof plain.smtp === 'object' ? plain.smtp : null;
+  const pass = String(smtp?.pass || '');
+  if (!smtp || !pass || isEncryptedSmtpSecret(pass)) return plain;
+
+  const encryptedPass = encryptSmtpSecret(pass);
+  const migratedSmtp = { ...smtp, pass: encryptedPass };
+  await row.update({ smtp: migratedSmtp });
+  return { ...plain, smtp: migratedSmtp };
+};
 
 const loadAppConfig = async () => {
   const now = Date.now();
@@ -284,7 +288,11 @@ const loadAppConfig = async () => {
     defaults: DEFAULT_APP_CONFIG,
   });
 
-  const plain = row?.get ? row.get({ plain: true }) : row;
+  const initialPlain = row?.get ? row.get({ plain: true }) : row;
+  const plain = await migrateLegacySmtpSecret(
+    row,
+    initialPlain || DEFAULT_APP_CONFIG
+  );
   cachedConfig = normalizeAppConfig(plain || DEFAULT_APP_CONFIG);
   cachedAt = now;
   return cachedConfig;
