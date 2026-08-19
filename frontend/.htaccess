@@ -3,6 +3,13 @@ RewriteEngine On
 # If Apache is serving this repository root, route public web requests
 # to the generated frontend assets under client/public.
 
+# Standalone admin pages are separate webpack entry points. Resolve their
+# extensionless URLs before the generic admin SPA fallback.
+RewriteRule ^admin/storage/?$ client/public/admin/storage.html [L]
+RewriteRule ^admin/calling/?$ client/public/admin/calling.html [L]
+RewriteRule ^admin/calling-push/?$ client/public/admin/calling-push.html [L]
+RewriteRule ^admin/social-auth/?$ client/public/admin/social-auth.html [L]
+
 # Admin subdomain SPA entry.
 RewriteCond %{HTTP_HOST} ^admin\. [NC]
 RewriteCond %{REQUEST_URI} !^/client/public/
