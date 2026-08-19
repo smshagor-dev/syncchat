@@ -14,8 +14,10 @@ import installChatDraftV2 from './helpers/chatDraftV2';
 import installTopicFilterV2 from './helpers/topicFilterV2';
 import installChatHttpReliability from './helpers/chatHttpReliability';
 import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
-import { getCallingConfig } from './helpers/callingConfig';
+import installChatToolsSettingsBridge from './helpers/chatToolsSettingsBridge';
+import installImageFallbacks from './helpers/imageFallbacks';
 import './styles/chatToolsTheme.css';
+import './styles/layoutFixes.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 import { requestNotificationPermission } from './pwa/notifications';
@@ -39,7 +41,8 @@ installRealtimeDelivery();
 installTopicFilterV2();
 installChatDraftV2();
 installMentionAutocompleteV2();
-getCallingConfig().catch(() => {});
+installChatToolsSettingsBridge();
+installImageFallbacks();
 registerServiceWorker();
 
 requestNotificationPermission();
