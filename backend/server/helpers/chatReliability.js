@@ -91,18 +91,17 @@ const wrapReliableChatInsert = (socket) => {
         return;
       }
 
-      // Mention lookup can run while the warm Redis abuse guard executes.
-      const mentionsPromise = resolveMentions({
-        text: args.text || '',
-        roomId: args.roomId,
-        roomType: args.roomType,
-        senderId: socket.userId,
-      });
-
+      // The warm Redis abuse guard must pass before any optional lookup starts.
+      // Sequence allocation and mention resolution can then run concurrently.
       await assertChatSendAllowed({ userId: socket.userId, text: args.text || '' });
       const [sequence, mentions] = await Promise.all([
         nextSequence(args.roomId),
-        mentionsPromise,
+        resolveMentions({
+          text: args.text || '',
+          roomId: args.roomId,
+          roomType: args.roomType,
+          senderId: socket.userId,
+        }),
       ]);
 
       const topicId = args.topicId || null;
