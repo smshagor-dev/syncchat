@@ -1,7 +1,17 @@
 const { getActiveCallByRoom } = require('../../helpers/callState');
 const logger = require('../../helpers/logger');
 
-const START_DEDUPE_MS = 15000;
+const INFLIGHT_DEDUPE_MS = 2000;
+const RECENT_START_TTL_MS = 2 * 60 * 1000;
+
+const emitExistingStarted = (socket, current) => {
+  socket.emit('call/started', {
+    callId: current.callId,
+    roomId: current.roomId,
+    roomType: current.roomType,
+    mediaType: current.mediaType,
+  });
+};
 
 const attachCallRealtimeEvents = (socket) => {
   if (!socket || socket.__syncchatCallRealtime) return;
@@ -23,22 +33,25 @@ const attachCallRealtimeEvents = (socket) => {
       const key = `${roomId}:${fromUserId}:${mediaType}`;
       const now = Date.now();
       const previous = Number(recentStarts.get(key) || 0);
-      if (previous && now - previous < START_DEDUPE_MS) {
+
+      if (previous) {
         const current = await getActiveCallByRoom(roomId).catch(() => null);
-        if (current?.initiatorId === fromUserId) {
-          socket.emit('call/started', {
-            callId: current.callId,
-            roomId: current.roomId,
-            roomType: current.roomType,
-            mediaType: current.mediaType,
-          });
+        if (
+          current?.initiatorId === fromUserId &&
+          current?.mediaType === mediaType
+        ) {
+          emitExistingStarted(socket, current);
+          return;
         }
-        return;
+
+        // Only suppress a duplicate while the first call/start handler is
+        // still reserving state. If the first attempt failed, allow a retry.
+        if (now - previous < INFLIGHT_DEDUPE_MS) return;
       }
 
       recentStarts.set(key, now);
       for (const [entryKey, timestamp] of recentStarts.entries()) {
-        if (now - timestamp >= START_DEDUPE_MS) recentStarts.delete(entryKey);
+        if (now - timestamp >= RECENT_START_TTL_MS) recentStarts.delete(entryKey);
       }
 
       await original({
