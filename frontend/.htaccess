@@ -9,6 +9,7 @@ RewriteRule ^admin/storage/?$ client/public/admin/storage.html [L]
 RewriteRule ^admin/calling/?$ client/public/admin/calling.html [L]
 RewriteRule ^admin/calling-push/?$ client/public/admin/calling-push.html [L]
 RewriteRule ^admin/social-auth/?$ client/public/admin/social-auth.html [L]
+RewriteRule ^admin/mail/?$ client/public/admin/mail.html [L]
 
 # Admin subdomain SPA entry.
 RewriteCond %{HTTP_HOST} ^admin\. [NC]
