@@ -1,17 +1,14 @@
-﻿const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 const AdminSessionModel = require('../db/models/adminSession');
+const { getClientIp } = require('./clientIp');
+const {
+  ADMIN_ACCESS_TOKEN_TTL,
+  ADMIN_AUDIENCE,
+  JWT_ISSUER,
+  JWT_SECRET,
+} = require('./jwtConfig');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'shhhhh';
 const SESSION_ACTIVITY_THROTTLE_MS = 60 * 1000;
-
-const getClientIp = (req) => {
-  const forwarded = String(
-    req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || ''
-  )
-    .split(',')[0]
-    .trim();
-  return String(forwarded || req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
-};
 
 const parseBrowser = (ua = '') => {
   if (/Edg\//.test(ua)) return 'Edge';
@@ -48,10 +45,27 @@ const buildSessionMetaFromRequest = (req) => {
   };
 };
 
-const signAdminToken = ({ adminId, sessionId, role }) =>
-  jwt.sign({ aid: adminId, sid: sessionId, role }, JWT_SECRET, { expiresIn: '7d' });
+const signAdminToken = ({ adminId, sessionId, role }) => {
+  if (!adminId || !sessionId) throw new Error('Admin and session are required');
+  return jwt.sign(
+    { aid: adminId, sid: sessionId, role, typ: 'admin-access' },
+    JWT_SECRET,
+    {
+      expiresIn: ADMIN_ACCESS_TOKEN_TTL,
+      issuer: JWT_ISSUER,
+      audience: ADMIN_AUDIENCE,
+      subject: String(adminId),
+    }
+  );
+};
 
-const verifyAdminToken = (token) => jwt.verify(token, JWT_SECRET);
+const verifyAdminToken = (token) => {
+  if (!token) throw new Error('Missing admin token');
+  return jwt.verify(token, JWT_SECRET, {
+    issuer: JWT_ISSUER,
+    audience: ADMIN_AUDIENCE,
+  });
+};
 
 const createAdminSession = async ({ adminId, req }) => {
   const meta = buildSessionMetaFromRequest(req);
