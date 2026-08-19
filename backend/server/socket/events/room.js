@@ -1,5 +1,6 @@
 const { io } = global;
 const attachCallingEvents = require('./calling');
+const attachCallRealtimeEvents = require('./callRealtime');
 const attachBackgroundCallingEvents = require('./backgroundCalling');
 const attachGroupModerationEvents = require('./groupModeration');
 
@@ -11,6 +12,7 @@ module.exports = (socket) => {
   });
 
   attachCallingEvents(socket);
+  attachCallRealtimeEvents(socket);
   attachBackgroundCallingEvents(socket);
   attachGroupModerationEvents(socket);
 };
