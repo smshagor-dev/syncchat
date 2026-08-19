@@ -25,8 +25,7 @@ button[title^='Chat tools'] {
 button[title^='Chat tools'] > svg {
   display: block;
   color: inherit !important;
-  fill: currentColor;
-  stroke: currentColor;
+  fill: currentColor !important;
 }
 
 button[title^='Chat tools']:hover {
