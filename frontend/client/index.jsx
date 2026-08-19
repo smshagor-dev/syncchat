@@ -23,7 +23,6 @@ import './styles/callScreenTheme.css';
 import './styles/inboxMenuMobile.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
-import { requestNotificationPermission } from './pwa/notifications';
 
 const root = ReactDOM.createRoot(document.querySelector('#root'));
 
@@ -48,5 +47,3 @@ installChatToolsSettingsBridge();
 installImageFallbacks();
 installRuntimeBranding();
 registerServiceWorker();
-
-requestNotificationPermission();
