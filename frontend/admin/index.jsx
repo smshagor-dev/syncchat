@@ -1,6 +1,7 @@
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import App from './app';
+import ChatAiConfig from './chatAiConfig';
 import { registerServiceWorker } from '../client/pwa/registerSW';
 import { installProfilePasswordPanel } from './profilePassword';
 
@@ -13,7 +14,12 @@ const observer = new MutationObserver(removeLoginPasswordMinLength);
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
 const root = ReactDOM.createRoot(document.querySelector('#admin-root'));
-root.render(<App />);
+root.render(
+  <>
+    <App />
+    <ChatAiConfig />
+  </>
+);
 removeLoginPasswordMinLength();
 installProfilePasswordPanel();
 registerServiceWorker();

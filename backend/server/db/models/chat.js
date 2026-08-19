@@ -107,10 +107,51 @@ const ChatModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    clientMessageId: {
+      type: DataTypes.STRING(96),
+      allowNull: true,
+      defaultValue: null,
+    },
+    sequence: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    mentionUserIds: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
+    topicId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
+    e2eeEnvelope: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
+    },
+    transcript: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: '',
+    },
+    translations: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {},
+    },
   },
   {
     timestamps: true,
     version: false,
+    indexes: [
+      { fields: ['roomId', 'sequence'] },
+      { fields: ['roomId', 'createdAt'] },
+      { fields: ['userId', 'clientMessageId'], unique: true, sparse: true },
+      { fields: ['topicId', 'createdAt'] },
+    ],
   }
 );
 

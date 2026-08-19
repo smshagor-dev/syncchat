@@ -1,12 +1,13 @@
 const router = require('express').Router();
 const authenticate = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const chatSendIdempotency = require('../middleware/chatSendIdempotency');
 const ctrl = require('../controllers/chat');
 const chatUpload = require('../controllers/chatUpload');
 const chatDeletion = require('../controllers/chatDeletion');
 
 router.post('/chats/upload', authenticate, upload.single('file'), chatUpload.upload);
-router.post('/chats/send-file', authenticate, ctrl.sendFile);
+router.post('/chats/send-file', authenticate, chatSendIdempotency, ctrl.sendFile);
 router.post('/chats/:chatId/view-once-open', authenticate, ctrl.openViewOnce);
 router.get('/chats/scheduled', authenticate, ctrl.findScheduled);
 router.post('/chats/scheduled', authenticate, ctrl.createScheduled);

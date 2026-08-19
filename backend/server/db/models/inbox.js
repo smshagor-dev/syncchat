@@ -79,6 +79,11 @@ const InboxModel = sequelize.define(
       allowNull: false,
       defaultValue: [],
     },
+    requestPendingFor: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     secretChatEnabled: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -118,6 +123,21 @@ const InboxModel = sequelize.define(
       type: DataTypes.STRING(128),
       allowNull: true,
       defaultValue: null,
+    },
+    e2eeEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    e2eeEnabledBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      defaultValue: null,
+    },
+    e2eeVersion: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
     },
     chatLockBy: {
       type: DataTypes.JSON,

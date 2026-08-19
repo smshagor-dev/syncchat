@@ -21,14 +21,11 @@ const isMatch = (inbox, queries = {}) => {
       if (value && typeof value === 'object' && value.$all) {
         return hasAll(inbox.ownersId, value.$all);
       }
-
       return asArray(inbox.ownersId).includes(value);
     }
 
     if (value && typeof value === 'object' && value.$ne !== undefined) {
-      if (Array.isArray(inbox[key])) {
-        return !inbox[key].includes(value.$ne);
-      }
+      if (Array.isArray(inbox[key])) return !inbox[key].includes(value.$ne);
       return inbox[key] !== value.$ne;
     }
 
@@ -40,10 +37,9 @@ exports.find = async (queries, search = '', options = {}) => {
   const viewerId =
     typeof queries?.ownersId === 'string' ? String(queries.ownersId) : null;
   const includeHidden = !!options.includeHidden;
+  const includeRequests = !!options.includeRequests;
   const inboxesRaw = await InboxModel.findAll();
-  const inboxes = toPlainMany(inboxesRaw).filter((inbox) =>
-    isMatch(inbox, queries)
-  );
+  const inboxes = toPlainMany(inboxesRaw).filter((inbox) => isMatch(inbox, queries));
 
   if (inboxes.length === 0) return [];
 
@@ -90,10 +86,7 @@ exports.find = async (queries, search = '', options = {}) => {
   );
 
   const regex = new RegExp(search || '', 'i');
-  const privacy = await buildPrivacyContext({
-    viewerId,
-    targetIds: ownersIds,
-  });
+  const privacy = await buildPrivacyContext({ viewerId, targetIds: ownersIds });
 
   return inboxes
     .map((inbox) => {
@@ -102,30 +95,28 @@ exports.find = async (queries, search = '', options = {}) => {
       delete sanitized.secretSessionKey;
 
       return {
-      ...sanitized,
-      owners: asArray(inbox.ownersId)
-        .map((ownerId) =>
-          ownersById.get(ownerId)
-            ? sanitizeProfileForViewer({
-                profile: ownersById.get(ownerId),
-                viewerId,
-                setting: privacy.settingMap.get(ownerId),
-                isViewerContact: privacy.isViewerContact(ownerId),
-              })
-            : null
-        )
-        .filter(Boolean),
-      group: groupsByRoom.get(inbox.roomId) || null,
-      channel: channelsByRoom.get(inbox.roomId) || null,
-      file: inbox.fileId ? filesById.get(inbox.fileId) || null : null,
-    }})
+        ...sanitized,
+        owners: asArray(inbox.ownersId)
+          .map((ownerId) =>
+            ownersById.get(ownerId)
+              ? sanitizeProfileForViewer({
+                  profile: ownersById.get(ownerId),
+                  viewerId,
+                  setting: privacy.settingMap.get(ownerId),
+                  isViewerContact: privacy.isViewerContact(ownerId),
+                })
+              : null
+          )
+          .filter(Boolean),
+        group: groupsByRoom.get(inbox.roomId) || null,
+        channel: channelsByRoom.get(inbox.roomId) || null,
+        file: inbox.fileId ? filesById.get(inbox.fileId) || null : null,
+      };
+    })
     .filter((inbox) => {
-      if (viewerId && asArray(inbox.deletedBy).includes(viewerId)) {
-        return false;
-      }
-      if (!includeHidden && viewerId && asArray(inbox.hiddenBy).includes(viewerId)) {
-        return false;
-      }
+      if (viewerId && asArray(inbox.deletedBy).includes(viewerId)) return false;
+      if (!includeHidden && viewerId && asArray(inbox.hiddenBy).includes(viewerId)) return false;
+      if (!includeRequests && viewerId && asArray(inbox.requestPendingFor).includes(viewerId)) return false;
       if (!search) return true;
       if (inbox.roomType === 'private') {
         return inbox.owners.some((owner) => regex.test(owner.fullname || ''));
@@ -138,10 +129,6 @@ exports.find = async (queries, search = '', options = {}) => {
         const bPinned = asArray(b.pinnedBy).includes(viewerId);
         if (aPinned !== bPinned) return bPinned - aPinned;
       }
-
-      return (
-        new Date(b.content?.time || 0).getTime() -
-        new Date(a.content?.time || 0).getTime()
-      );
+      return new Date(b.content?.time || 0).getTime() - new Date(a.content?.time || 0).getTime();
     });
 };

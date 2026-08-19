@@ -13,6 +13,7 @@ const logger = require('./helpers/logger');
 const { loadSecurityConfig, getClientIp, getRequestFingerprint } = require('./helpers/securityConfig');
 const { loadAppConfig } = require('./helpers/appConfig');
 const { getAdminOrigin, getHostnameFromOrigin } = require('./helpers/origins');
+const { installSocketAuthentication } = require('./socket/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -146,6 +147,7 @@ global.io = new SocketServer(server, {
   transports: ['websocket'],
   maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE || 25e6),
 });
+installSocketAuthentication(global.io);
 require('./socket');
 
 module.exports = server;
