@@ -118,10 +118,6 @@ const CallHistoryModel = sequelize.define(
     version: false,
     indexes: [
       {
-        unique: true,
-        fields: ['callId'],
-      },
-      {
         fields: ['roomId', 'createdAt'],
       },
       {

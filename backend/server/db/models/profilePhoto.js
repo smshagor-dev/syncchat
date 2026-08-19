@@ -38,7 +38,6 @@ const ProfilePhotoModel = sequelize.define(
     timestamps: true,
     version: false,
     indexes: [
-      { fields: ['userId'] },
       { fields: ['userId', 'createdAt'] },
       { fields: ['userId', 'deletedAt'] },
     ],
