@@ -1,9 +1,11 @@
 const crypto = require('crypto');
-const { createClient } = require('redis');
 const logger = require('./logger');
+const {
+  getSocketRedisCommandClient,
+  isRedisConfigured,
+} = require('./socketAdapter');
 
 const localWindows = new Map();
-let redisPromise = null;
 
 const MAX_MESSAGES = Math.max(5, Number(process.env.CHAT_RATE_LIMIT_MESSAGES || 30));
 const WINDOW_SECONDS = Math.max(5, Number(process.env.CHAT_RATE_LIMIT_WINDOW_SEC || 10));
@@ -11,23 +13,14 @@ const MAX_DUPLICATES = Math.max(2, Number(process.env.CHAT_DUPLICATE_LIMIT || 6)
 const DUPLICATE_WINDOW_SECONDS = Math.max(10, Number(process.env.CHAT_DUPLICATE_WINDOW_SEC || 30));
 
 const getRedis = async () => {
-  const url = String(process.env.REDIS_URL || '').trim();
-  if (!url) return null;
-  if (!redisPromise) {
-    redisPromise = (async () => {
-      const client = createClient({ url });
-      client.on('error', (error) => {
-        logger.warn('CHAT_ABUSE_REDIS_ERROR', { message: error.message });
-      });
-      await client.connect();
-      return client;
-    })().catch((error) => {
-      redisPromise = null;
-      logger.warn('CHAT_ABUSE_REDIS_CONNECT_FAILED', { message: error.message });
-      return null;
-    });
-  }
-  return redisPromise;
+  if (!isRedisConfigured()) return null;
+  const client = await getSocketRedisCommandClient();
+  if (client) return client;
+
+  logger.warn('CHAT_ABUSE_REDIS_NOT_READY', {
+    message: 'Shared Redis runtime is not ready; using local rate limits for this request',
+  });
+  return null;
 };
 
 const createRateError = (message, code) => {
