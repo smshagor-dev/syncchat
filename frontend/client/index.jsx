@@ -14,6 +14,7 @@ import installChatDraftV2 from './helpers/chatDraftV2';
 import installTopicFilterV2 from './helpers/topicFilterV2';
 import installChatHttpReliability from './helpers/chatHttpReliability';
 import installMentionAutocompleteV2 from './helpers/mentionAutocompleteV2';
+import { getCallingConfig } from './helpers/callingConfig';
 import './styles/chatToolsTheme.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
@@ -38,6 +39,7 @@ installRealtimeDelivery();
 installTopicFilterV2();
 installChatDraftV2();
 installMentionAutocompleteV2();
+getCallingConfig().catch(() => {});
 registerServiceWorker();
 
 requestNotificationPermission();
