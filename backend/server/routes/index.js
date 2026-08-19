@@ -6,8 +6,8 @@ const {
 } = require('../helpers/socketAdapter');
 const mailer = require('../helpers/mailer');
 const smtpCredentialStorage = require('../middleware/smtpCredentialStorage');
+const adminPasswordPolicy = require('../middleware/adminPasswordPolicy');
 
-// Lightweight liveness probe: process + database connection.
 router.get('/health', (req, res) => {
   const mongoReady = mongoose.connection.readyState === 1;
   res.status(mongoReady ? 200 : 503).json({
@@ -20,8 +20,6 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Readiness includes the shared Redis path when Redis is configured. SMTP is
-// reported for diagnostics but does not take chat/API traffic offline.
 router.get('/ready', async (req, res) => {
   const mongoReady = mongoose.connection.readyState === 1;
   let redisReady = !isRedisConfigured();
@@ -50,7 +48,6 @@ router.get('/ready', async (req, res) => {
   });
 });
 
-// routes
 const cron = require('./cron');
 const user = require('./user');
 const chat = require('./chat');
@@ -79,6 +76,7 @@ const mailAdmin = require('./mailAdmin');
 const adminBootstrap = require('./adminBootstrap');
 const admin = require('./admin');
 
+router.use(adminPasswordPolicy);
 router.use(cron);
 router.use(user);
 router.use(chat);
