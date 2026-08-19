@@ -2,14 +2,15 @@ const router = require('express').Router();
 const authenticate = require('../middleware/auth');
 
 const ctrl = require('../controllers/user');
+const socialAuth = require('../controllers/socialAuth');
 
 router.post('/users/register', ctrl.register);
 router.post('/users/login', ctrl.login);
 router.post('/users/login/2fa-verify', ctrl.verifyLoginTwoFactor);
 router.post('/users/device-link/info', ctrl.deviceLinkInfo);
 router.post('/users/device-link/complete', ctrl.completeDeviceLink);
-router.get('/users/social-config', ctrl.socialConfig);
-router.post('/users/social-auth', ctrl.socialAuth);
+router.get('/users/social-config', socialAuth.socialConfig);
+router.post('/users/social-auth', socialAuth.socialAuth);
 router.post('/users/forgot-pass/request', ctrl.requestForgotPass);
 router.post('/users/forgot-pass/verify', ctrl.verifyForgotPass);
 router.post('/users/forgot-pass/reset', ctrl.resetForgotPass);
