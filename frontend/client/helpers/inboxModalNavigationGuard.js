@@ -14,9 +14,7 @@ const hasOpenInboxDialog = () => {
 
   // Lock/Delete confirmations are rendered as direct body portals by
   // InboxMenu. Detect the mounted portal itself instead of trying to infer an
-  // interaction from event.composedPath(). A capture-phase pointerdown can run
-  // before React's button onClick; closing Redux state there unmounts the
-  // dialog before scope selection (self/both) is applied.
+  // interaction from event.composedPath().
   return Array.from(document.body.children).some(
     (node) =>
       node instanceof Element && node.classList?.contains('z-[900]') === true
@@ -57,12 +55,19 @@ export default function installInboxModalNavigationGuard() {
     const stateAtPointerDown = store.getState();
     if (!stateAtPointerDown?.modal?.inboxMenu) return;
 
-    // A confirmation portal owns its complete click lifecycle. Never let this
-    // global capture listener close inboxMenu while Lock Chat or Delete Chat is
-    // mounted. The dialog's own backdrop, X and Cancel controls close it.
-    // This guarantees Only me <-> Both and Delete for me <-> Delete for both
-    // can update local React state before anything is unmounted.
-    if (hasOpenInboxDialog()) return;
+    // Inbox also installs its own document-level bubble-phase pointerdown
+    // listener for closing the compact context menu. When a Lock/Delete portal
+    // is mounted, that listener sees portal clicks as outside clicks and closes
+    // Redux inboxMenu before React's scope button onClick can finish.
+    //
+    // Stop this native pointerdown from propagating beyond document capture
+    // while the confirmation dialog owns the interaction. This does not cancel
+    // the browser default action or the later click event, so the dialog's
+    // buttons, inputs, backdrop, X and Cancel controls continue to work.
+    if (hasOpenInboxDialog()) {
+      event.stopPropagation();
+      return;
+    }
 
     if (isInboxContextMenuInteraction(event)) return;
 
