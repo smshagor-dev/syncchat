@@ -9,19 +9,23 @@ const closeInboxModal = () => {
   store.dispatch(setModal({ target: 'inboxMenu', data: false }));
 };
 
-const isInboxDialogInteraction = (event) => {
-  const path =
-    typeof event?.composedPath === 'function' ? event.composedPath() : [];
+const hasOpenInboxDialog = () => {
+  if (!document?.body) return false;
 
-  return path.some((node) => {
-    if (!(node instanceof Element)) return false;
-    if (node.id === 'inbox-context-menu') return true;
+  // Lock/Delete confirmations are rendered as direct body portals by
+  // InboxMenu. Detect the mounted portal itself instead of trying to infer an
+  // interaction from event.composedPath(). A capture-phase pointerdown can run
+  // before React's button onClick; closing Redux state there unmounts the
+  // dialog before scope selection (self/both) is applied.
+  return Array.from(document.body.children).some(
+    (node) =>
+      node instanceof Element && node.classList?.contains('z-[900]') === true
+  );
+};
 
-    // The lock/delete confirmation portal is rendered directly under body with
-    // Tailwind's z-[900] utility. classList.contains works on the literal class
-    // name and avoids fragile CSS-selector escaping for square brackets.
-    return node.classList?.contains('z-[900]') === true;
-  });
+const isInboxContextMenuInteraction = (event) => {
+  const target = event?.target;
+  return target instanceof Element && !!target.closest('#inbox-context-menu');
 };
 
 export default function installInboxModalNavigationGuard() {
@@ -53,13 +57,17 @@ export default function installInboxModalNavigationGuard() {
     const stateAtPointerDown = store.getState();
     if (!stateAtPointerDown?.modal?.inboxMenu) return;
 
-    // Never close while the user is interacting with the inbox context menu or
-    // with the lock/delete portal. This keeps Only me/Both and Delete for
-    // me/Delete for both selection stable on desktop and mobile.
-    if (isInboxDialogInteraction(event)) return;
+    // A confirmation portal owns its complete click lifecycle. Never let this
+    // global capture listener close inboxMenu while Lock Chat or Delete Chat is
+    // mounted. The dialog's own backdrop, X and Cancel controls close it.
+    // This guarantees Only me <-> Both and Delete for me <-> Delete for both
+    // can update local React state before anything is unmounted.
+    if (hasOpenInboxDialog()) return;
 
-    // Close stale menu/dialog state only after the outside/navigation click
-    // gets a chance to run its own handler.
+    if (isInboxContextMenuInteraction(event)) return;
+
+    // With no confirmation dialog open, keep the original stale-menu cleanup
+    // for clicks outside the compact context menu.
     queueMicrotask(closeInboxModal);
   };
 
