@@ -9,6 +9,21 @@ const closeInboxModal = () => {
   store.dispatch(setModal({ target: 'inboxMenu', data: false }));
 };
 
+const isInboxDialogInteraction = (event) => {
+  const path =
+    typeof event?.composedPath === 'function' ? event.composedPath() : [];
+
+  return path.some((node) => {
+    if (!(node instanceof Element)) return false;
+    if (node.id === 'inbox-context-menu') return true;
+
+    // The lock/delete confirmation portal is rendered directly under body with
+    // Tailwind's z-[900] utility. classList.contains works on the literal class
+    // name and avoids fragile CSS-selector escaping for square brackets.
+    return node.classList?.contains('z-[900]') === true;
+  });
+};
+
 export default function installInboxModalNavigationGuard() {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return () => {};
@@ -38,15 +53,13 @@ export default function installInboxModalNavigationGuard() {
     const stateAtPointerDown = store.getState();
     if (!stateAtPointerDown?.modal?.inboxMenu) return;
 
-    const target = event.target;
-    if (!(target instanceof Element)) return;
+    // Never close while the user is interacting with the inbox context menu or
+    // with the lock/delete portal. This keeps Only me/Both and Delete for
+    // me/Delete for both selection stable on desktop and mobile.
+    if (isInboxDialogInteraction(event)) return;
 
-    // Never close while the user is interacting with the menu itself or
-    // with its lock/delete portal dialogs. This keeps Only me/Both switching stable.
-    if (target.closest('#inbox-context-menu')) return;
-    if (target.closest('.z-\\[900\\]')) return;
-
-    // Close stale menu/dialog state after the navigation/filter click processes.
+    // Close stale menu/dialog state only after the outside/navigation click
+    // gets a chance to run its own handler.
     queueMicrotask(closeInboxModal);
   };
 
