@@ -135,7 +135,7 @@ class ContactRepository {
       _mapPayload(
         (await _api.put(
           '/contacts/$friendId/labels',
-          body: {'labelIds': labelIds},
+          body: {'labels': labelIds},
         ))
             .payload,
       );
@@ -156,20 +156,20 @@ class StatusRepository {
     await _api.post('/statuses/$statusId/view');
   }
 
-  Future<Map<String, dynamic>> react(String statusId, String reaction) async =>
+  Future<Map<String, dynamic>> react(String statusId, String emoji) async =>
       _mapPayload(
         (await _api.post(
           '/statuses/$statusId/react',
-          body: {'reaction': reaction},
+          body: {'emoji': emoji},
         ))
             .payload,
       );
 
-  Future<Map<String, dynamic>> reply(String statusId, String message) async =>
+  Future<Map<String, dynamic>> reply(String statusId, String text) async =>
       _mapPayload(
         (await _api.post(
           '/statuses/$statusId/reply',
-          body: {'message': message},
+          body: {'text': text},
         ))
             .payload,
       );
