@@ -9,6 +9,23 @@ const closeInboxModal = () => {
   store.dispatch(setModal({ target: 'inboxMenu', data: false }));
 };
 
+const hasOpenInboxDialog = () => {
+  if (!document?.body) return false;
+
+  // Lock/Delete confirmations are rendered as direct body portals by
+  // InboxMenu. Detect the mounted portal itself instead of trying to infer an
+  // interaction from event.composedPath().
+  return Array.from(document.body.children).some(
+    (node) =>
+      node instanceof Element && node.classList?.contains('z-[900]') === true
+  );
+};
+
+const isInboxContextMenuInteraction = (event) => {
+  const target = event?.target;
+  return target instanceof Element && !!target.closest('#inbox-context-menu');
+};
+
 export default function installInboxModalNavigationGuard() {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return () => {};
@@ -38,15 +55,24 @@ export default function installInboxModalNavigationGuard() {
     const stateAtPointerDown = store.getState();
     if (!stateAtPointerDown?.modal?.inboxMenu) return;
 
-    const target = event.target;
-    if (!(target instanceof Element)) return;
+    // Inbox also installs its own document-level bubble-phase pointerdown
+    // listener for closing the compact context menu. When a Lock/Delete portal
+    // is mounted, that listener sees portal clicks as outside clicks and closes
+    // Redux inboxMenu before React's scope button onClick can finish.
+    //
+    // Stop this native pointerdown from propagating beyond document capture
+    // while the confirmation dialog owns the interaction. This does not cancel
+    // the browser default action or the later click event, so the dialog's
+    // buttons, inputs, backdrop, X and Cancel controls continue to work.
+    if (hasOpenInboxDialog()) {
+      event.stopPropagation();
+      return;
+    }
 
-    // Never close while the user is interacting with the menu itself or
-    // with its lock/delete portal dialogs. This keeps Only me/Both switching stable.
-    if (target.closest('#inbox-context-menu')) return;
-    if (target.closest('.z-\\[900\\]')) return;
+    if (isInboxContextMenuInteraction(event)) return;
 
-    // Close stale menu/dialog state after the navigation/filter click processes.
+    // With no confirmation dialog open, keep the original stale-menu cleanup
+    // for clicks outside the compact context menu.
     queueMicrotask(closeInboxModal);
   };
 

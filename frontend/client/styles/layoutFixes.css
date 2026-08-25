@@ -1,11 +1,5 @@
 /* SyncChat client layout corrections that must stay aligned with runtime dimensions. */
 
-@media (min-width: 768px) {
-  div[class*="md:grid-cols-[72px_1fr]"] {
-    grid-template-columns: 84px minmax(0, 1fr) !important;
-  }
-}
-
 .syncchat-chat-tools-floating-hidden {
   display: none !important;
 }
@@ -94,4 +88,76 @@
 .dark .syncchat-chat-tools-settings-desc,
 .dark .syncchat-chat-tools-settings-arrow {
   color: #94a3b8;
+}
+
+/*
+ * Mobile navigation safe zone.
+ *
+ * The floating dock is intentionally overlaid above the foreground UI. Every
+ * foreground page therefore needs enough scroll room for its last actionable
+ * row to move fully above the dock. Keep this centralized instead of relying
+ * on individual page padding values.
+ */
+@media (max-width: 767px) {
+  :root {
+    --syncchat-mobile-dock-clearance: calc(
+      7.25rem + env(safe-area-inset-bottom, 0px)
+    );
+    --syncchat-mobile-drawer-bottom: max(
+      1rem,
+      env(safe-area-inset-bottom, 0px)
+    );
+  }
+
+  [data-syncchat-mobile-nav] {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+  }
+
+  /* Chat/call lists live inside the foreground column rather than page panels. */
+  [data-syncchat-mobile-shell] #inbox {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+    overscroll-behavior-y: contain;
+  }
+
+  /* Existing page-level mobile padding remains supported as a fallback. */
+  [data-syncchat-mobile-shell] .pb-16.md\:pb-0 {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+  }
+
+  /* Main foreground page scroll areas receive one consistent dock clearance. */
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-hidden']
+    > [class*='overflow-y-auto'],
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-y-auto'] {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+    overscroll-behavior-y: contain;
+  }
+
+  /*
+   * The drawer uses the dynamic viewport only. This avoids the old 100dvh +
+   * min-h-screen conflict that could push Profile/Settings below the viewport.
+   */
+  [data-syncchat-mobile-sidebar] {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    padding-bottom: var(--syncchat-mobile-drawer-bottom) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-drawer-bottom);
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-syncchat-mobile-sidebar] > div:last-child {
+    padding-bottom: 0.5rem;
+  }
 }

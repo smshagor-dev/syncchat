@@ -1,0 +1,23 @@
+name: syncchat_mobile
+description: Native Flutter mobile client for SyncChat with web-client design parity.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: ^8.1.7
+  flutter_secure_storage: ^10.3.1
+  http: ^1.6.0
+  image_picker: ^1.1.2
+  socket_io_client: ^3.1.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

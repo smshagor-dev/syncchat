@@ -301,7 +301,10 @@ function Sidebar({
             aria-hidden
             onClick={onCloseMobile}
           />
-          <aside className="absolute left-0 top-0 flex h-[100dvh] min-h-screen w-[94px] flex-col items-center overflow-y-auto border-r border-slate-700/70 bg-slate-900 py-2 text-slate-300 dark:border-spill-700 dark:bg-spill-900">
+          <aside
+            data-syncchat-mobile-sidebar
+            className="absolute left-0 top-0 flex h-[100dvh] max-h-[100dvh] min-h-0 w-[94px] flex-col items-center overflow-y-auto border-r border-slate-700/70 bg-slate-900 py-2 text-slate-300 dark:border-spill-700 dark:bg-spill-900"
+          >
             <div className="mb-1 flex w-full justify-end px-2">
               <button
                 type="button"

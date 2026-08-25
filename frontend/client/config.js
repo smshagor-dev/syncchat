@@ -32,8 +32,16 @@ const getOrigin = (value) => {
     return '';
   }
 };
+const isFirstPartyProductionWeb = (() => {
+  if (isDev || typeof window === 'undefined') return false;
+  const hostname = String(window.location.hostname || '').toLowerCase();
+  return hostname === 'syncchat.live' || hostname === 'www.syncchat.live';
+})();
 
-const apiBaseUrl = configuredApiBaseUrl || '/api';
+// On the public production web app, keep HTTP requests same-origin and let
+// Vercel proxy /api/* to api.syncchat.live. This avoids browser CORS/preflight
+// failures while Socket.IO can continue using its dedicated configured origin.
+const apiBaseUrl = isFirstPartyProductionWeb ? '/api' : configuredApiBaseUrl || '/api';
 const socketUrl = configuredSocketUrl || '/';
 const publicOrigin = configuredPublicOrigin || getOrigin(apiBaseUrl) || '';
 

@@ -18,8 +18,7 @@
     { "source": "/assets/images/default-channel-avatar.png", "destination": "/assets/icons/channel-avatar.svg", "permanent": false }
   ],
   "rewrites": [
-    { "source": "/api/pwa/icon/192.png", "destination": "https://api.syncchat.live/api/pwa/icon/192.png" },
-    { "source": "/api/pwa/icon/512.png", "destination": "https://api.syncchat.live/api/pwa/icon/512.png" },
+    { "source": "/api/:path*", "destination": "https://api.syncchat.live/api/:path*" },
     { "source": "/admin/storage", "destination": "/admin/storage.html" },
     { "source": "/admin/calling", "destination": "/admin/calling.html" },
     { "source": "/admin/calling-push", "destination": "/admin/calling-push.html" },
@@ -27,6 +26,6 @@
     { "source": "/admin/mail", "destination": "/admin/mail.html" },
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/admin/:path((?!.*\\.).*)", "destination": "/admin/index.html" },
-    { "source": "/:path((?!admin(?:/.*)?$)(?!.*\\.[^/]+$).*)", "destination": "/index.html" }
+    { "source": "/:path((?!admin(?:/.*)?$)(?!api(?:/.*)?$)(?!.*\\.[^/]+$).*)", "destination": "/index.html" }
   ]
 }

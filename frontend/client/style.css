@@ -4,27 +4,48 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Lobster+Two:wght@700&family=Manrope:wght@400;500;600;700;800&family=Roboto:wght@400;700&family=Sora:wght@600;700&display=swap');
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 * {
   border: none;
   outline: none;
   font-family: 'Roboto', sans-serif;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
 body {
   user-select: none;
+  overscroll-behavior: none;
 }
 
 input:-webkit-autofill {
-  transition: 'color 9999s ease-out, background-color 9999s ease-out';
+  transition: color 9999s ease-out, background-color 9999s ease-out;
   transition-delay: 9999s;
 }
 
 svg {
   font-size: x-large;
 }
+
 input,
 textarea {
   background: transparent;
+}
+
+:where(button, a, input, textarea, select, [role='button']):focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
 }
 
 a {
