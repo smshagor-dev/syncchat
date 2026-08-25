@@ -1,11 +1,5 @@
 /* SyncChat client layout corrections that must stay aligned with runtime dimensions. */
 
-@media (min-width: 768px) {
-  div[class*="md:grid-cols-[72px_1fr]"] {
-    grid-template-columns: 84px minmax(0, 1fr) !important;
-  }
-}
-
 .syncchat-chat-tools-floating-hidden {
   display: none !important;
 }
@@ -124,27 +118,23 @@
   }
 
   /* Chat/call lists live inside the foreground column rather than page panels. */
-  #inbox {
+  [data-syncchat-mobile-shell] #inbox {
     padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
     scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
     overscroll-behavior-y: contain;
   }
 
   /* Existing page-level mobile padding remains supported as a fallback. */
-  .pb-16.md\:pb-0 {
+  [data-syncchat-mobile-shell] .pb-16.md\:pb-0 {
     padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
     scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
   }
 
-  /*
-   * Foreground pages are direct children of the shell that owns MobileNav.
-   * Scope the structural selector to that shell so room/profile panels shown
-   * after opening a chat do not receive unnecessary dock spacing.
-   */
-  div:has(> [data-syncchat-mobile-nav])
+  /* Main foreground page scroll areas receive one consistent dock clearance. */
+  [data-syncchat-mobile-shell]
     > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-hidden']
     > [class*='overflow-y-auto'],
-  div:has(> [data-syncchat-mobile-nav])
+  [data-syncchat-mobile-shell]
     > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-y-auto'] {
     padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
     scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
