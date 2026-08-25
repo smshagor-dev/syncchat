@@ -152,13 +152,10 @@
   }
 
   /*
-   * The slide-out mobile sidebar previously combined 100dvh with min-h-screen,
-   * which can exceed the dynamic viewport when browser chrome is visible.
-   * Force one viewport model and reserve the device safe area at the bottom.
+   * The drawer uses the dynamic viewport only. This avoids the old 100dvh +
+   * min-h-screen conflict that could push Profile/Settings below the viewport.
    */
-  div:has(> [data-syncchat-mobile-nav])
-    > [class*='fixed'][class*='inset-0'][class*='z-[120]']
-    > aside {
+  [data-syncchat-mobile-sidebar] {
     height: 100vh !important;
     max-height: 100vh !important;
     height: 100dvh !important;
@@ -170,10 +167,7 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  div:has(> [data-syncchat-mobile-nav])
-    > [class*='fixed'][class*='inset-0'][class*='z-[120]']
-    > aside
-    > div:last-child {
+  [data-syncchat-mobile-sidebar] > div:last-child {
     padding-bottom: 0.5rem;
   }
 }
