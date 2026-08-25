@@ -6,6 +6,18 @@ const {
   normalizeOrigin,
 } = require('./helpers/origins');
 
+const firstPartyProductionOrigins = [
+  'https://syncchat.live',
+  'https://admin.syncchat.live',
+  'https://api.syncchat.live',
+];
+
+const splitOrigins = (...values) =>
+  values
+    .flatMap((value) => String(value || '').split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
 const withWwwVariants = (origin) => {
   const trimmed = String(origin || '').trim().replace(/\/$/, '');
   if (!trimmed) return [];
@@ -18,7 +30,7 @@ const withWwwVariants = (origin) => {
       variants.add(
         `${parsed.protocol}//${parsed.hostname.replace(/^www\./, '')}${parsed.port ? `:${parsed.port}` : ''}`
       );
-    } else if (parsed.hostname.includes('.')) {
+    } else if (parsed.hostname === 'syncchat.live') {
       variants.add(
         `${parsed.protocol}//www.${parsed.hostname}${parsed.port ? `:${parsed.port}` : ''}`
       );
@@ -30,16 +42,24 @@ const withWwwVariants = (origin) => {
   }
 };
 
-const configuredOrigins = [
-  ...String(process.env.APP_ORIGIN || '').split(','),
+const configuredOrigins = splitOrigins(
+  process.env.CORS_ORIGINS,
+  process.env.APP_ORIGIN,
+  process.env.CLIENT_ORIGIN,
+  process.env.ADMIN_ORIGIN,
+  process.env.ADMIN_PUBLIC_ORIGIN,
+  process.env.PUBLIC_ORIGIN,
+  process.env.SERVER_ORIGIN,
+  process.env.API_ORIGIN,
+  process.env.API_BASE_URL,
+  process.env.SOCKET_URL,
   getClientOrigin(),
   getAdminOrigin(),
   getServerOrigin(),
-  normalizeOrigin(process.env.PUBLIC_ORIGIN || ''),
-  normalizeOrigin(process.env.API_BASE_URL || ''),
-  normalizeOrigin(process.env.SOCKET_URL || ''),
-]
+  ...(!isDev ? firstPartyProductionOrigins : [])
+)
   .flatMap((origin) => withWwwVariants(origin))
+  .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 
 module.exports = {
