@@ -64,14 +64,22 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) =>
-      _send('GET', path, query: query, authenticated: authenticated);
+      _send(
+        'GET',
+        path,
+        query: query,
+        authenticated: authenticated,
+        extraHeaders: headers,
+      );
 
   Future<ApiEnvelope> post(
     String path, {
     Object? body,
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) =>
       _send(
         'POST',
@@ -79,6 +87,7 @@ class ApiClient {
         body: body,
         query: query,
         authenticated: authenticated,
+        extraHeaders: headers,
       );
 
   Future<ApiEnvelope> put(
@@ -86,6 +95,7 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) =>
       _send(
         'PUT',
@@ -93,6 +103,7 @@ class ApiClient {
         body: body,
         query: query,
         authenticated: authenticated,
+        extraHeaders: headers,
       );
 
   Future<ApiEnvelope> patch(
@@ -100,6 +111,7 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) =>
       _send(
         'PATCH',
@@ -107,6 +119,7 @@ class ApiClient {
         body: body,
         query: query,
         authenticated: authenticated,
+        extraHeaders: headers,
       );
 
   Future<ApiEnvelope> delete(
@@ -114,6 +127,7 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) =>
       _send(
         'DELETE',
@@ -121,7 +135,40 @@ class ApiClient {
         body: body,
         query: query,
         authenticated: authenticated,
+        extraHeaders: headers,
       );
+
+  Future<ApiEnvelope> multipart(
+    String path, {
+    required String fieldName,
+    required String filePath,
+    String? filename,
+    Map<String, String>? fields,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _config.apiUri(path, queryParameters: query);
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['accept'] = 'application/json';
+    if (headers != null) request.headers.addAll(headers);
+
+    if (authenticated) {
+      final token = await _requireAccessToken();
+      request.headers['authorization'] = 'Bearer $token';
+    }
+
+    if (fields != null) request.fields.addAll(fields);
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        fieldName,
+        filePath,
+        filename: filename,
+      ),
+    );
+
+    return _sendRequest(request);
+  }
 
   Future<ApiEnvelope> _send(
     String method,
@@ -129,27 +176,36 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     required bool authenticated,
+    Map<String, String>? extraHeaders,
   }) async {
     final uri = _config.apiUri(path, queryParameters: query);
     final headers = <String, String>{
       'accept': 'application/json',
       if (body != null) 'content-type': 'application/json; charset=utf-8',
+      ...?extraHeaders,
     };
 
     if (authenticated) {
-      final token = await _sessionStore.readAccessToken();
-      if (token == null) {
-        throw const ApiException(
-          statusCode: 401,
-          message: 'Authentication required',
-        );
-      }
-      headers['authorization'] = 'Bearer $token';
+      headers['authorization'] = 'Bearer ${await _requireAccessToken()}';
     }
 
     final request = http.Request(method, uri)..headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);
+    return _sendRequest(request);
+  }
 
+  Future<String> _requireAccessToken() async {
+    final token = (await _sessionStore.readAccessToken())?.trim();
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Authentication required',
+      );
+    }
+    return token;
+  }
+
+  Future<ApiEnvelope> _sendRequest(http.BaseRequest request) async {
     http.StreamedResponse streamed;
     try {
       streamed = await _httpClient.send(request);
