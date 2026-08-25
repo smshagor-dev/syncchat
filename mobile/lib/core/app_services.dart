@@ -1,6 +1,7 @@
 import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
+import 'chat_repository.dart';
 import 'feature_repositories.dart';
 import 'realtime_client.dart';
 import 'session_store.dart';
@@ -12,6 +13,7 @@ class AppServices {
     required this.api,
     required this.auth,
     required this.realtime,
+    required this.chat,
     required this.inbox,
     required this.contacts,
     required this.statuses,
@@ -39,6 +41,11 @@ class AppServices {
       config: resolvedConfig,
       sessionStore: resolvedSessionStore,
     );
+    final chat = ChatRepository(
+      api: api,
+      auth: auth,
+      realtime: realtime,
+    );
 
     return AppServices(
       config: resolvedConfig,
@@ -46,6 +53,7 @@ class AppServices {
       api: api,
       auth: auth,
       realtime: realtime,
+      chat: chat,
       inbox: InboxRepository(api),
       contacts: ContactRepository(api),
       statuses: StatusRepository(api),
@@ -61,6 +69,7 @@ class AppServices {
   final ApiClient api;
   final AuthRepository auth;
   final RealtimeClient realtime;
+  final ChatRepository chat;
   final InboxRepository inbox;
   final ContactRepository contacts;
   final StatusRepository statuses;

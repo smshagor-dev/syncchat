@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'core/api_client.dart';
+import 'core/app_scope.dart';
 import 'core/app_services.dart';
 import 'screens.dart';
+import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
 
 void main() {
@@ -60,34 +62,39 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SyncChat',
-      debugShowCheckedModeBanner: false,
-      theme: SyncChatTheme.light(),
-      darkTheme: SyncChatTheme.dark(),
-      themeMode: _themeMode,
-      home: FutureBuilder<bool>(
-        future: _sessionFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const _BootScreen();
-          }
-          if (snapshot.data == true) {
-            return MobileShell(onThemeChanged: _setDarkMode);
-          }
-          return AuthScreen(
-            authRepository: _services.auth,
-            onAuthenticated: (context) async {
-              await _services.realtime.connect();
-              if (!context.mounted) return;
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute<void>(
-                  builder: (_) => MobileShell(onThemeChanged: _setDarkMode),
-                ),
-              );
-            },
-          );
-        },
+    return AppServicesScope(
+      services: _services,
+      child: MaterialApp(
+        title: 'SyncChat',
+        debugShowCheckedModeBanner: false,
+        theme: SyncChatTheme.light(),
+        darkTheme: SyncChatTheme.dark(),
+        themeMode: _themeMode,
+        home: FutureBuilder<bool>(
+          future: _sessionFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const _BootScreen();
+            }
+            if (snapshot.data == true) {
+              return LiveMobileShell(onThemeChanged: _setDarkMode);
+            }
+            return AuthScreen(
+              authRepository: _services.auth,
+              onAuthenticated: (context) async {
+                await _services.realtime.connect();
+                if (!context.mounted) return;
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute<void>(
+                    builder: (_) => LiveMobileShell(
+                      onThemeChanged: _setDarkMode,
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
