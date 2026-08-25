@@ -120,7 +120,11 @@ _ModalSpec _spec(String type) {
       return const _ModalSpec(
         title: 'Attach',
         actions: [
-          _ModalAction('Photo & video', Icons.photo_library_outlined),
+          _ModalAction(
+            'Photo & video',
+            Icons.photo_library_outlined,
+            subtitle: 'Choose from gallery',
+          ),
           _ModalAction('Camera', Icons.camera_alt_outlined),
           _ModalAction('File', Icons.insert_drive_file_outlined),
           _ModalAction('Contact', Icons.person_outline_rounded),
@@ -133,106 +137,31 @@ _ModalSpec _spec(String type) {
     case 'attachContact':
       return const _ModalSpec(
         title: 'Share contact',
-        body: Column(
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Search contacts',
-                prefixIcon: Icon(Icons.search_rounded),
-              ),
-            ),
-            SizedBox(height: 8),
-            ListTile(
-              leading: SyncAvatar(name: 'Atia Rahman', radius: 20),
-              title: Text('Atia Rahman'),
-              trailing: Checkbox(value: true, onChanged: null),
-            ),
-            ListTile(
-              leading: SyncAvatar(name: 'Nadia Karim', radius: 20),
-              title: Text('Nadia Karim'),
-              trailing: Checkbox(value: false, onChanged: null),
-            ),
-          ],
-        ),
+        body: _ContactChooser(),
         actions: [_ModalAction('Share selected contact', Icons.send_rounded)],
       );
     case 'attachEvent':
       return const _ModalSpec(
         title: 'Create event',
-        body: Column(
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Event title',
-                prefixIcon: Icon(Icons.event_outlined),
-              ),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Date & time',
-                prefixIcon: Icon(Icons.calendar_today_outlined),
-              ),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              maxLines: 3,
-              decoration: InputDecoration(labelText: 'Description'),
-            ),
-          ],
-        ),
+        body: _EventForm(),
         actions: [_ModalAction('Send event', Icons.send_rounded)],
       );
     case 'attachPoll':
       return const _ModalSpec(
         title: 'Create poll',
-        body: Column(
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Question',
-                prefixIcon: Icon(Icons.poll_outlined),
-              ),
-            ),
-            SizedBox(height: 8),
-            TextField(decoration: InputDecoration(labelText: 'Option 1')),
-            SizedBox(height: 8),
-            TextField(decoration: InputDecoration(labelText: 'Option 2')),
-            SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: true,
-              onChanged: null,
-              title: Text('Allow multiple answers'),
-            ),
-          ],
-        ),
+        body: _PollForm(),
         actions: [_ModalAction('Send poll', Icons.send_rounded)],
       );
     case 'attachSticker':
-      return _ModalSpec(
+      return const _ModalSpec(
         title: 'Stickers',
-        body: const _StickerGrid(),
-        actions: const [],
+        body: _StickerGrid(),
+        actions: [],
       );
     case 'avatarUpload':
       return const _ModalSpec(
         title: 'Profile photo',
-        body: Column(
-          children: [
-            CircleAvatar(
-              radius: 58,
-              backgroundColor: Color(0x170EA5E9),
-              child: Icon(
-                Icons.person_outline_rounded,
-                size: 58,
-                color: SyncColors.sky,
-              ),
-            ),
-            SizedBox(height: 12),
-            Text('Choose a clear square photo. You can crop it before saving.'),
-          ],
-        ),
+        body: _AvatarPreview(),
         actions: [
           _ModalAction('Choose from gallery', Icons.photo_library_outlined),
           _ModalAction('Take photo', Icons.camera_alt_outlined),
@@ -240,33 +169,10 @@ _ModalSpec _spec(String type) {
         ],
       );
     case 'imageCropper':
-      return _ModalSpec(
+      return const _ModalSpec(
         title: 'Crop image',
-        body: Container(
-          height: 320,
-          decoration: BoxDecoration(
-            color: SyncColors.slate950,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: const Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(Icons.image_outlined, size: 130, color: Colors.white24),
-              SizedBox(
-                width: 230,
-                height: 230,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.fromBorderSide(
-                      BorderSide(color: Colors.white, width: 2),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: const [
+        body: _CropPreview(),
+        actions: [
           _ModalAction('Rotate', Icons.rotate_90_degrees_ccw_outlined),
           _ModalAction('Use photo', Icons.check_rounded),
         ],
@@ -274,46 +180,13 @@ _ModalSpec _spec(String type) {
     case 'changePassword':
       return const _ModalSpec(
         title: 'Change password',
-        body: Column(
-          children: [
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(labelText: 'Current password'),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(labelText: 'New password'),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(labelText: 'Confirm new password'),
-            ),
-          ],
-        ),
+        body: _PasswordForm(),
         actions: [_ModalAction('Save new password', Icons.check_rounded)],
       );
     case 'deleteAccount':
       return const _ModalSpec(
         title: 'Delete account',
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This permanently removes your SyncChat account and cannot be undone.',
-              style: TextStyle(
-                color: SyncColors.danger,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            SizedBox(height: 10),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(labelText: 'Current password'),
-            ),
-          ],
-        ),
+        body: _DeleteAccountBody(),
         actions: [
           _ModalAction(
             'Delete account permanently',
@@ -371,51 +244,17 @@ _ModalSpec _spec(String type) {
     case 'editGroup':
       return const _ModalSpec(
         title: 'Edit group',
-        body: Column(
-          children: [
-            CircleAvatar(
-              radius: 42,
-              backgroundColor: Color(0x170EA5E9),
-              child: Icon(Icons.groups_2_outlined, color: SyncColors.sky),
-            ),
-            SizedBox(height: 10),
-            TextField(decoration: InputDecoration(labelText: 'Group name')),
-            SizedBox(height: 8),
-            TextField(
-              maxLines: 3,
-              decoration: InputDecoration(labelText: 'Description'),
-            ),
-          ],
-        ),
+        body: _EditGroupForm(),
         actions: [
           _ModalAction('Change avatar', Icons.photo_library_outlined),
           _ModalAction('Save changes', Icons.check_rounded),
         ],
       );
     case 'feedback':
-      return _ModalSpec(
+      return const _ModalSpec(
         title: 'Feedback',
-        body: Column(
-          children: [
-            const TextField(
-              maxLines: 5,
-              decoration: InputDecoration(
-                hintText: 'Tell us what should improve…',
-              ),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: 'General',
-              items: const [
-                DropdownMenuItem(value: 'General', child: Text('General')),
-                DropdownMenuItem(value: 'Bug', child: Text('Bug')),
-                DropdownMenuItem(value: 'Feature', child: Text('Feature request')),
-              ],
-              onChanged: (_) {},
-            ),
-          ],
-        ),
-        actions: const [_ModalAction('Send feedback', Icons.send_rounded)],
+        body: _FeedbackForm(),
+        actions: [_ModalAction('Send feedback', Icons.send_rounded)],
       );
     case 'groupMenu':
       return const _ModalSpec(
@@ -443,19 +282,10 @@ _ModalSpec _spec(String type) {
         ],
       );
     case 'mediaPreview':
-      return _ModalSpec(
+      return const _ModalSpec(
         title: 'Media',
-        body: Container(
-          height: 310,
-          decoration: BoxDecoration(
-            color: SyncColors.slate950,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: const Center(
-            child: Icon(Icons.image_outlined, size: 120, color: Colors.white24),
-          ),
-        ),
-        actions: const [
+        body: _MediaPreview(),
+        actions: [
           _ModalAction('Download', Icons.download_rounded),
           _ModalAction('Forward', Icons.forward_rounded),
           _ModalAction('Delete', Icons.delete_outline_rounded, danger: true),
@@ -464,52 +294,13 @@ _ModalSpec _spec(String type) {
     case 'newContact':
       return const _ModalSpec(
         title: 'New contact',
-        body: Column(
-          children: [
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Full name',
-                prefixIcon: Icon(Icons.person_outline_rounded),
-              ),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Username or email',
-                prefixIcon: Icon(Icons.alternate_email_rounded),
-              ),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Phone',
-                prefixIcon: Icon(Icons.phone_outlined),
-              ),
-            ),
-          ],
-        ),
+        body: _NewContactForm(),
         actions: [_ModalAction('Save contact', Icons.person_add_alt_1_rounded)],
       );
     case 'qr':
       return const _ModalSpec(
         title: 'QR profile / device',
-        body: Column(
-          children: [
-            SizedBox(
-              width: 220,
-              height: 220,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.all(Radius.circular(18)),
-                ),
-                child: Icon(Icons.qr_code_2_rounded, size: 190, color: Colors.black),
-              ),
-            ),
-            SizedBox(height: 12),
-            Text('@atia', style: TextStyle(fontWeight: FontWeight.w900)),
-          ],
-        ),
+        body: _QrBody(),
         actions: [
           _ModalAction('Share QR', Icons.share_outlined),
           _ModalAction('Scan a QR', Icons.qr_code_scanner_rounded),
@@ -518,19 +309,7 @@ _ModalSpec _spec(String type) {
     case 'recordVoice':
       return const _ModalSpec(
         title: 'Record voice',
-        body: Column(
-          children: [
-            CircleAvatar(
-              radius: 38,
-              backgroundColor: Color(0x17F43F5E),
-              child: Icon(Icons.mic_rounded, color: SyncColors.danger, size: 34),
-            ),
-            SizedBox(height: 10),
-            Text('00:18', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-            SizedBox(height: 12),
-            _VoiceWaveform(),
-          ],
-        ),
+        body: _VoiceBody(),
         actions: [
           _ModalAction('Pause recording', Icons.pause_rounded),
           _ModalAction('Send voice note', Icons.send_rounded),
@@ -553,47 +332,13 @@ _ModalSpec _spec(String type) {
     case 'sendFile':
       return const _ModalSpec(
         title: 'Send file',
-        body: Column(
-          children: [
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Color(0x170EA5E9),
-                child: Icon(Icons.description_outlined, color: SyncColors.sky),
-              ),
-              title: Text('Project-Spec.pdf', style: TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text('8.4 MB · PDF'),
-            ),
-            SizedBox(height: 8),
-            TextField(
-              maxLines: 3,
-              decoration: InputDecoration(hintText: 'Add a caption…'),
-            ),
-          ],
-        ),
+        body: _SendFileBody(),
         actions: [_ModalAction('Send file', Icons.send_rounded)],
       );
     case 'shareContact':
       return const _ModalSpec(
         title: 'Share contact',
-        body: Column(
-          children: [
-            ListTile(
-              leading: SyncAvatar(name: 'Atia Rahman', radius: 25),
-              title: Text('Atia Rahman', style: TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text('@atia'),
-            ),
-            CheckboxListTile(
-              value: true,
-              onChanged: null,
-              title: Text('Share phone number'),
-            ),
-            CheckboxListTile(
-              value: true,
-              onChanged: null,
-              title: Text('Share email'),
-            ),
-          ],
-        ),
+        body: _ShareContactBody(),
         actions: [_ModalAction('Share contact', Icons.send_rounded)],
       );
     case 'signOut':
@@ -605,19 +350,10 @@ _ModalSpec _spec(String type) {
         danger: true,
       );
     case 'webcam':
-      return _ModalSpec(
+      return const _ModalSpec(
         title: 'Camera',
-        body: Container(
-          height: 340,
-          decoration: BoxDecoration(
-            color: SyncColors.slate950,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: const Center(
-            child: Icon(Icons.person_rounded, color: Colors.white12, size: 150),
-          ),
-        ),
-        actions: const [
+        body: _CameraPreview(),
+        actions: [
           _ModalAction('Switch camera', Icons.cameraswitch_outlined),
           _ModalAction('Take photo', Icons.camera_alt_rounded),
         ],
@@ -676,6 +412,347 @@ class _ModalAction {
   final bool danger;
 }
 
+class _ContactChooser extends StatelessWidget {
+  const _ContactChooser();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        TextField(
+          decoration: InputDecoration(
+            hintText: 'Search contacts',
+            prefixIcon: Icon(Icons.search_rounded),
+          ),
+        ),
+        SizedBox(height: 8),
+        ListTile(
+          leading: SyncAvatar(name: 'Atia Rahman', radius: 20),
+          title: Text('Atia Rahman'),
+          trailing: Checkbox(value: true, onChanged: null),
+        ),
+        ListTile(
+          leading: SyncAvatar(name: 'Nadia Karim', radius: 20),
+          title: Text('Nadia Karim'),
+          trailing: Checkbox(value: false, onChanged: null),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventForm extends StatelessWidget {
+  const _EventForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Event title',
+            prefixIcon: Icon(Icons.event_outlined),
+          ),
+        ),
+        SizedBox(height: 8),
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Date & time',
+            prefixIcon: Icon(Icons.calendar_today_outlined),
+          ),
+        ),
+        SizedBox(height: 8),
+        TextField(maxLines: 3, decoration: InputDecoration(labelText: 'Description')),
+      ],
+    );
+  }
+}
+
+class _PollForm extends StatelessWidget {
+  const _PollForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Question',
+            prefixIcon: Icon(Icons.poll_outlined),
+          ),
+        ),
+        SizedBox(height: 8),
+        TextField(decoration: InputDecoration(labelText: 'Option 1')),
+        SizedBox(height: 8),
+        TextField(decoration: InputDecoration(labelText: 'Option 2')),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: true,
+          onChanged: null,
+          title: Text('Allow multiple answers'),
+        ),
+      ],
+    );
+  }
+}
+
+class _StickerGrid extends StatelessWidget {
+  const _StickerGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    const emojis = [
+      '😀','🔥','❤️','👍','🎉','😂','😎','✅','💯','🙏','😍','🤩','🥳','👏','👀',
+    ];
+    return SizedBox(
+      height: 230,
+      child: GridView.count(
+        crossAxisCount: 5,
+        children: emojis
+            .map(
+              (emoji) => Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 34)),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _AvatarPreview extends StatelessWidget {
+  const _AvatarPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        CircleAvatar(
+          radius: 58,
+          backgroundColor: Color(0x170EA5E9),
+          child: Icon(Icons.person_outline_rounded, size: 58, color: SyncColors.sky),
+        ),
+        SizedBox(height: 12),
+        Text('Choose a clear square photo. You can crop it before saving.'),
+      ],
+    );
+  }
+}
+
+class _CropPreview extends StatelessWidget {
+  const _CropPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 320,
+      decoration: BoxDecoration(
+        color: SyncColors.slate950,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.image_outlined, size: 130, color: Colors.white24),
+          SizedBox(
+            width: 230,
+            height: 230,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.fromBorderSide(
+                  BorderSide(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PasswordForm extends StatelessWidget {
+  const _PasswordForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        TextField(obscureText: true, decoration: InputDecoration(labelText: 'Current password')),
+        SizedBox(height: 8),
+        TextField(obscureText: true, decoration: InputDecoration(labelText: 'New password')),
+        SizedBox(height: 8),
+        TextField(obscureText: true, decoration: InputDecoration(labelText: 'Confirm new password')),
+      ],
+    );
+  }
+}
+
+class _DeleteAccountBody extends StatelessWidget {
+  const _DeleteAccountBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'This permanently removes your SyncChat account and cannot be undone.',
+          style: TextStyle(color: SyncColors.danger, fontWeight: FontWeight.w800),
+        ),
+        SizedBox(height: 10),
+        TextField(
+          obscureText: true,
+          decoration: InputDecoration(labelText: 'Current password'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditGroupForm extends StatelessWidget {
+  const _EditGroupForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        CircleAvatar(
+          radius: 42,
+          backgroundColor: Color(0x170EA5E9),
+          child: Icon(Icons.groups_2_outlined, color: SyncColors.sky),
+        ),
+        SizedBox(height: 10),
+        TextField(decoration: InputDecoration(labelText: 'Group name')),
+        SizedBox(height: 8),
+        TextField(maxLines: 3, decoration: InputDecoration(labelText: 'Description')),
+      ],
+    );
+  }
+}
+
+class _FeedbackForm extends StatelessWidget {
+  const _FeedbackForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const TextField(
+          maxLines: 5,
+          decoration: InputDecoration(hintText: 'Tell us what should improve…'),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: 'General',
+          items: const [
+            DropdownMenuItem(value: 'General', child: Text('General')),
+            DropdownMenuItem(value: 'Bug', child: Text('Bug')),
+            DropdownMenuItem(value: 'Feature', child: Text('Feature request')),
+          ],
+          onChanged: (_) {},
+        ),
+      ],
+    );
+  }
+}
+
+class _MediaPreview extends StatelessWidget {
+  const _MediaPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 310,
+      decoration: BoxDecoration(
+        color: SyncColors.slate950,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Center(
+        child: Icon(Icons.image_outlined, size: 120, color: Colors.white24),
+      ),
+    );
+  }
+}
+
+class _NewContactForm extends StatelessWidget {
+  const _NewContactForm();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Full name',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+        ),
+        SizedBox(height: 8),
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Username or email',
+            prefixIcon: Icon(Icons.alternate_email_rounded),
+          ),
+        ),
+        SizedBox(height: 8),
+        TextField(
+          decoration: InputDecoration(
+            labelText: 'Phone',
+            prefixIcon: Icon(Icons.phone_outlined),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QrBody extends StatelessWidget {
+  const _QrBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        SizedBox(
+          width: 220,
+          height: 220,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(18)),
+            ),
+            child: Icon(Icons.qr_code_2_rounded, size: 190, color: Colors.black),
+          ),
+        ),
+        SizedBox(height: 12),
+        Text('@atia', style: TextStyle(fontWeight: FontWeight.w900)),
+      ],
+    );
+  }
+}
+
+class _VoiceBody extends StatelessWidget {
+  const _VoiceBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        CircleAvatar(
+          radius: 38,
+          backgroundColor: Color(0x17F43F5E),
+          child: Icon(Icons.mic_rounded, color: SyncColors.danger, size: 34),
+        ),
+        SizedBox(height: 10),
+        Text('00:18', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+        SizedBox(height: 12),
+        _VoiceWaveform(),
+      ],
+    );
+  }
+}
+
 class _VoiceWaveform extends StatelessWidget {
   const _VoiceWaveform();
 
@@ -701,25 +778,68 @@ class _VoiceWaveform extends StatelessWidget {
   }
 }
 
-class _StickerGrid extends StatelessWidget {
-  const _StickerGrid();
+class _SendFileBody extends StatelessWidget {
+  const _SendFileBody();
 
   @override
   Widget build(BuildContext context) {
-    const emojis = [
-      '😀','🔥','❤️','👍','🎉','😂','😎','✅','💯','🙏','😍','🤩','🥳','👏','👀',
-    ];
-    return SizedBox(
-      height: 230,
-      child: GridView.count(
-        crossAxisCount: 5,
-        children: emojis
-            .map(
-              (emoji) => Center(
-                child: Text(emoji, style: const TextStyle(fontSize: 34)),
-              ),
-            )
-            .toList(),
+    return const Column(
+      children: [
+        ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Color(0x170EA5E9),
+            child: Icon(Icons.description_outlined, color: SyncColors.sky),
+          ),
+          title: Text('Project-Spec.pdf', style: TextStyle(fontWeight: FontWeight.w900)),
+          subtitle: Text('8.4 MB · PDF'),
+        ),
+        SizedBox(height: 8),
+        TextField(maxLines: 3, decoration: InputDecoration(hintText: 'Add a caption…')),
+      ],
+    );
+  }
+}
+
+class _ShareContactBody extends StatelessWidget {
+  const _ShareContactBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        ListTile(
+          leading: SyncAvatar(name: 'Atia Rahman', radius: 25),
+          title: Text('Atia Rahman', style: TextStyle(fontWeight: FontWeight.w900)),
+          subtitle: Text('@atia'),
+        ),
+        CheckboxListTile(
+          value: true,
+          onChanged: null,
+          title: Text('Share phone number'),
+        ),
+        CheckboxListTile(
+          value: true,
+          onChanged: null,
+          title: Text('Share email'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CameraPreview extends StatelessWidget {
+  const _CameraPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 340,
+      decoration: BoxDecoration(
+        color: SyncColors.slate950,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Center(
+        child: Icon(Icons.person_rounded, color: Colors.white12, size: 150),
       ),
     );
   }
