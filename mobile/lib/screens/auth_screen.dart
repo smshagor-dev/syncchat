@@ -65,21 +65,26 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = switch (mode) {
-      'forgot' => 'Forgot password',
-      'link' => 'Link device',
-      'scan' => 'Scan QR code',
-      _ when twoFactorRequired => 'Two-factor verification',
-      _ => signIn ? 'Sign in' : 'Sign up',
-    };
-
     return Scaffold(
       backgroundColor: SyncColors.slate950,
       body: Stack(
         children: [
-          const Positioned(left: -80, top: 40, child: _Glow(size: 280, color: SyncColors.cyan)),
-          const Positioned(right: -90, top: -40, child: _Glow(size: 320, color: SyncColors.sky)),
-          const Positioned(left: 70, right: 70, bottom: -140, child: _Glow(size: 320, color: SyncColors.teal)),
+          const Positioned(
+            left: -80,
+            top: 40,
+            child: _Glow(size: 280, color: SyncColors.cyan),
+          ),
+          const Positioned(
+            right: -90,
+            top: -40,
+            child: _Glow(size: 320, color: SyncColors.sky),
+          ),
+          const Positioned(
+            left: 70,
+            right: 70,
+            bottom: -140,
+            child: _Glow(size: 320, color: SyncColors.teal),
+          ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -90,7 +95,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: .97),
                     borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: Colors.white.withValues(alpha: .72)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .72),
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x44020617),
@@ -101,108 +108,43 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   child: Theme(
                     data: SyncChatTheme.light(),
-                    child: Builder(
-                      builder: (context) => Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'WELCOME TO',
-                                      style: TextStyle(
-                                        letterSpacing: 2.4,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: SyncColors.slate500,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'SyncChat',
-                                      style: TextStyle(
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w900,
-                                        color: SyncColors.slate900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              _AuthBadge(label: _badgeLabel),
-                            ],
-                          ),
-                          const SizedBox(height: 22),
-                          if (mode == 'auth' && !twoFactorRequired) ...[
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: SyncColors.slate100,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: _AuthTab(
-                                      label: 'Sign in',
-                                      active: signIn,
-                                      onTap: loading
-                                          ? null
-                                          : () => setState(() {
-                                                signIn = true;
-                                                _clearStatus();
-                                              }),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: _AuthTab(
-                                      label: 'Sign up',
-                                      active: !signIn,
-                                      onTap: loading
-                                          ? null
-                                          : () => setState(() {
-                                                signIn = false;
-                                                _clearStatus();
-                                              }),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: SyncColors.slate900,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _subtitle,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.45,
-                              color: SyncColors.slate500,
-                            ),
-                          ),
-                          if (error != null) ...[
-                            const SizedBox(height: 12),
-                            _StatusBanner(message: error!, error: true),
-                          ],
-                          if (notice != null) ...[
-                            const SizedBox(height: 12),
-                            _StatusBanner(message: notice!),
-                          ],
-                          const SizedBox(height: 18),
-                          _buildForm(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _header(),
+                        const SizedBox(height: 22),
+                        if (mode == 'auth' && !twoFactorRequired) ...[
+                          _authTabs(),
+                          const SizedBox(height: 20),
                         ],
-                      ),
+                        Text(
+                          _title,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: SyncColors.slate900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _subtitle,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.45,
+                            color: SyncColors.slate500,
+                          ),
+                        ),
+                        if (error != null) ...[
+                          const SizedBox(height: 12),
+                          _StatusBanner(message: error!, error: true),
+                        ],
+                        if (notice != null) ...[
+                          const SizedBox(height: 12),
+                          _StatusBanner(message: notice!),
+                        ],
+                        const SizedBox(height: 18),
+                        _buildForm(context),
+                      ],
                     ),
                   ),
                 ),
@@ -213,6 +155,85 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
+
+  Widget _header() {
+    return Row(
+      children: [
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'WELCOME TO',
+                style: TextStyle(
+                  letterSpacing: 2.4,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: SyncColors.slate500,
+                ),
+              ),
+              SizedBox(height: 3),
+              Text(
+                'SyncChat',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  color: SyncColors.slate900,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _AuthBadge(label: _badgeLabel),
+      ],
+    );
+  }
+
+  Widget _authTabs() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: SyncColors.slate100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _AuthTab(
+              label: 'Sign in',
+              active: signIn,
+              onTap: loading
+                  ? null
+                  : () => setState(() {
+                        signIn = true;
+                        _clearStatus();
+                      }),
+            ),
+          ),
+          Expanded(
+            child: _AuthTab(
+              label: 'Sign up',
+              active: !signIn,
+              onTap: loading
+                  ? null
+                  : () => setState(() {
+                        signIn = false;
+                        _clearStatus();
+                      }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String get _title => switch (mode) {
+        'forgot' => 'Forgot password',
+        'link' => 'Link device',
+        'scan' => 'Scan QR code',
+        _ when twoFactorRequired => 'Two-factor verification',
+        _ => signIn ? 'Sign in' : 'Sign up',
+      };
 
   String get _badgeLabel {
     if (twoFactorRequired) return '2FA';
@@ -228,36 +249,47 @@ class _AuthScreenState extends State<AuthScreen> {
           : 'Google Authenticator code is required after password verification.';
     }
     if (mode == 'forgot') return 'Secure password recovery in three steps.';
-    if (mode == 'link') return 'Scan a QR or enter a short code from your signed-in device.';
-    if (mode == 'scan') return 'Point your camera at the QR shown on your signed-in device.';
+    if (mode == 'link') {
+      return 'Scan a QR or enter a short code from your signed-in device.';
+    }
+    if (mode == 'scan') {
+      return 'Point your camera at the QR shown on your signed-in device.';
+    }
     return 'Access your secure Space in seconds.';
   }
 
   Widget _buildForm(BuildContext context) {
-    if (twoFactorRequired) return _buildTwoFactorForm(context);
-    if (mode == 'forgot') return _buildRecoveryForm(context);
+    if (twoFactorRequired) return _buildTwoFactorForm();
+    if (mode == 'forgot') return _buildRecoveryForm();
     if (mode == 'link') return _buildDeviceLinkForm();
     if (mode == 'scan') return _buildQrScannerMock();
-    return _buildAuthForm(context);
+    return _buildAuthForm();
   }
 
-  Widget _buildTwoFactorForm(BuildContext context) {
+  Widget _buildTwoFactorForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: twoFactorController,
           enabled: !loading,
-          keyboardType: useRecoveryCode ? TextInputType.text : TextInputType.number,
-          textCapitalization: useRecoveryCode ? TextCapitalization.characters : TextCapitalization.none,
+          keyboardType:
+              useRecoveryCode ? TextInputType.text : TextInputType.number,
+          textCapitalization: useRecoveryCode
+              ? TextCapitalization.characters
+              : TextCapitalization.none,
           maxLength: useRecoveryCode ? 9 : 6,
           decoration: InputDecoration(
-            labelText: useRecoveryCode ? 'Recovery code (ABCD-EFGH)' : '6-digit code',
+            labelText: useRecoveryCode
+                ? 'Recovery code (ABCD-EFGH)'
+                : '6-digit code',
             prefixIcon: const Icon(Icons.shield_outlined),
             counterText: '',
           ),
           onChanged: (value) {
-            final formatted = useRecoveryCode ? _formatRecoveryCode(value) : value.replaceAll(RegExp(r'\D'), '').substring(0, value.replaceAll(RegExp(r'\D'), '').length.clamp(0, 6));
+            final formatted = useRecoveryCode
+                ? _formatRecoveryCode(value)
+                : _formatSixDigits(value);
             if (formatted != value) {
               twoFactorController.value = TextEditingValue(
                 text: formatted,
@@ -272,7 +304,6 @@ class _AuthScreenState extends State<AuthScreen> {
           icon: Icons.verified_user_outlined,
           onPressed: loading ? null : _submitTwoFactor,
         ),
-        const SizedBox(height: 4),
         TextButton(
           onPressed: loading
               ? null
@@ -281,7 +312,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     twoFactorController.clear();
                     _clearStatus();
                   }),
-          child: Text(useRecoveryCode ? 'Use authenticator code' : 'Use recovery code'),
+          child: Text(
+            useRecoveryCode
+                ? 'Use authenticator code'
+                : 'Use recovery code',
+          ),
         ),
         TextButton(
           onPressed: loading
@@ -299,7 +334,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildRecoveryForm(BuildContext context) {
+  Widget _buildRecoveryForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -311,7 +346,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 Expanded(
                   child: Container(
                     height: 2,
-                    color: recoveryStep > step ? SyncColors.sky : SyncColors.slate200,
+                    color: recoveryStep > step
+                        ? SyncColors.sky
+                        : SyncColors.slate200,
                   ),
                 ),
             ],
@@ -340,6 +377,15 @@ class _AuthScreenState extends State<AuthScreen> {
               prefixIcon: Icon(Icons.shield_outlined),
               counterText: '',
             ),
+            onChanged: (value) {
+              final formatted = _formatSixDigits(value);
+              if (formatted != value) {
+                recoveryOtpController.value = TextEditingValue(
+                  text: formatted,
+                  selection: TextSelection.collapsed(offset: formatted.length),
+                );
+              }
+            },
           ),
         if (recoveryStep == 3) ...[
           TextField(
@@ -376,7 +422,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   2 => 'Verify code',
                   _ => 'Reset password',
                 },
-          icon: recoveryStep == 3 ? Icons.lock_reset_rounded : Icons.arrow_forward_rounded,
+          icon: recoveryStep == 3
+              ? Icons.lock_reset_rounded
+              : Icons.arrow_forward_rounded,
           onPressed: loading ? null : _submitRecovery,
         ),
         TextButton(
@@ -399,7 +447,11 @@ class _AuthScreenState extends State<AuthScreen> {
             border: Border.all(color: SyncColors.slate200),
           ),
           child: const Center(
-            child: Icon(Icons.qr_code_2_rounded, size: 104, color: SyncColors.slate700),
+            child: Icon(
+              Icons.qr_code_2_rounded,
+              size: 104,
+              color: SyncColors.slate700,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -418,7 +470,10 @@ class _AuthScreenState extends State<AuthScreen> {
           icon: const Icon(Icons.qr_code_scanner_rounded),
           label: const Padding(
             padding: EdgeInsets.symmetric(vertical: 13),
-            child: Text('Scan QR code', style: TextStyle(fontWeight: FontWeight.w800)),
+            child: Text(
+              'Scan QR code',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
           ),
         ),
         TextButton(
@@ -442,7 +497,11 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              const Icon(Icons.qr_code_scanner_rounded, size: 164, color: Colors.white70),
+              const Icon(
+                Icons.qr_code_scanner_rounded,
+                size: 164,
+                color: Colors.white70,
+              ),
               Positioned(
                 left: 32,
                 right: 32,
@@ -464,7 +523,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildAuthForm(BuildContext context) {
+  Widget _buildAuthForm() {
     return AutofillGroup(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -521,13 +580,21 @@ class _AuthScreenState extends State<AuthScreen> {
             controller: passwordController,
             enabled: !loading,
             obscureText: !showPassword,
-            autofillHints: [signIn ? AutofillHints.password : AutofillHints.newPassword],
+            autofillHints: [
+              signIn ? AutofillHints.password : AutofillHints.newPassword,
+            ],
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
-                onPressed: loading ? null : () => setState(() => showPassword = !showPassword),
-                icon: Icon(showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                onPressed: loading
+                    ? null
+                    : () => setState(() => showPassword = !showPassword),
+                icon: Icon(
+                  showPassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                ),
               ),
             ),
           ),
@@ -544,8 +611,14 @@ class _AuthScreenState extends State<AuthScreen> {
                 suffixIcon: IconButton(
                   onPressed: loading
                       ? null
-                      : () => setState(() => showConfirmPassword = !showConfirmPassword),
-                  icon: Icon(showConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                      : () => setState(
+                            () => showConfirmPassword = !showConfirmPassword,
+                          ),
+                  icon: Icon(
+                    showConfirmPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
                 ),
               ),
             ),
@@ -556,12 +629,36 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ],
           if (signIn) ...[
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: rememberUsername,
-              onChanged: loading ? null : (value) => setState(() => rememberUsername = value ?? false),
-              title: const Text('Remember username', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 4),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: loading
+                  ? null
+                  : () => setState(
+                        () => rememberUsername = !rememberUsername,
+                      ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: rememberUsername,
+                      onChanged: loading
+                          ? null
+                          : (value) => setState(
+                                () => rememberUsername = value ?? false,
+                              ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Expanded(
+                      child: Text(
+                        'Remember username',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -578,19 +675,31 @@ class _AuthScreenState extends State<AuthScreen> {
           ] else
             const SizedBox(height: 14),
           _PrimaryButton(
-            label: loading ? 'Please wait…' : signIn ? 'Sign in' : 'Create account',
+            label: loading
+                ? 'Please wait…'
+                : signIn
+                    ? 'Sign in'
+                    : 'Create account',
             icon: signIn ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
             onPressed: loading ? null : _submitAuth,
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: loading ? null : () => _setNotice('Google sign-in will use the server social-auth configuration.'),
+            onPressed: loading
+                ? null
+                : () => _setNotice(
+                      'Google sign-in will use the server social-auth configuration.',
+                    ),
             icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
             label: const Text('Continue with Google'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: loading ? null : () => _setNotice('Facebook sign-in will use the server social-auth configuration.'),
+            onPressed: loading
+                ? null
+                : () => _setNotice(
+                      'Facebook sign-in will use the server social-auth configuration.',
+                    ),
             icon: const Icon(Icons.facebook_rounded),
             label: const Text('Continue with Facebook'),
           ),
@@ -624,7 +733,9 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       if (!RegExp(r'^[a-z0-9_]{3,24}$').hasMatch(username)) {
-        _setError('Username must use 3-24 lowercase letters, numbers or underscore.');
+        _setError(
+          'Username must use 3-24 lowercase letters, numbers or underscore.',
+        );
         return;
       }
       if (email.isEmpty || !email.contains('@')) {
@@ -632,7 +743,9 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       if (!_validPassword(password)) {
-        _setError('Password must be at least 8 characters with a letter and a number.');
+        _setError(
+          'Password must be at least 8 characters with a letter and a number.',
+        );
         return;
       }
       if (password != confirm) {
@@ -684,7 +797,8 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submitTwoFactor() async {
     final code = twoFactorController.text.trim();
     if (useRecoveryCode) {
-      if (!RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(code.toUpperCase())) {
+      if (!RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$')
+          .hasMatch(code.toUpperCase())) {
         _setError('Enter a recovery code in ABCD-EFGH format.');
         return;
       }
@@ -698,7 +812,8 @@ class _AuthScreenState extends State<AuthScreen> {
         tempToken: twoFactorTempToken,
         code: code,
         recoveryCode: useRecoveryCode,
-        rememberedUsername: rememberUsername ? usernameController.text.trim() : null,
+        rememberedUsername:
+            rememberUsername ? usernameController.text.trim() : null,
       );
       _setNotice(result.message);
       await widget.onAuthenticated(context);
@@ -713,7 +828,8 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       await _guarded(() async {
-        final message = await widget.authRepository.requestPasswordReset(email);
+        final message =
+            await widget.authRepository.requestPasswordReset(email);
         if (!mounted) return;
         setState(() {
           recoveryStep = 2;
@@ -725,13 +841,14 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     if (recoveryStep == 2) {
-      final otp = recoveryOtpController.text.replaceAll(RegExp(r'\D'), '');
+      final otp = _formatSixDigits(recoveryOtpController.text);
       if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
         _setError('Enter the 6-digit verification code.');
         return;
       }
       await _guarded(() async {
-        final challenge = await widget.authRepository.verifyPasswordResetCode(
+        final challenge =
+            await widget.authRepository.verifyPasswordResetCode(
           email: recoveryEmailController.text.trim(),
           otp: otp,
         );
@@ -749,7 +866,9 @@ class _AuthScreenState extends State<AuthScreen> {
     final password = recoveryPasswordController.text;
     final confirm = recoveryConfirmController.text;
     if (!_validPassword(password)) {
-      _setError('Password must be at least 8 characters with a letter and a number.');
+      _setError(
+        'Password must be at least 8 characters with a letter and a number.',
+      );
       return;
     }
     if (password != confirm) {
@@ -790,11 +909,19 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   bool _validPassword(String value) =>
-      value.length >= 8 && value.length <= 128 && RegExp(r'[A-Za-z]').hasMatch(value) && RegExp(r'\d').hasMatch(value);
+      value.length >= 8 &&
+      value.length <= 128 &&
+      RegExp(r'[A-Za-z]').hasMatch(value) &&
+      RegExp(r'\d').hasMatch(value);
+
+  String _formatSixDigits(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    return digits.length > 6 ? digits.substring(0, 6) : digits;
+  }
 
   String _formatRecoveryCode(String value) {
     final raw = value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    final clipped = raw.substring(0, raw.length.clamp(0, 8));
+    final clipped = raw.length > 8 ? raw.substring(0, 8) : raw;
     if (clipped.length <= 4) return clipped;
     return '${clipped.substring(0, 4)}-${clipped.substring(4)}';
   }
@@ -859,7 +986,10 @@ class _PrimaryButton extends StatelessWidget {
       icon: Icon(icon ?? Icons.arrow_forward_rounded),
       label: Padding(
         padding: const EdgeInsets.symmetric(vertical: 13),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        child: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
       ),
     );
   }
@@ -912,12 +1042,24 @@ class _StatusBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(error ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded, color: tone, size: 19),
+          Icon(
+            error
+                ? Icons.error_outline_rounded
+                : Icons.check_circle_outline_rounded,
+            color: tone,
+            size: 19,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(color: error ? const Color(0xFF991B1B) : const Color(0xFF166534), fontSize: 13, height: 1.35),
+              style: TextStyle(
+                color: error
+                    ? const Color(0xFF991B1B)
+                    : const Color(0xFF166534),
+                fontSize: 13,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -963,7 +1105,9 @@ class _AuthBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFFE0F2FE), Color(0xFFCFFAFE)]),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE0F2FE), Color(0xFFCFFAFE)],
+        ),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
@@ -979,7 +1123,11 @@ class _AuthBadge extends StatelessWidget {
 }
 
 class _AuthTab extends StatelessWidget {
-  const _AuthTab({required this.label, required this.active, required this.onTap});
+  const _AuthTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   final String label;
   final bool active;
