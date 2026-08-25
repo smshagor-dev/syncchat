@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncchat_mobile/parity_catalog.dart';
+import 'package:syncchat_mobile/screens/parity_surface_screen.dart';
 
 void main() {
   test('web parity catalog keeps broad product coverage', () {
@@ -58,5 +59,20 @@ void main() {
       expect(surface.webSource.trim(), isNotEmpty);
       expect(<String>{'page', 'sheet'}, contains(surface.kind));
     }
+  });
+
+  test('every registered web surface has an exact mobile design route', () {
+    final registered = parityCatalog.map((surface) => surface.name).toSet();
+
+    expect(
+      registered.difference(exactParityTitles),
+      isEmpty,
+      reason: 'A web surface was added without an exact Flutter mobile design.',
+    );
+    expect(
+      exactParityTitles.difference(registered),
+      isEmpty,
+      reason: 'The exact-design router contains a stale surface name.',
+    );
   });
 }
