@@ -36,12 +36,7 @@ class ChatRepository {
       '/chats/$roomId',
       query: {'skip': skip, 'limit': limit},
     );
-    final payload = response.payload;
-    if (payload is! List) return const [];
-    return payload
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList(growable: false);
+    return _mapList(response.payload);
   }
 
   Future<void> openRoom(String roomId) async {
@@ -77,43 +72,18 @@ class ChatRepository {
         message: 'Message cannot be empty.',
       );
     }
+    _guardDeviceE2ee(inbox);
 
-    if (inbox['e2eeEnabled'] == true) {
-      throw const ApiException(
-        statusCode: 409,
-        message: 'This room uses device E2EE. Mobile key exchange must be enabled before sending.',
-      );
-    }
-
-    final roomId = inbox['roomId']?.toString().trim() ?? '';
-    if (roomId.isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Room ID is missing.');
-    }
-
+    final roomId = _roomId(inbox);
     await openRoom(roomId);
-    final user = await currentUser();
-    final userId = user['_id']?.toString().trim() ?? '';
-    if (userId.isEmpty) {
-      throw const ApiException(statusCode: 401, message: 'Current user ID is missing.');
-    }
-
-    final ownersId = (inbox['ownersId'] is List)
-        ? List<dynamic>.from(inbox['ownersId'] as List)
-            .map((item) => item.toString())
-            .where((item) => item.isNotEmpty)
-            .toList(growable: false)
-        : const <String>[];
-
-    final resolvedClientMessageId =
-        (clientMessageId?.trim().isNotEmpty ?? false)
-            ? clientMessageId!.trim()
-            : _clientMessageId();
+    final userId = await _currentUserId();
+    final resolvedClientMessageId = _resolveClientMessageId(clientMessageId);
 
     _realtime.emit('chat/insert', {
       'clientMessageId': resolvedClientMessageId,
       'roomId': roomId,
       'roomType': inbox['roomType']?.toString() ?? 'private',
-      'ownersId': ownersId,
+      'ownersId': _ownersId(inbox),
       'userId': userId,
       'text': message,
       'replyTo': replyTo,
@@ -123,17 +93,193 @@ class ChatRepository {
     return resolvedClientMessageId;
   }
 
+  Future<Map<String, dynamic>> uploadAttachment({
+    required String filePath,
+    String? filename,
+  }) async {
+    final response = await _api.multipart(
+      '/chats/upload',
+      fieldName: 'file',
+      filePath: filePath,
+      filename: filename,
+    );
+    return _mapPayload(response.payload, error: 'Invalid upload response.');
+  }
+
+  Future<Map<String, dynamic>> sendAttachment({
+    required Map<String, dynamic> inbox,
+    required Map<String, dynamic> file,
+    String text = '',
+    String? clientMessageId,
+    String? replyTo,
+    String? topicId,
+    bool viewOnce = false,
+  }) async {
+    _guardDeviceE2ee(inbox);
+    final roomId = _roomId(inbox);
+    final resolvedClientMessageId = _resolveClientMessageId(clientMessageId);
+    final response = await _api.post(
+      '/chats/send-file',
+      headers: {'X-Client-Message-Id': resolvedClientMessageId},
+      body: {
+        'clientMessageId': resolvedClientMessageId,
+        'roomId': roomId,
+        'roomType': inbox['roomType']?.toString() ?? 'private',
+        'ownersId': _ownersId(inbox),
+        'text': text.trim(),
+        'replyTo': replyTo,
+        'topicId': topicId,
+        'viewOnce': viewOnce,
+        'file': file,
+      },
+    );
+    return _mapPayload(response.payload, error: 'Invalid file message response.');
+  }
+
+  Future<void> reactToMessage({
+    required String roomId,
+    required String chatId,
+    String? emoji,
+  }) async {
+    await openRoom(roomId);
+    _realtime.emit('chat/react', {
+      'roomId': roomId,
+      'chatId': chatId,
+      'userId': await _currentUserId(),
+      'emoji': emoji,
+    });
+  }
+
+  Future<void> editMessage({
+    required String roomId,
+    required String chatId,
+    required String text,
+    String? replyTo,
+  }) async {
+    final nextText = text.trim();
+    if (nextText.isEmpty) {
+      throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
+    }
+    await openRoom(roomId);
+    _realtime.emit('chat/edit', {
+      'roomId': roomId,
+      'chatId': chatId,
+      'userId': await _currentUserId(),
+      'text': nextText,
+      'replyTo': replyTo,
+    });
+  }
+
+  Future<void> deleteMessages({
+    required String roomId,
+    required List<String> chatIds,
+    bool deleteForEveryone = false,
+  }) async {
+    final ids = chatIds.where((id) => id.trim().isNotEmpty).toList(growable: false);
+    if (ids.isEmpty) return;
+    await openRoom(roomId);
+    _realtime.emit('chat/delete', {
+      'userId': await _currentUserId(),
+      'chatsId': ids,
+      'roomId': roomId,
+      'deleteForEveryone': deleteForEveryone,
+    });
+  }
+
+  Future<Map<String, dynamic>> toggleStar(
+    String chatId, {
+    required bool starred,
+  }) async {
+    final response = await _api.patch(
+      '/chats/$chatId/star',
+      body: {'starred': starred},
+    );
+    return _mapPayload(response.payload, error: 'Invalid star response.');
+  }
+
+  Future<Map<String, dynamic>> pinnedMessages(String roomId) async {
+    final response = await _api.get('/chats/$roomId/pins');
+    return _mapPayload(response.payload, error: 'Invalid pinned message response.');
+  }
+
+  Future<Map<String, dynamic>> pinMessage({
+    required String roomId,
+    required String chatId,
+  }) async {
+    final response = await _api.post(
+      '/chats/$chatId/pin',
+      body: {'roomId': roomId},
+    );
+    return _mapPayload(response.payload, error: 'Invalid pin response.');
+  }
+
+  Future<Map<String, dynamic>> unpinMessage({
+    required String roomId,
+    required String chatId,
+  }) async {
+    final response = await _api.delete(
+      '/chats/$chatId/pin',
+      body: {'roomId': roomId},
+    );
+    return _mapPayload(response.payload, error: 'Invalid unpin response.');
+  }
+
+  Future<Map<String, dynamic>> openViewOnce(String chatId) async {
+    final response = await _api.post('/chats/$chatId/view-once-open');
+    return _mapPayload(response.payload, error: 'Invalid view-once response.');
+  }
+
+  Future<List<Map<String, dynamic>>> listScheduled(String roomId) async {
+    final response = await _api.get(
+      '/chats/scheduled',
+      query: {'roomId': roomId},
+    );
+    return _mapList(response.payload);
+  }
+
+  Future<Map<String, dynamic>> scheduleMessage({
+    required Map<String, dynamic> inbox,
+    required String text,
+    String? replyTo,
+    String mode = 'once',
+    DateTime? scheduledFor,
+    String recurringType = 'none',
+    String? targetUserId,
+  }) async {
+    final message = text.trim();
+    if (message.isEmpty) {
+      throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
+    }
+    final response = await _api.post(
+      '/chats/scheduled',
+      body: {
+        'roomId': _roomId(inbox),
+        'roomType': inbox['roomType']?.toString() ?? 'private',
+        'ownersId': _ownersId(inbox),
+        'text': message,
+        'replyTo': replyTo,
+        'mode': mode,
+        'scheduledFor': scheduledFor?.toUtc().toIso8601String(),
+        'recurringType': recurringType,
+        'targetUserId': targetUserId,
+      },
+    );
+    return _mapPayload(response.payload, error: 'Invalid schedule response.');
+  }
+
+  Future<void> cancelScheduled(String scheduleId) async {
+    await _api.delete('/chats/scheduled/$scheduleId');
+  }
+
   Future<void> markRoomRead(Map<String, dynamic> inbox) async {
     if (!_realtime.isConnected) return;
-    final user = await currentUser();
-    final userId = user['_id']?.toString() ?? '';
     final roomId = inbox['roomId']?.toString() ?? '';
-    if (userId.isEmpty || roomId.isEmpty) return;
+    if (roomId.isEmpty) return;
 
     _realtime.emit('chat/read', {
       'roomId': roomId,
-      'userId': userId,
-      'ownersId': inbox['ownersId'] is List ? inbox['ownersId'] : const [],
+      'userId': await _currentUserId(),
+      'ownersId': _ownersId(inbox),
     });
   }
 
@@ -171,11 +317,70 @@ class ChatRepository {
         .toList(growable: false);
   }
 
+  Future<void> typing(Map<String, dynamic> inbox) async {
+    if (!_realtime.isConnected) return;
+    _realtime.emit('chat/typing', {
+      'roomId': _roomId(inbox),
+      'roomType': inbox['roomType']?.toString() ?? 'private',
+      'userId': await _currentUserId(),
+    });
+  }
+
   void on(String event, void Function(dynamic data) handler) =>
       _realtime.on(event, handler);
 
   void off(String event, [void Function(dynamic data)? handler]) =>
       _realtime.off(event, handler);
+
+  void _guardDeviceE2ee(Map<String, dynamic> inbox) {
+    if (inbox['e2eeEnabled'] == true) {
+      throw const ApiException(
+        statusCode: 409,
+        message: 'This room uses device E2EE. Mobile key exchange must be enabled before sending.',
+      );
+    }
+  }
+
+  String _roomId(Map<String, dynamic> inbox) {
+    final roomId = inbox['roomId']?.toString().trim() ?? '';
+    if (roomId.isEmpty) {
+      throw const ApiException(statusCode: 400, message: 'Room ID is missing.');
+    }
+    return roomId;
+  }
+
+  List<String> _ownersId(Map<String, dynamic> inbox) =>
+      inbox['ownersId'] is List
+          ? List<dynamic>.from(inbox['ownersId'] as List)
+              .map((item) => item.toString())
+              .where((item) => item.isNotEmpty)
+              .toList(growable: false)
+          : const <String>[];
+
+  Future<String> _currentUserId() async {
+    final user = await currentUser();
+    final userId = user['_id']?.toString().trim() ?? '';
+    if (userId.isEmpty) {
+      throw const ApiException(statusCode: 401, message: 'Current user ID is missing.');
+    }
+    return userId;
+  }
+
+  String _resolveClientMessageId(String? requested) =>
+      (requested?.trim().isNotEmpty ?? false) ? requested!.trim() : _clientMessageId();
+
+  List<Map<String, dynamic>> _mapList(dynamic payload) {
+    if (payload is! List) return const [];
+    return payload
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Map<String, dynamic> _mapPayload(dynamic payload, {required String error}) {
+    if (payload is Map) return Map<String, dynamic>.from(payload);
+    throw ApiException(statusCode: 500, message: error);
+  }
 
   String _clientMessageId() {
     final micros = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
