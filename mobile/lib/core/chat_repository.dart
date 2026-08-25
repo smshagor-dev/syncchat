@@ -60,9 +60,12 @@ class ChatRepository {
     _openRoomId = roomId;
   }
 
+  String createClientMessageId() => _clientMessageId();
+
   Future<String> sendText({
     required Map<String, dynamic> inbox,
     required String text,
+    String? clientMessageId,
     String? replyTo,
     String? topicId,
     bool viewOnce = false,
@@ -101,9 +104,13 @@ class ChatRepository {
             .toList(growable: false)
         : const <String>[];
 
-    final clientMessageId = _clientMessageId();
+    final resolvedClientMessageId =
+        (clientMessageId?.trim().isNotEmpty ?? false)
+            ? clientMessageId!.trim()
+            : _clientMessageId();
+
     _realtime.emit('chat/insert', {
-      'clientMessageId': clientMessageId,
+      'clientMessageId': resolvedClientMessageId,
       'roomId': roomId,
       'roomType': inbox['roomType']?.toString() ?? 'private',
       'ownersId': ownersId,
@@ -113,7 +120,7 @@ class ChatRepository {
       'topicId': topicId,
       'viewOnce': viewOnce,
     });
-    return clientMessageId;
+    return resolvedClientMessageId;
   }
 
   Future<void> markRoomRead(Map<String, dynamic> inbox) async {
