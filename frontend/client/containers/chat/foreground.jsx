@@ -634,9 +634,10 @@ function ForeGround() {
 
   return (
     <div
+      data-syncchat-mobile-shell
       className={`${
         chatRoom.isOpen && '-translate-x-full md:translate-x-0'
-      } transition w-full h-full relative z-10 grid md:grid-cols-[72px_1fr] overflow-hidden border-r border-sky-800 bg-sky-900 dark:border-spill-800 dark:bg-spill-950`}
+      } transition w-full h-full relative z-10 grid md:grid-cols-[84px_1fr] overflow-hidden border-r border-sky-800 bg-sky-900 dark:border-spill-800 dark:bg-spill-950`}
     >
       {
         // loading animation
