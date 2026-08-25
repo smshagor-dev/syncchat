@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^1.8.6",
-    "axios": "^1.18.0",
+    "axios": "^1.19.0",
     "chart.js": "^4.4.1",
     "dotenv": "^17.4.2",
     "linkify": "^0.2.1",
@@ -24,7 +24,7 @@
     "react-helmet": "^6.1.0",
     "react-icons": "^4.6.0",
     "react-redux": "^8.0.4",
-    "react-router-dom": "^6.30.5",
+    "react-router-dom": "^7.18.2",
     "socket.io-client": "^4.5.3",
     "uuid": "^14.0.2",
     "webpack-cli": "^5.1.4"
