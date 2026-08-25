@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/chat_repository.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -26,15 +29,24 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   final composer = TextEditingController();
   final scroll = ScrollController();
   final messages = <Map<String, dynamic>>[];
+  final imagePicker = ImagePicker();
 
+  late ChatRepository chat;
+  bool chatBound = false;
   StreamSubscription<RealtimeConnectionState>? connectionSubscription;
   Map<String, dynamic>? currentUser;
+  Map<String, dynamic>? replyingTo;
+  Map<String, dynamic>? editingMessage;
+  Set<String> pinnedIds = <String>{};
   bool loading = true;
   bool sending = false;
+  bool uploading = false;
   String? error;
+  String typingText = '';
   int lastSequence = 0;
 
   String get roomId => widget.inbox['roomId']?.toString() ?? '';
+  String get currentUserId => currentUser?['_id']?.toString() ?? '';
 
   @override
   void initState() {
@@ -44,12 +56,18 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   @override
   void dispose() {
-    final chat = context.maybeServices?.chat;
-    if (chat != null) {
+    if (chatBound) {
       chat.off('chat/insert', _onChatInsert);
       chat.off('chat/receipt', _onReceipt);
       chat.off('chat/error', _onChatError);
       chat.off('chat/sync-result', _onSyncResult);
+      chat.off('chat/react', _onReaction);
+      chat.off('chat/edit', _onEdit);
+      chat.off('chat/delete', _onDelete);
+      chat.off('chat/view-once', _onViewOnceEvent);
+      chat.off('chat/pins', _onPinsEvent);
+      chat.off('chat/typing', _onTypingEvent);
+      chat.off('chat/typing-ends', _onTypingEnds);
     }
     connectionSubscription?.cancel();
     composer.dispose();
@@ -59,16 +77,23 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   Future<void> _start() async {
     final services = context.services;
-    final chat = services.chat;
+    chat = services.chat;
+    chatBound = true;
 
     chat.on('chat/insert', _onChatInsert);
     chat.on('chat/receipt', _onReceipt);
     chat.on('chat/error', _onChatError);
     chat.on('chat/sync-result', _onSyncResult);
+    chat.on('chat/react', _onReaction);
+    chat.on('chat/edit', _onEdit);
+    chat.on('chat/delete', _onDelete);
+    chat.on('chat/view-once', _onViewOnceEvent);
+    chat.on('chat/pins', _onPinsEvent);
+    chat.on('chat/typing', _onTypingEvent);
+    chat.on('chat/typing-ends', _onTypingEnds);
+
     connectionSubscription = services.realtime.states.listen((state) {
-      if (state == RealtimeConnectionState.connected) {
-        _catchUp();
-      }
+      if (state == RealtimeConnectionState.connected) _catchUp();
     });
 
     try {
@@ -76,23 +101,24 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         chat.currentUser(),
         chat.listRoom(roomId, limit: 100),
         chat.openRoom(roomId),
+        chat.pinnedMessages(roomId),
       ]);
       currentUser = Map<String, dynamic>.from(results[0] as Map);
       final loaded = (results[1] as List)
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item));
       _mergeMessages(loaded);
+      _applyPins(Map<String, dynamic>.from(results[3] as Map));
       await chat.markRoomRead(widget.inbox);
       for (final message in messages) {
         if (!_isMine(message)) chat.sendReceipt(message, read: true);
       }
-      if (mounted) {
-        setState(() {
-          loading = false;
-          error = null;
-        });
-        _scrollToBottom();
-      }
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = null;
+      });
+      _scrollToBottom();
     } on Object catch (failure) {
       if (!mounted) return;
       setState(() {
@@ -108,11 +134,19 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       error = null;
     });
     try {
-      final loaded = await context.services.chat.listRoom(roomId, limit: 100);
+      final results = await Future.wait<dynamic>([
+        chat.listRoom(roomId, limit: 100),
+        chat.pinnedMessages(roomId),
+      ]);
       messages.clear();
       lastSequence = 0;
-      _mergeMessages(loaded);
-      await context.services.chat.markRoomRead(widget.inbox);
+      _mergeMessages(
+        (results[0] as List)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item)),
+      );
+      _applyPins(Map<String, dynamic>.from(results[1] as Map));
+      await chat.markRoomRead(widget.inbox);
       if (!mounted) return;
       setState(() => loading = false);
       _scrollToBottom();
@@ -128,27 +162,47 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   Future<void> _catchUp() async {
     if (!mounted || roomId.isEmpty) return;
     try {
-      await context.services.chat.openRoom(roomId);
-      final rows = await context.services.chat.syncRoom(
-        roomId,
-        afterSequence: lastSequence,
-      );
+      await chat.openRoom(roomId);
+      final rows = await chat.syncRoom(roomId, afterSequence: lastSequence);
       if (!mounted || rows.isEmpty) return;
       setState(() => _mergeMessages(rows));
-      await context.services.chat.markRoomRead(widget.inbox);
+      await chat.markRoomRead(widget.inbox);
       _scrollToBottom();
     } on Object {
-      // HTTP history remains the recovery fallback if realtime catch-up fails.
+      // HTTP room history remains the fallback if realtime catch-up fails.
     }
+  }
+
+  Future<void> _loadPins() async {
+    try {
+      final payload = await chat.pinnedMessages(roomId);
+      if (!mounted) return;
+      setState(() => _applyPins(payload));
+    } on Object {
+      // Pin status is non-blocking for the room.
+    }
+  }
+
+  void _applyPins(Map<String, dynamic> payload) {
+    final raw = payload['pinned'];
+    pinnedIds = raw is List
+        ? raw
+            .whereType<Map>()
+            .map((item) => item['chatId']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+        : <String>{};
   }
 
   void _onSyncResult(dynamic data) {
     if (!mounted || data is! Map || data['roomId']?.toString() != roomId) return;
     final rows = data['messages'];
     if (rows is! List) return;
-    setState(() => _mergeMessages(
-          rows.whereType<Map>().map((item) => Map<String, dynamic>.from(item)),
-        ));
+    setState(() {
+      _mergeMessages(
+        rows.whereType<Map>().map((item) => Map<String, dynamic>.from(item)),
+      );
+    });
     _scrollToBottom();
   }
 
@@ -157,8 +211,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     final message = Map<String, dynamic>.from(data);
     setState(() => _mergeMessages([message]));
     if (!_isMine(message)) {
-      context.services.chat.sendReceipt(message, read: true);
-      context.services.chat.markRoomRead(widget.inbox);
+      chat.sendReceipt(message, read: true);
+      chat.markRoomRead(widget.inbox);
     }
     _scrollToBottom();
   }
@@ -175,6 +229,86 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       if (data['type'] == 'read') next['readed'] = true;
       messages[index] = next;
     });
+  }
+
+  void _onReaction(dynamic data) {
+    if (!mounted || data is! Map) return;
+    final chatId = data['chatId']?.toString() ?? '';
+    if (chatId.isEmpty) return;
+    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    if (index < 0) return;
+    setState(() {
+      final next = Map<String, dynamic>.from(messages[index]);
+      next['reactions'] = data['reactions'] is Map
+          ? Map<String, dynamic>.from(data['reactions'] as Map)
+          : <String, dynamic>{};
+      messages[index] = next;
+    });
+  }
+
+  void _onEdit(dynamic data) {
+    if (!mounted || data is! Map) return;
+    final chatId = data['chatId']?.toString() ?? '';
+    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    if (index < 0) return;
+    setState(() {
+      final next = Map<String, dynamic>.from(messages[index]);
+      next['text'] = data['text']?.toString() ?? next['text'];
+      next['replyTo'] = data['replyTo'];
+      next['isEdited'] = data['isEdited'] == true;
+      next['editedAt'] = data['editedAt'];
+      next['editHistory'] = data['editHistory'];
+      messages[index] = next;
+      if (editingMessage?['_id']?.toString() == chatId) editingMessage = null;
+    });
+  }
+
+  void _onDelete(dynamic data) {
+    if (!mounted || data is! Map || data['chatsId'] is! List) return;
+    final ids = (data['chatsId'] as List).map((item) => item.toString()).toSet();
+    setState(() {
+      messages.removeWhere((item) => ids.contains(item['_id']?.toString()));
+      pinnedIds.removeAll(ids);
+      if (replyingTo != null && ids.contains(replyingTo!['_id']?.toString())) {
+        replyingTo = null;
+      }
+      if (editingMessage != null && ids.contains(editingMessage!['_id']?.toString())) {
+        editingMessage = null;
+        composer.clear();
+      }
+    });
+  }
+
+  void _onViewOnceEvent(dynamic data) {
+    if (!mounted || data is! Map) return;
+    final chatId = data['chatId']?.toString() ?? '';
+    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    if (index < 0) return;
+    setState(() {
+      final next = Map<String, dynamic>.from(messages[index]);
+      final display = next['viewOnce'] is Map
+          ? Map<String, dynamic>.from(next['viewOnce'] as Map)
+          : <String, dynamic>{'enabled': true};
+      display['opened'] = true;
+      display['label'] = 'Opened';
+      next['viewOnce'] = display;
+      messages[index] = next;
+    });
+  }
+
+  void _onPinsEvent(dynamic data) {
+    if (data is Map && data['roomId']?.toString() != roomId) return;
+    _loadPins();
+  }
+
+  void _onTypingEvent(dynamic data) {
+    if (!mounted) return;
+    setState(() => typingText = data?.toString() ?? 'typing...');
+  }
+
+  void _onTypingEnds(dynamic _) {
+    if (!mounted) return;
+    setState(() => typingText = '');
   }
 
   void _onChatError(dynamic data) {
@@ -214,15 +348,43 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   Future<void> _send() async {
     final text = composer.text.trim();
-    if (text.isEmpty || sending) return;
-    final user = currentUser ?? await context.services.chat.currentUser();
-    final clientMessageId = context.services.chat.createClientMessageId();
+    if (text.isEmpty || sending || uploading) return;
+
+    if (editingMessage != null) {
+      final editing = editingMessage!;
+      setState(() => sending = true);
+      try {
+        await chat.editMessage(
+          roomId: roomId,
+          chatId: editing['_id']?.toString() ?? '',
+          text: text,
+          replyTo: editing['replyTo']?.toString(),
+        );
+        if (!mounted) return;
+        setState(() {
+          sending = false;
+          editingMessage = null;
+          composer.clear();
+        });
+      } on Object catch (failure) {
+        if (!mounted) return;
+        setState(() => sending = false);
+        _snack(_messageFor(failure));
+      }
+      return;
+    }
+
+    final user = currentUser ?? await chat.currentUser();
+    final clientMessageId = chat.createClientMessageId();
+    final reply = replyingTo;
     final optimistic = <String, dynamic>{
       'clientMessageId': clientMessageId,
       'roomId': roomId,
       'roomType': widget.inbox['roomType']?.toString() ?? 'private',
       'userId': user['_id']?.toString(),
       'text': text,
+      'replyTo': reply?['_id'],
+      'reply': reply == null ? null : _replyPreview(reply),
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'pending': true,
       'profile': {
@@ -234,15 +396,17 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     setState(() {
       sending = true;
       composer.clear();
+      replyingTo = null;
       _mergeMessages([optimistic]);
     });
     _scrollToBottom();
 
     try {
-      await context.services.chat.sendText(
+      await chat.sendText(
         inbox: widget.inbox,
         text: text,
         clientMessageId: clientMessageId,
+        replyTo: reply?['_id']?.toString(),
       );
     } on Object catch (failure) {
       if (!mounted) return;
@@ -258,19 +422,624 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
           messages[index] = failed;
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_messageFor(failure))),
-      );
+      _snack(_messageFor(failure));
       return;
     }
 
     if (mounted) setState(() => sending = false);
   }
 
-  bool _isMine(Map<String, dynamic> message) {
-    final myId = currentUser?['_id']?.toString() ?? '';
-    return myId.isNotEmpty && message['userId']?.toString() == myId;
+  Map<String, dynamic> _replyPreview(Map<String, dynamic> message) {
+    final profile = message['profile'];
+    final file = message['file'];
+    return {
+      '_id': message['_id'],
+      'userId': message['userId'],
+      'fullname': profile is Map ? profile['fullname']?.toString() ?? 'Message' : 'Message',
+      'text': (message['text']?.toString().trim().isNotEmpty ?? false)
+          ? message['text']?.toString()
+          : file is Map
+              ? file['originalname']?.toString() ?? 'Attachment'
+              : 'Message',
+    };
   }
+
+  Future<void> _showAttachmentSheet() async {
+    if (uploading) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+          child: Wrap(
+            runSpacing: 4,
+            children: [
+              const ListTile(
+                title: Text('Attach', style: TextStyle(fontWeight: FontWeight.w900)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: SyncColors.sky),
+                title: const Text('Photo from gallery'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: SyncColors.sky),
+                title: const Text('Take photo'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.video_library_outlined, color: SyncColors.sky),
+                title: const Text('Video from gallery'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickVideo(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.videocam_outlined, color: SyncColors.sky),
+                title: const Text('Record video'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickVideo(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.description_outlined, color: SyncColors.sky),
+                title: const Text('Document / file'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickDocument();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await imagePicker.pickImage(source: source, imageQuality: 92);
+      if (picked == null || !mounted) return;
+      await _prepareAttachment(
+        filePath: picked.path,
+        filename: picked.name,
+        allowViewOnce: true,
+      );
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _pickVideo(ImageSource source) async {
+    try {
+      final picked = await imagePicker.pickVideo(source: source);
+      if (picked == null || !mounted) return;
+      await _prepareAttachment(
+        filePath: picked.path,
+        filename: picked.name,
+        allowViewOnce: true,
+      );
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: false,
+      );
+      if (picked == null || picked.files.isEmpty || !mounted) return;
+      final file = picked.files.single;
+      final path = file.path;
+      if (path == null || path.isEmpty) {
+        _snack('The selected file is not available on this device.');
+        return;
+      }
+      await _prepareAttachment(
+        filePath: path,
+        filename: file.name,
+        allowViewOnce: false,
+      );
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _prepareAttachment({
+    required String filePath,
+    required String filename,
+    required bool allowViewOnce,
+  }) async {
+    final caption = TextEditingController();
+    bool viewOnce = false;
+    final draft = await showDialog<_AttachmentDraft>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Send attachment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                filename,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: caption,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Caption',
+                  hintText: 'Add a caption...',
+                ),
+              ),
+              if (allowViewOnce) ...[
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: viewOnce,
+                  title: const Text('View once'),
+                  subtitle: const Text('Recipient can open this media one time.'),
+                  onChanged: (value) => setDialogState(() => viewOnce = value == true),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _AttachmentDraft(caption: caption.text.trim(), viewOnce: viewOnce),
+              ),
+              child: const Text('Send'),
+            ),
+          ],
+        ),
+      ),
+    );
+    caption.dispose();
+    if (draft == null || !mounted) return;
+
+    setState(() => uploading = true);
+    try {
+      final uploaded = await chat.uploadAttachment(
+        filePath: filePath,
+        filename: filename,
+      );
+      final sent = await chat.sendAttachment(
+        inbox: widget.inbox,
+        file: uploaded,
+        text: draft.caption,
+        replyTo: replyingTo?['_id']?.toString(),
+        viewOnce: draft.viewOnce,
+      );
+      if (!mounted) return;
+      setState(() {
+        uploading = false;
+        replyingTo = null;
+        _mergeMessages([sent]);
+      });
+      _scrollToBottom();
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() => uploading = false);
+      _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _showMessageActions(Map<String, dynamic> message) async {
+    final chatId = message['_id']?.toString() ?? '';
+    if (chatId.isEmpty) return;
+    final mine = _isMine(message);
+    final reactions = message['reactions'] is Map
+        ? Map<String, dynamic>.from(message['reactions'] as Map)
+        : <String, dynamic>{};
+    final myReaction = reactions[currentUserId]?.toString();
+    final starredBy = message['starredBy'] is List
+        ? (message['starredBy'] as List).map((item) => item.toString()).toList()
+        : const <String>[];
+    final starred = starredBy.contains(currentUserId);
+    final pinned = pinnedIds.contains(chatId);
+    final viewOnce = message['viewOnce'] is Map && message['viewOnce']['enabled'] == true;
+    final canEdit = mine && !viewOnce && (message['text']?.toString().trim().isNotEmpty ?? false);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: ['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) {
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      chat.reactToMessage(roomId: roomId, chatId: chatId, emoji: emoji);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              if (myReaction != null && myReaction.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.emoji_emotions_outlined),
+                  title: const Text('Remove my reaction'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    chat.reactToMessage(roomId: roomId, chatId: chatId, emoji: null);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: const Text('Reply'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _startReply(message);
+                },
+              ),
+              if (canEdit)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _startEdit(message);
+                  },
+                ),
+              ListTile(
+                leading: Icon(starred ? Icons.star_rounded : Icons.star_border_rounded),
+                title: Text(starred ? 'Unstar' : 'Star'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _toggleStar(message, starred: !starred);
+                },
+              ),
+              ListTile(
+                leading: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined),
+                title: Text(pinned ? 'Unpin' : 'Pin'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _togglePin(chatId, currentlyPinned: pinned);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: SyncColors.danger),
+                title: const Text('Delete for me'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  chat.deleteMessages(roomId: roomId, chatIds: [chatId]);
+                },
+              ),
+              if (mine)
+                ListTile(
+                  leading: const Icon(Icons.delete_forever_outlined, color: SyncColors.danger),
+                  title: const Text('Delete for everyone'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    chat.deleteMessages(
+                      roomId: roomId,
+                      chatIds: [chatId],
+                      deleteForEveryone: true,
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _startReply(Map<String, dynamic> message) {
+    setState(() {
+      replyingTo = message;
+      editingMessage = null;
+    });
+  }
+
+  void _startEdit(Map<String, dynamic> message) {
+    setState(() {
+      editingMessage = message;
+      replyingTo = null;
+      composer.text = message['text']?.toString() ?? '';
+      composer.selection = TextSelection.collapsed(offset: composer.text.length);
+    });
+  }
+
+  void _cancelComposerMode() {
+    setState(() {
+      replyingTo = null;
+      editingMessage = null;
+      composer.clear();
+    });
+  }
+
+  Future<void> _toggleStar(
+    Map<String, dynamic> message, {
+    required bool starred,
+  }) async {
+    final chatId = message['_id']?.toString() ?? '';
+    try {
+      final payload = await chat.toggleStar(chatId, starred: starred);
+      if (!mounted) return;
+      final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+      if (index < 0) return;
+      setState(() {
+        final next = Map<String, dynamic>.from(messages[index]);
+        next['starredBy'] = payload['starredBy'] is List ? payload['starredBy'] : const [];
+        messages[index] = next;
+      });
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _togglePin(String chatId, {required bool currentlyPinned}) async {
+    try {
+      if (currentlyPinned) {
+        await chat.unpinMessage(roomId: roomId, chatId: chatId);
+      } else {
+        await chat.pinMessage(roomId: roomId, chatId: chatId);
+      }
+      await _loadPins();
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _openViewOnce(Map<String, dynamic> message) async {
+    final chatId = message['_id']?.toString() ?? '';
+    if (chatId.isEmpty) return;
+    try {
+      final payload = await chat.openViewOnce(chatId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _ViewOnceDialog(payload: payload),
+      );
+      _onViewOnceEvent({'chatId': chatId, 'userId': currentUserId});
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _showScheduleMenu() async {
+    if (editingMessage != null) {
+      _snack('Finish editing before scheduling a message.');
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('Schedule message', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.schedule_send_outlined),
+              title: const Text('Send later'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _scheduleAt(mode: 'once');
+              },
+            ),
+            if (widget.inbox['roomType']?.toString() == 'private')
+              ListTile(
+                leading: const Icon(Icons.wifi_tethering_rounded),
+                title: const Text('Send when online'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _scheduleWhenOnline();
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.repeat_rounded),
+              title: const Text('Daily reminder'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _scheduleAt(mode: 'recurring', recurringType: 'daily');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_view_week_outlined),
+              title: const Text('Weekly reminder'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _scheduleAt(mode: 'recurring', recurringType: 'weekly');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month_outlined),
+              title: const Text('Monthly reminder'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _scheduleAt(mode: 'recurring', recurringType: 'monthly');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.manage_history_rounded),
+              title: const Text('Scheduled messages'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showScheduledMessages();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _scheduleAt({
+    required String mode,
+    String recurringType = 'none',
+  }) async {
+    final text = composer.text.trim();
+    if (text.isEmpty) {
+      _snack('Write a message first.');
+      return;
+    }
+    final initial = DateTime.now().add(const Duration(minutes: 5));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null || !mounted) return;
+    final scheduled = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+    try {
+      await chat.scheduleMessage(
+        inbox: widget.inbox,
+        text: text,
+        replyTo: replyingTo?['_id']?.toString(),
+        mode: mode,
+        scheduledFor: scheduled,
+        recurringType: recurringType,
+      );
+      if (!mounted) return;
+      setState(() {
+        composer.clear();
+        replyingTo = null;
+      });
+      _snack(mode == 'recurring' ? 'Recurring message scheduled.' : 'Message scheduled.');
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _scheduleWhenOnline() async {
+    final text = composer.text.trim();
+    if (text.isEmpty) {
+      _snack('Write a message first.');
+      return;
+    }
+    try {
+      await chat.scheduleMessage(
+        inbox: widget.inbox,
+        text: text,
+        replyTo: replyingTo?['_id']?.toString(),
+        mode: 'when-online',
+      );
+      if (!mounted) return;
+      setState(() {
+        composer.clear();
+        replyingTo = null;
+      });
+      _snack('Message will send when the contact is online.');
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _showScheduledMessages() async {
+    try {
+      final jobs = await chat.listScheduled(roomId);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .58,
+            child: Column(
+              children: [
+                const ListTile(
+                  title: Text('Scheduled messages', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+                Expanded(
+                  child: jobs.isEmpty
+                      ? const Center(child: Text('No scheduled messages.'))
+                      : ListView.separated(
+                          itemCount: jobs.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, index) {
+                            final job = jobs[index];
+                            return ListTile(
+                              leading: const Icon(Icons.schedule_send_outlined),
+                              title: Text(
+                                job['text']?.toString() ?? 'Scheduled message',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(_scheduleLabel(job)),
+                              trailing: IconButton(
+                                tooltip: 'Cancel',
+                                onPressed: () async {
+                                  final id = job['_id']?.toString() ?? '';
+                                  if (id.isEmpty) return;
+                                  await chat.cancelScheduled(id);
+                                  if (!sheetContext.mounted) return;
+                                  Navigator.pop(sheetContext);
+                                  if (mounted) _snack('Scheduled message cancelled.');
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  String _scheduleLabel(Map<String, dynamic> job) {
+    final mode = job['mode']?.toString() ?? 'once';
+    if (mode == 'when-online') return 'When contact is online';
+    final raw = job['nextRunAt'] ?? job['scheduledFor'];
+    final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    final when = date == null ? '' : '${date.day}/${date.month}/${date.year} ${_clock(date)}';
+    if (mode == 'recurring') {
+      final recurring = job['recurringType']?.toString() ?? 'recurring';
+      return '${recurring[0].toUpperCase()}${recurring.substring(1)} · $when';
+    }
+    return when;
+  }
+
+  bool _isMine(Map<String, dynamic> message) =>
+      currentUserId.isNotEmpty && message['userId']?.toString() == currentUserId;
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -281,6 +1050,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _messageFor(Object error) {
@@ -295,11 +1069,38 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _RoomHeader(name: widget.name, inbox: widget.inbox),
+            _RoomHeader(
+              name: widget.name,
+              inbox: widget.inbox,
+              typingText: typingText,
+            ),
+            if (pinnedIds.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                color: context.panel,
+                child: Row(
+                  children: [
+                    const Icon(Icons.push_pin_rounded, size: 15, color: SyncColors.sky),
+                    const SizedBox(width: 7),
+                    Text(
+                      '${pinnedIds.length} pinned message${pinnedIds.length == 1 ? '' : 's'}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(child: _body()),
             _Composer(
               controller: composer,
               sending: sending,
+              uploading: uploading,
+              replyingTo: replyingTo,
+              editingMessage: editingMessage,
+              onCancelMode: _cancelComposerMode,
+              onAttachment: _showAttachmentSheet,
+              onSchedule: _showScheduleMenu,
+              onTyping: () => chat.typing(widget.inbox),
               onSend: _send,
             ),
           ],
@@ -347,7 +1148,13 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
             );
           }
           final message = messages[index - 1];
-          return _MessageBubble(message: message, mine: _isMine(message));
+          return _MessageBubble(
+            message: message,
+            mine: _isMine(message),
+            pinned: pinnedIds.contains(message['_id']?.toString()),
+            onLongPress: () => _showMessageActions(message),
+            onViewOnce: () => _openViewOnce(message),
+          );
         },
       ),
     );
@@ -355,10 +1162,15 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 }
 
 class _RoomHeader extends StatelessWidget {
-  const _RoomHeader({required this.name, required this.inbox});
+  const _RoomHeader({
+    required this.name,
+    required this.inbox,
+    required this.typingText,
+  });
 
   final String name;
   final Map<String, dynamic> inbox;
+  final String typingText;
 
   @override
   Widget build(BuildContext context) {
@@ -390,8 +1202,16 @@ class _RoomHeader extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
                 Text(
-                  group ? 'Group conversation' : 'SyncChat contact',
-                  style: TextStyle(fontSize: 12, color: context.muted),
+                  typingText.isNotEmpty
+                      ? typingText
+                      : group
+                          ? 'Group conversation'
+                          : 'SyncChat contact',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: typingText.isNotEmpty ? SyncColors.sky : context.muted,
+                    fontWeight: typingText.isNotEmpty ? FontWeight.w700 : FontWeight.w400,
+                  ),
                 ),
               ],
             ),
@@ -406,10 +1226,19 @@ class _RoomHeader extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.mine});
+  const _MessageBubble({
+    required this.message,
+    required this.mine,
+    required this.pinned,
+    required this.onLongPress,
+    required this.onViewOnce,
+  });
 
   final Map<String, dynamic> message;
   final bool mine;
+  final bool pinned;
+  final VoidCallback onLongPress;
+  final VoidCallback onViewOnce;
 
   @override
   Widget build(BuildContext context) {
@@ -420,95 +1249,376 @@ class _MessageBubble extends StatelessWidget {
     final delivered = message['delivered'] == true;
     final profile = message['profile'];
     final sender = profile is Map ? profile['fullname']?.toString() : null;
+    final reactions = _reactionSummary(message['reactions']);
+    final reply = message['reply'];
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(12, 8, 10, 6),
-        decoration: BoxDecoration(
-          color: mine
-              ? (context.isDark ? SyncColors.sky700 : const Color(0xFFCCECFF))
-              : context.panel,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(mine ? 18 : 5),
-            bottomRight: Radius.circular(mine ? 5 : 18),
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: Container(
+          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 10, 6),
+          decoration: BoxDecoration(
+            color: mine
+                ? (context.isDark ? SyncColors.sky700 : const Color(0xFFCCECFF))
+                : context.panel,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(18),
+              topRight: const Radius.circular(18),
+              bottomLeft: Radius.circular(mine ? 18 : 5),
+              bottomRight: Radius.circular(mine ? 5 : 18),
+            ),
+            boxShadow: const [
+              BoxShadow(color: Color(0x160F172A), blurRadius: 5, offset: Offset(0, 2)),
+            ],
           ),
-          boxShadow: const [
-            BoxShadow(color: Color(0x160F172A), blurRadius: 5, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!mine && sender != null && sender.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text(
-                  sender,
-                  style: const TextStyle(
-                    color: SyncColors.sky,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!mine && sender != null && sender.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    sender,
+                    style: const TextStyle(
+                      color: SyncColors.sky,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-              ),
-            if (text.isNotEmpty) Text(text, style: const TextStyle(height: 1.28)),
-            if (text.isEmpty && message['file'] != null)
-              const Row(
+              if (reply is Map)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: context.softPanel.withOpacity(.7),
+                    borderRadius: BorderRadius.circular(10),
+                    border: const Border(left: BorderSide(color: SyncColors.sky, width: 3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        reply['fullname']?.toString() ?? 'Reply',
+                        style: const TextStyle(
+                          color: SyncColors.sky,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        reply['text']?.toString() ?? 'Message',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              _AttachmentContent(message: message, onViewOnce: onViewOnce),
+              if (text.isNotEmpty) ...[
+                if (message['file'] != null || message['viewOnce'] != null)
+                  const SizedBox(height: 6),
+                Text(text, style: const TextStyle(height: 1.28)),
+              ],
+              if (reactions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 4,
+                  children: reactions.entries
+                      .map(
+                        (entry) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: context.softPanel,
+                            borderRadius: BorderRadius.circular(99),
+                            border: Border.all(color: context.border),
+                          ),
+                          child: Text(
+                            '${entry.key} ${entry.value}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.attach_file_rounded, size: 16),
-                  SizedBox(width: 5),
-                  Text('Attachment'),
+                  if (pinned) ...[
+                    const Icon(Icons.push_pin_rounded, size: 12, color: SyncColors.sky),
+                    const SizedBox(width: 3),
+                  ],
+                  if (message['isEdited'] == true) ...[
+                    Text('edited', style: TextStyle(fontSize: 9, color: context.muted)),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    _time(message['createdAt']),
+                    style: TextStyle(fontSize: 10, color: context.muted),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      failed
+                          ? Icons.error_outline_rounded
+                          : pending
+                              ? Icons.schedule_rounded
+                              : read
+                                  ? Icons.done_all_rounded
+                                  : delivered
+                                      ? Icons.done_all_rounded
+                                      : Icons.done_rounded,
+                      size: 14,
+                      color: failed
+                          ? SyncColors.danger
+                          : read
+                              ? SyncColors.sky
+                              : context.muted,
+                    ),
+                  ],
                 ],
               ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _time(message['createdAt']),
-                  style: TextStyle(fontSize: 10, color: context.muted),
-                ),
-                if (mine) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    failed
-                        ? Icons.error_outline_rounded
-                        : pending
-                            ? Icons.schedule_rounded
-                            : read
-                                ? Icons.done_all_rounded
-                                : delivered
-                                    ? Icons.done_all_rounded
-                                    : Icons.done_rounded,
-                    size: 14,
-                    color: failed
-                        ? SyncColors.danger
-                        : read
-                            ? SyncColors.sky
-                            : context.muted,
-                  ),
-                ],
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Map<String, int> _reactionSummary(dynamic value) {
+    if (value is! Map) return const {};
+    final summary = <String, int>{};
+    for (final emoji in value.values) {
+      final key = emoji?.toString() ?? '';
+      if (key.isEmpty) continue;
+      summary[key] = (summary[key] ?? 0) + 1;
+    }
+    return summary;
+  }
+
   static String _time(dynamic value) {
     final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
     if (date == null) return '';
-    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
-    final minute = date.minute.toString().padLeft(2, '0');
-    final suffix = date.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
+    return _clock(date);
+  }
+}
+
+class _AttachmentContent extends StatelessWidget {
+  const _AttachmentContent({required this.message, required this.onViewOnce});
+
+  final Map<String, dynamic> message;
+  final VoidCallback onViewOnce;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewOnce = message['viewOnce'];
+    if (viewOnce is Map && viewOnce['enabled'] == true) {
+      final opened = viewOnce['opened'] == true;
+      final type = viewOnce['type']?.toString() ?? 'message';
+      return InkWell(
+        onTap: opened ? null : onViewOnce,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 210,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          decoration: BoxDecoration(
+            color: context.softPanel,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: context.border),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                opened ? Icons.check_circle_outline_rounded : Icons.looks_one_outlined,
+                color: SyncColors.sky,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      type == 'image'
+                          ? 'View-once photo'
+                          : type == 'video'
+                              ? 'View-once video'
+                              : 'View-once message',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      opened ? 'Opened' : 'Tap to open',
+                      style: TextStyle(fontSize: 11, color: context.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final rawFile = message['file'];
+    if (rawFile is! Map) return const SizedBox.shrink();
+    final file = Map<String, dynamic>.from(rawFile);
+    final type = file['type']?.toString() ?? 'document';
+    final url = file['url']?.toString() ?? '';
+    final name = file['originalname']?.toString() ?? 'Attachment';
+
+    if (type == 'image' && url.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          url,
+          width: 230,
+          height: 180,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _FileCard(
+            icon: Icons.broken_image_outlined,
+            title: name,
+            subtitle: 'Image',
+          ),
+        ),
+      );
+    }
+
+    if (type == 'video') {
+      return _FileCard(
+        icon: Icons.play_circle_outline_rounded,
+        title: name,
+        subtitle: 'Video',
+      );
+    }
+    if (type == 'audio') {
+      return _FileCard(
+        icon: Icons.graphic_eq_rounded,
+        title: name,
+        subtitle: 'Audio',
+      );
+    }
+    return _FileCard(
+      icon: Icons.insert_drive_file_outlined,
+      title: name,
+      subtitle: 'File',
+    );
+  }
+}
+
+class _FileCard extends StatelessWidget {
+  const _FileCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 230,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: context.softPanel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: SyncColors.sky.withOpacity(.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: SyncColors.sky),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+                Text(subtitle, style: TextStyle(fontSize: 10, color: context.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewOnceDialog extends StatelessWidget {
+  const _ViewOnceDialog({required this.payload});
+
+  final Map<String, dynamic> payload;
+
+  @override
+  Widget build(BuildContext context) {
+    final type = payload['viewOnceType']?.toString() ?? 'text';
+    final text = payload['text']?.toString() ?? '';
+    final file = payload['file'];
+    final url = file is Map ? file['url']?.toString() ?? '' : '';
+    final name = file is Map ? file['originalname']?.toString() ?? 'Media' : 'Media';
+
+    Widget content;
+    if (type == 'image' && url.isNotEmpty) {
+      content = Image.network(
+        url,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const Center(child: Text('Image could not be displayed.')),
+      );
+    } else if (type == 'video') {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_circle_outline_rounded, size: 64, color: SyncColors.sky),
+          const SizedBox(height: 10),
+          Text(name, textAlign: TextAlign.center),
+          const SizedBox(height: 4),
+          const Text('Video opened. Native playback is added in the media-runtime wave.'),
+        ],
+      );
+    } else {
+      content = Text(text.isEmpty ? 'One-time message opened.' : text);
+    }
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.looks_one_outlined, color: SyncColors.sky),
+          SizedBox(width: 8),
+          Text('View once'),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
+        child: content,
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    );
   }
 }
 
@@ -516,63 +1626,150 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.sending,
+    required this.uploading,
+    required this.replyingTo,
+    required this.editingMessage,
+    required this.onCancelMode,
+    required this.onAttachment,
+    required this.onSchedule,
+    required this.onTyping,
     required this.onSend,
   });
 
   final TextEditingController controller;
   final bool sending;
+  final bool uploading;
+  final Map<String, dynamic>? replyingTo;
+  final Map<String, dynamic>? editingMessage;
+  final VoidCallback onCancelMode;
+  final VoidCallback onAttachment;
+  final VoidCallback onSchedule;
+  final VoidCallback onTyping;
   final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
+    final modeMessage = editingMessage ?? replyingTo;
+    final modeTitle = editingMessage != null ? 'Editing message' : 'Replying';
     return Container(
-      padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.paddingOf(context).bottom + 8),
+      padding: EdgeInsets.fromLTRB(8, 7, 8, MediaQuery.paddingOf(context).bottom + 8),
       decoration: BoxDecoration(
         color: context.panel,
         border: Border(top: BorderSide(color: context.border)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.add_circle_outline_rounded)),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              onSubmitted: (_) => onSend(),
-              decoration: InputDecoration(
-                hintText: 'Message',
-                prefixIcon: const Icon(Icons.emoji_emotions_outlined),
-                suffixIcon: IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.camera_alt_outlined),
+          if (modeMessage != null)
+            Container(
+              margin: const EdgeInsets.fromLTRB(4, 0, 4, 7),
+              padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+              decoration: BoxDecoration(
+                color: context.softPanel,
+                borderRadius: BorderRadius.circular(12),
+                border: const Border(left: BorderSide(color: SyncColors.sky, width: 3)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          modeTitle,
+                          style: const TextStyle(
+                            color: SyncColors.sky,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          modeMessage['text']?.toString().trim().isNotEmpty == true
+                              ? modeMessage['text'].toString()
+                              : 'Attachment',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onCancelMode,
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          if (uploading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 7),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                onPressed: uploading ? null : onAttachment,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  onChanged: (_) => onTyping(),
+                  onSubmitted: (_) => onSend(),
+                  decoration: InputDecoration(
+                    hintText: editingMessage != null ? 'Edit message' : 'Message',
+                    prefixIcon: const Icon(Icons.emoji_emotions_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: 'Schedule',
+                      onPressed: uploading ? null : onSchedule,
+                      icon: const Icon(Icons.schedule_send_outlined),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Material(
-            color: SyncColors.sky,
-            shape: const CircleBorder(),
-            child: InkWell(
-              onTap: sending ? null : onSend,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 46,
-                height: 46,
-                child: sending
-                    ? const Padding(
-                        padding: EdgeInsets.all(13),
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 6),
+              Material(
+                color: SyncColors.sky,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: sending || uploading ? null : onSend,
+                  onLongPress: sending || uploading ? null : onSchedule,
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: sending
+                        ? const Padding(
+                            padding: EdgeInsets.all(13),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+class _AttachmentDraft {
+  const _AttachmentDraft({required this.caption, required this.viewOnce});
+
+  final String caption;
+  final bool viewOnce;
+}
+
+String _clock(DateTime date) {
+  final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+  final minute = date.minute.toString().padLeft(2, '0');
+  final suffix = date.hour >= 12 ? 'PM' : 'AM';
+  return '$hour:$minute $suffix';
 }
