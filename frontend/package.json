@@ -24,7 +24,7 @@
     "react-helmet": "^6.1.0",
     "react-icons": "^4.6.0",
     "react-redux": "^8.0.4",
-    "react-router-dom": "^6.30.5",
+    "react-router-dom": "^7.18.2",
     "socket.io-client": "^4.5.3",
     "uuid": "^14.0.2",
     "webpack-cli": "^5.1.4"
