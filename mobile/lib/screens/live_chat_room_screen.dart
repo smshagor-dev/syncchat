@@ -10,6 +10,8 @@ import '../core/chat_repository.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'forward_message_sheet.dart';
+import 'voice_note_widgets.dart';
 
 class LiveChatRoomScreen extends StatefulWidget {
   const LiveChatRoomScreen({
@@ -703,6 +705,14 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                   _startReply(message);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.forward_rounded),
+                title: const Text('Forward'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _forwardMessage(message);
+                },
+              ),
               if (canEdit)
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
@@ -754,6 +764,21 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _forwardMessage(Map<String, dynamic> message) async {
+    final chatId = message['_id']?.toString() ?? '';
+    if (chatId.isEmpty) return;
+    try {
+      final forwarded = await showForwardMessageSheet(
+        context,
+        fromRoomId: roomId,
+        chatIds: [chatId],
+      );
+      if (forwarded == true && mounted) _snack('Message forwarded.');
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
+    }
   }
 
   void _startReply(Map<String, dynamic> message) {
@@ -827,6 +852,49 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       _onViewOnceEvent({'chatId': chatId, 'userId': currentUserId});
     } on Object catch (failure) {
       if (mounted) _snack(_messageFor(failure));
+    }
+  }
+
+  Future<void> _recordVoiceNote() async {
+    if (sending || uploading || editingMessage != null) return;
+    if (widget.inbox['e2eeEnabled'] == true) {
+      _snack(
+        'This room uses device E2EE. Mobile key exchange must be enabled before sending.',
+      );
+      return;
+    }
+
+    final draft = await showVoiceRecorderSheet(context);
+    if (draft == null || !mounted) return;
+    setState(() => uploading = true);
+
+    try {
+      final uploaded = await chat.uploadAttachment(
+        filePath: draft.path,
+        filename: draft.filename,
+      );
+      final sent = await chat.sendAttachment(
+        inbox: widget.inbox,
+        file: {
+          ...uploaded,
+          'type': 'audio',
+          'duration': draft.durationSeconds,
+        },
+        replyTo: replyingTo?['_id']?.toString(),
+      );
+      if (!mounted) return;
+      setState(() {
+        uploading = false;
+        replyingTo = null;
+        _mergeMessages([sent]);
+      });
+      _scrollToBottom();
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() => uploading = false);
+      _snack(_messageFor(failure));
+    } finally {
+      await draft.delete();
     }
   }
 
@@ -1100,6 +1168,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
               onCancelMode: _cancelComposerMode,
               onAttachment: _showAttachmentSheet,
               onSchedule: _showScheduleMenu,
+              onVoice: _recordVoiceNote,
               onTyping: () => chat.typing(widget.inbox),
               onSend: _send,
             ),
@@ -1497,6 +1566,9 @@ class _AttachmentContent extends StatelessWidget {
         subtitle: 'Video',
       );
     }
+    if (type == 'audio' && url.isNotEmpty) {
+      return VoiceNotePlayer(file: file);
+    }
     if (type == 'audio') {
       return _FileCard(
         icon: Icons.graphic_eq_rounded,
@@ -1632,6 +1704,7 @@ class _Composer extends StatelessWidget {
     required this.onCancelMode,
     required this.onAttachment,
     required this.onSchedule,
+    required this.onVoice,
     required this.onTyping,
     required this.onSend,
   });
@@ -1644,6 +1717,7 @@ class _Composer extends StatelessWidget {
   final VoidCallback onCancelMode;
   final VoidCallback onAttachment;
   final VoidCallback onSchedule;
+  final VoidCallback onVoice;
   final VoidCallback onTyping;
   final VoidCallback onSend;
 
@@ -1732,7 +1806,12 @@ class _Composer extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Voice message',
+                onPressed: sending || uploading ? null : onVoice,
+                icon: const Icon(Icons.mic_none_rounded),
+              ),
+              const SizedBox(width: 2),
               Material(
                 color: SyncColors.sky,
                 shape: const CircleBorder(),
