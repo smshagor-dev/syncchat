@@ -1,0 +1,64 @@
+name: Flutter Forward Voice Integration
+
+on:
+  push:
+    branches:
+      - flutter-mobile-parity
+    paths:
+      - 'mobile/tool/integrate_forward_voice.py'
+      - '.github/workflows/flutter-mobile-integrate-forward-voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flutter-forward-voice-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrate-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Integrate live room
+        run: python mobile/tool/integrate_forward_voice.py
+
+      - name: Remove one-time integration files
+        run: |
+          rm -f mobile/tool/integrate_forward_voice.py
+          rm -f .github/workflows/flutter-mobile-integrate-forward-voice.yml
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        working-directory: mobile
+        run: flutter test
+
+      - name: Commit integrated feature
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No integration changes to commit."
+            exit 0
+          fi
+          git commit -m "feat(flutter): integrate forward and voice messaging"
+          git push origin HEAD:flutter-mobile-parity
