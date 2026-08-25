@@ -95,3 +95,85 @@
 .dark .syncchat-chat-tools-settings-arrow {
   color: #94a3b8;
 }
+
+/*
+ * Mobile navigation safe zone.
+ *
+ * The floating dock is intentionally overlaid above the foreground UI. Every
+ * foreground page therefore needs enough scroll room for its last actionable
+ * row to move fully above the dock. Keep this centralized instead of relying
+ * on individual page padding values.
+ */
+@media (max-width: 767px) {
+  :root {
+    --syncchat-mobile-dock-clearance: calc(
+      7.25rem + env(safe-area-inset-bottom, 0px)
+    );
+    --syncchat-mobile-drawer-bottom: max(
+      1rem,
+      env(safe-area-inset-bottom, 0px)
+    );
+  }
+
+  [data-syncchat-mobile-nav] {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+  }
+
+  /* Chat/call lists live inside the foreground column rather than page panels. */
+  #inbox {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+    overscroll-behavior-y: contain;
+  }
+
+  /* Existing page-level mobile padding remains supported as a fallback. */
+  .pb-16.md\:pb-0 {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+  }
+
+  /*
+   * Foreground pages are direct children of the shell that owns MobileNav.
+   * Scope the structural selector to that shell so room/profile panels shown
+   * after opening a chat do not receive unnecessary dock spacing.
+   */
+  div:has(> [data-syncchat-mobile-nav])
+    > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-hidden']
+    > [class*='overflow-y-auto'],
+  div:has(> [data-syncchat-mobile-nav])
+    > [class*='absolute'][class*='w-full'][class*='h-full'][class*='z-20'][class*='overflow-y-auto'] {
+    padding-bottom: var(--syncchat-mobile-dock-clearance) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-dock-clearance);
+    overscroll-behavior-y: contain;
+  }
+
+  /*
+   * The slide-out mobile sidebar previously combined 100dvh with min-h-screen,
+   * which can exceed the dynamic viewport when browser chrome is visible.
+   * Force one viewport model and reserve the device safe area at the bottom.
+   */
+  div:has(> [data-syncchat-mobile-nav])
+    > [class*='fixed'][class*='inset-0'][class*='z-[120]']
+    > aside {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 0 !important;
+    padding-bottom: var(--syncchat-mobile-drawer-bottom) !important;
+    scroll-padding-bottom: var(--syncchat-mobile-drawer-bottom);
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  div:has(> [data-syncchat-mobile-nav])
+    > [class*='fixed'][class*='inset-0'][class*='z-[120]']
+    > aside
+    > div:last-child {
+    padding-bottom: 0.5rem;
+  }
+}
