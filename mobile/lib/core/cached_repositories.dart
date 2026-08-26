@@ -145,6 +145,142 @@ class CachedChatRepository extends ChatRepository {
   }
 
   @override
+  Future<String> sendText({
+    required Map<String, dynamic> inbox,
+    required String text,
+    String? clientMessageId,
+    String? replyTo,
+    String? topicId,
+    bool viewOnce = false,
+  }) async {
+    final resolvedId = clientMessageId?.trim().isNotEmpty == true
+        ? clientMessageId!.trim()
+        : createClientMessageId();
+
+    if (!await _hasNetworkTransport()) {
+      await _queueText(
+        inbox: inbox,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+      return resolvedId;
+    }
+
+    try {
+      return await super.sendText(
+        inbox: inbox,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+    } on ApiException catch (error) {
+      if (!error.isOffline) rethrow;
+      await _queueText(
+        inbox: inbox,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+      return resolvedId;
+    }
+  }
+
+  Future<void> _queueText({
+    required Map<String, dynamic> inbox,
+    required String text,
+    required String clientMessageId,
+    String? replyTo,
+    String? topicId,
+    bool viewOnce = false,
+  }) async {
+    final roomId = inbox['roomId']?.toString().trim() ?? '';
+    if (roomId.isEmpty) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'This chat does not have a valid room ID.',
+      );
+    }
+    final user = await currentUser();
+    final queuedAt = DateTime.now().toUtc().toIso8601String();
+    await _cache.enqueueOutbox({
+      'clientMessageId': clientMessageId,
+      'inbox': Map<String, dynamic>.from(inbox),
+      'text': text.trim(),
+      'replyTo': replyTo,
+      'topicId': topicId,
+      'viewOnce': viewOnce,
+      'queuedAt': queuedAt,
+    });
+    await _cache.mergeRoomMessages(roomId, [
+      {
+        'clientMessageId': clientMessageId,
+        'roomId': roomId,
+        'roomType': inbox['roomType']?.toString() ?? 'private',
+        'userId': user['_id']?.toString(),
+        'text': text.trim(),
+        'replyTo': replyTo,
+        'topicId': topicId,
+        'viewOnce': viewOnce,
+        'createdAt': queuedAt,
+        'pending': true,
+        'queuedOffline': true,
+        'profile': {
+          'fullname': user['fullname']?.toString() ??
+              user['username']?.toString() ??
+              'You',
+          'avatar': user['avatar'],
+        },
+      },
+    ]);
+  }
+
+  Future<int> drainOutbox() async {
+    if (!await _hasNetworkTransport()) return 0;
+    final queued = await _cache.readOutbox();
+    var sent = 0;
+    for (final item in queued) {
+      final inboxValue = item['inbox'];
+      if (inboxValue is! Map) {
+        await _cache.removeOutbox(item['clientMessageId']?.toString() ?? '');
+        continue;
+      }
+      final id = item['clientMessageId']?.toString().trim() ?? '';
+      final text = item['text']?.toString() ?? '';
+      if (id.isEmpty || text.trim().isEmpty) {
+        await _cache.removeOutbox(id);
+        continue;
+      }
+      try {
+        await super.sendText(
+          inbox: Map<String, dynamic>.from(inboxValue),
+          text: text,
+          clientMessageId: id,
+          replyTo: item['replyTo']?.toString(),
+          topicId: item['topicId']?.toString(),
+          viewOnce: item['viewOnce'] == true,
+        );
+        await _cache.removeOutbox(id);
+        sent += 1;
+      } on ApiException catch (error) {
+        if (error.isOffline) break;
+        // Keep a rejected item queued instead of silently losing user text.
+      } on Object {
+        break;
+      }
+    }
+    return sent;
+  }
+
+  Future<int> pendingOutboxCount() async => (await _cache.readOutbox()).length;
+
+  @override
   Future<Map<String, dynamic>> pinnedMessages(String roomId) async {
     if (!await _hasNetworkTransport()) {
       return const {'pinned': <dynamic>[]};

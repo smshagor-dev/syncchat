@@ -15,7 +15,9 @@ class ChatCache {
   static const _cacheKeyName = 'syncchat.chat_cache_key.v1';
   static const _inboxesKey = 'inboxes';
   static const _currentUserKey = 'current-user';
+  static const _outboxKey = 'outbox:text:v1';
   static const _maxRoomMessages = 500;
+  static const _maxOutboxItems = 250;
 
   final FlutterSecureStorage _secureStorage;
   final Random _random = Random.secure();
@@ -69,6 +71,34 @@ class ChatCache {
       merged[id] = item;
     }
     await writeRoomMessages(roomId, merged.values.toList(growable: false));
+  }
+
+  Future<List<Map<String, dynamic>>> readOutbox() => _readList(_outboxKey);
+
+  Future<void> enqueueOutbox(Map<String, dynamic> item) async {
+    final clientMessageId = item['clientMessageId']?.toString().trim() ?? '';
+    if (clientMessageId.isEmpty) return;
+    final current = await readOutbox();
+    final next = <Map<String, dynamic>>[
+      ...current.where(
+        (entry) => entry['clientMessageId']?.toString() != clientMessageId,
+      ),
+      Map<String, dynamic>.from(item),
+    ];
+    final trimmed = next.length <= _maxOutboxItems
+        ? next
+        : next.sublist(next.length - _maxOutboxItems);
+    await _write(_outboxKey, trimmed);
+  }
+
+  Future<void> removeOutbox(String clientMessageId) async {
+    final id = clientMessageId.trim();
+    if (id.isEmpty) return;
+    final current = await readOutbox();
+    final next = current
+        .where((entry) => entry['clientMessageId']?.toString() != id)
+        .toList(growable: false);
+    await _write(_outboxKey, next);
   }
 
   Future<void> clear() async {

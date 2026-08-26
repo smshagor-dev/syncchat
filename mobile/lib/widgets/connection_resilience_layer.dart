@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import '../core/cached_repositories.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 
@@ -63,6 +64,7 @@ class _ConnectionResilienceLayerState extends State<ConnectionResilienceLayer>
       setState(() => _realtimeState = state);
       if (!wasConnected && state == RealtimeConnectionState.connected) {
         setState(() => _syncEpoch += 1);
+        unawaited(_recoverConnection());
       }
       if (state == RealtimeConnectionState.authenticationFailed) {
         unawaited(_recoverConnection());
@@ -107,11 +109,15 @@ class _ConnectionResilienceLayerState extends State<ConnectionResilienceLayer>
       if (!services.realtime.isConnected) {
         await services.realtime.connect().timeout(const Duration(seconds: 8));
       }
-      // Refresh the inbox cache immediately. The shell is re-keyed when the
-      // realtime connection becomes live, so unread counts and previews are
-      // reloaded from the server instead of waiting for a manual refresh.
       if (services.realtime.isConnected) {
+        final chat = services.chat;
+        if (chat is CachedChatRepository) {
+          await chat.drainOutbox().timeout(const Duration(seconds: 12));
+        }
+        // Refresh the inbox cache immediately after replaying pending text so
+        // unread counts and previews match the server before the shell rebuilds.
         await services.inbox.list().timeout(const Duration(seconds: 8));
+        if (mounted) setState(() => _syncEpoch += 1);
       }
     } on Object {
       // Keep showing Contacting. Socket.IO and connectivity callbacks retry on

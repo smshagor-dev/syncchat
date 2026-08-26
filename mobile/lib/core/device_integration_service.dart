@@ -193,7 +193,7 @@ class DeviceIntegrationService {
   static Future<bool> _ensureMessagingReady() async {
     try {
       if (Platform.isAndroid) {
-        return NativeCallPushService.ensureFirebaseForAndroid();
+        return await NativeCallPushService.ensureFirebaseForAndroid();
       }
       if (Platform.isIOS) {
         if (Firebase.apps.isEmpty) {
