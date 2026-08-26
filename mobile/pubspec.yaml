@@ -12,8 +12,10 @@ dependencies:
   audioplayers: ^6.8.1
   file_picker: ^8.1.7
   flutter_secure_storage: ^10.3.1
+  flutter_webrtc: ^1.6.0
   http: ^1.6.0
   image_picker: ^1.1.2
+  livekit_client: ^2.11.0
   path_provider: ^2.1.6
   pointycastle: ^4.0.0
   record: ^7.1.1
