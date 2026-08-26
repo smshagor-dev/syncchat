@@ -2,6 +2,7 @@ import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
 import 'chat_repository.dart';
+import 'e2ee_service.dart';
 import 'feature_repositories.dart';
 import 'realtime_client.dart';
 import 'session_store.dart';
@@ -13,6 +14,7 @@ class AppServices {
     required this.api,
     required this.auth,
     required this.realtime,
+    required this.e2ee,
     required this.chat,
     required this.inbox,
     required this.contacts,
@@ -41,10 +43,15 @@ class AppServices {
       config: resolvedConfig,
       sessionStore: resolvedSessionStore,
     );
+    final e2ee = E2eeService(
+      api: api,
+      sessionStore: resolvedSessionStore,
+    );
     final chat = ChatRepository(
       api: api,
       auth: auth,
       realtime: realtime,
+      e2ee: e2ee,
     );
 
     return AppServices(
@@ -53,6 +60,7 @@ class AppServices {
       api: api,
       auth: auth,
       realtime: realtime,
+      e2ee: e2ee,
       chat: chat,
       inbox: InboxRepository(api),
       contacts: ContactRepository(api),
@@ -69,6 +77,7 @@ class AppServices {
   final ApiClient api;
   final AuthRepository auth;
   final RealtimeClient realtime;
+  final E2eeService e2ee;
   final ChatRepository chat;
   final InboxRepository inbox;
   final ContactRepository contacts;
