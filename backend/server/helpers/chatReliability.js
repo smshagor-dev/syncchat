@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const ChatModel = require('../db/models/chat');
 const ChatRoomCounterModel = require('../db/models/chatRoomCounter');
 const InboxModel = require('../db/models/inbox');

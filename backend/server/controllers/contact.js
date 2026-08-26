@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const { Op } = require('sequelize');
 const ProfileModel = require('../db/models/profile');
 const ContactModel = require('../db/models/contact');

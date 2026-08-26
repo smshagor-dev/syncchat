@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const { io } = global;
 const InboxModel = require('../../db/models/inbox');
 const ChatModel = require('../../db/models/chat');
