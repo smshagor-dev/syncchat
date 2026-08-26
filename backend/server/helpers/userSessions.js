@@ -9,6 +9,7 @@ const {
   JWT_ISSUER,
   TWO_FACTOR_TOKEN_TTL,
   USER_ACCESS_TOKEN_TTL,
+  USER_REFRESH_TOKEN_TTL,
   USER_AUDIENCE,
 } = require('./jwtConfig');
 
@@ -101,6 +102,20 @@ const signUserToken = ({ userId, sessionId }) => {
   );
 };
 
+const signRefreshToken = ({ userId, sessionId }) => {
+  if (!userId || !sessionId) throw new Error('User and session are required');
+  return jwt.sign(
+    { _id: userId, sid: sessionId, typ: 'refresh' },
+    JWT_SECRET,
+    {
+      expiresIn: USER_REFRESH_TOKEN_TTL,
+      issuer: JWT_ISSUER,
+      audience: USER_AUDIENCE,
+      subject: String(userId),
+    }
+  );
+};
+
 const signTwoFactorTempToken = ({ userId, pendingSessionId }) =>
   jwt.sign(
     {
@@ -123,6 +138,14 @@ const verifyToken = (token) => {
     issuer: JWT_ISSUER,
     audience: USER_AUDIENCE,
   });
+};
+
+const verifyRefreshToken = (token) => {
+  const payload = verifyToken(token);
+  if (!payload?._id || !payload?.sid || payload?.typ !== 'refresh') {
+    throw new Error('Invalid refresh session');
+  }
+  return payload;
 };
 
 const createSession = async ({ userId, req, authProvider = 'password' }) => {
@@ -255,7 +278,9 @@ module.exports = {
   revokeOtherSessions,
   revokeSession,
   serializeSession,
+  signRefreshToken,
   signTwoFactorTempToken,
   signUserToken,
+  verifyRefreshToken,
   verifyToken,
 };
