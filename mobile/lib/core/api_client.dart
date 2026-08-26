@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -45,8 +46,10 @@ class ApiBinaryResponse {
   String? get filename {
     final value = contentDisposition;
     if (value == null || value.isEmpty) return null;
-    final match = RegExp(r'''filename\*?=(?:UTF-8''|["'])?([^"';]+)''', caseSensitive: false)
-        .firstMatch(value);
+    final match = RegExp(
+      r'''filename\*?=(?:UTF-8''|["'])?([^"';]+)''',
+      caseSensitive: false,
+    ).firstMatch(value);
     return match?.group(1)?.trim();
   }
 }
@@ -63,6 +66,7 @@ class ApiException implements Exception {
   final dynamic payload;
 
   bool get isUnauthorized => statusCode == 401;
+  bool get isOffline => statusCode == 0;
   bool get isVerificationRequired =>
       statusCode == 403 && message.toLowerCase().contains('verification');
 
@@ -82,6 +86,7 @@ class ApiClient {
   final SyncChatConfig _config;
   final SessionStore _sessionStore;
   final http.Client _httpClient;
+  Future<bool>? _refreshInFlight;
 
   Future<ApiEnvelope> get(
     String path, {
@@ -156,12 +161,108 @@ class ApiClient {
     extraHeaders: headers,
   );
 
+  Future<bool> ensurePersistentSession() async {
+    final access = await _sessionStore.readAccessToken();
+    if (access == null || access.isEmpty) return false;
+    try {
+      final response = await _send(
+        'POST',
+        '/users/session/persist',
+        authenticated: true,
+        allowRefresh: false,
+      );
+      final payload = response.payload;
+      if (payload is! Map) return false;
+      await _storeSessionPair(Map<String, dynamic>.from(payload));
+      return (await _sessionStore.readRefreshToken())?.isNotEmpty == true;
+    } on ApiException {
+      return false;
+    }
+  }
+
+  Future<bool> refreshSession() {
+    final active = _refreshInFlight;
+    if (active != null) return active;
+    final future = _refreshSessionOnce();
+    _refreshInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _refreshSessionOnce() async {
+    final refreshToken = (await _sessionStore.readRefreshToken())?.trim();
+    if (refreshToken == null || refreshToken.isEmpty) return false;
+
+    final uri = _config.apiUri('/users/session/refresh');
+    final request = http.Request('POST', uri)
+      ..headers.addAll({
+        'accept': 'application/json',
+        'content-type': 'application/json; charset=utf-8',
+      })
+      ..body = jsonEncode({'refreshToken': refreshToken});
+
+    try {
+      final response = await _sendRequest(request);
+      final payload = response.payload;
+      if (payload is! Map) return false;
+      await _storeSessionPair(Map<String, dynamic>.from(payload));
+      return true;
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _sessionStore.clearSession();
+      }
+      return false;
+    }
+  }
+
+  Future<void> _storeSessionPair(Map<String, dynamic> payload) async {
+    final token = payload['token']?.toString().trim() ?? '';
+    final refreshToken = payload['refreshToken']?.toString().trim() ?? '';
+    if (token.isNotEmpty) await _sessionStore.writeAccessToken(token);
+    if (refreshToken.isNotEmpty) {
+      await _sessionStore.writeRefreshToken(refreshToken);
+    }
+  }
+
   Future<ApiBinaryResponse> download(
     String path, {
     String method = 'GET',
     Object? body,
     Map<String, dynamic>? query,
     bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    var refreshed = false;
+    while (true) {
+      try {
+        return await _downloadOnce(
+          path,
+          method: method,
+          body: body,
+          query: query,
+          authenticated: authenticated,
+          headers: headers,
+        );
+      } on ApiException catch (error) {
+        if (authenticated &&
+            !refreshed &&
+            error.isUnauthorized &&
+            await refreshSession()) {
+          refreshed = true;
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  Future<ApiBinaryResponse> _downloadOnce(
+    String path, {
+    required String method,
+    Object? body,
+    Map<String, dynamic>? query,
+    required bool authenticated,
     Map<String, String>? headers,
   }) async {
     final uri = _config.apiUri(path, queryParameters: query);
@@ -224,6 +325,42 @@ class ApiClient {
     bool authenticated = true,
     Map<String, String>? headers,
   }) async {
+    var refreshed = false;
+    while (true) {
+      try {
+        return await _multipartOnce(
+          path,
+          fieldName: fieldName,
+          filePath: filePath,
+          filename: filename,
+          fields: fields,
+          query: query,
+          authenticated: authenticated,
+          headers: headers,
+        );
+      } on ApiException catch (error) {
+        if (authenticated &&
+            !refreshed &&
+            error.isUnauthorized &&
+            await refreshSession()) {
+          refreshed = true;
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  Future<ApiEnvelope> _multipartOnce(
+    String path, {
+    required String fieldName,
+    required String filePath,
+    String? filename,
+    Map<String, String>? fields,
+    Map<String, dynamic>? query,
+    required bool authenticated,
+    Map<String, String>? headers,
+  }) async {
     final uri = _config.apiUri(path, queryParameters: query);
     final request = http.MultipartRequest('POST', uri);
     request.headers['accept'] = 'application/json';
@@ -253,21 +390,38 @@ class ApiClient {
     Map<String, dynamic>? query,
     required bool authenticated,
     Map<String, String>? extraHeaders,
+    bool allowRefresh = true,
   }) async {
-    final uri = _config.apiUri(path, queryParameters: query);
-    final headers = <String, String>{
-      'accept': 'application/json',
-      if (body != null) 'content-type': 'application/json; charset=utf-8',
-      ...?extraHeaders,
-    };
+    var refreshed = false;
+    while (true) {
+      final uri = _config.apiUri(path, queryParameters: query);
+      final headers = <String, String>{
+        'accept': 'application/json',
+        if (body != null) 'content-type': 'application/json; charset=utf-8',
+        ...?extraHeaders,
+      };
 
-    if (authenticated) {
-      headers['authorization'] = 'Bearer ${await _requireAccessToken()}';
+      if (authenticated) {
+        headers['authorization'] = 'Bearer ${await _requireAccessToken()}';
+      }
+
+      final request = http.Request(method, uri)..headers.addAll(headers);
+      if (body != null) request.body = jsonEncode(body);
+
+      try {
+        return await _sendRequest(request);
+      } on ApiException catch (error) {
+        if (authenticated &&
+            allowRefresh &&
+            !refreshed &&
+            error.isUnauthorized &&
+            await refreshSession()) {
+          refreshed = true;
+          continue;
+        }
+        rethrow;
+      }
     }
-
-    final request = http.Request(method, uri)..headers.addAll(headers);
-    if (body != null) request.body = jsonEncode(body);
-    return _sendRequest(request);
   }
 
   Future<String> _requireAccessToken() async {
