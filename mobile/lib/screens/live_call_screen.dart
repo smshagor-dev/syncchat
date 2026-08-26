@@ -69,9 +69,11 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
   bool cameraOff = false;
   bool sfuMode = false;
   bool closing = false;
+  bool frontCamera = true;
   int seconds = 0;
   String status = 'Preparing call…';
   String? callId;
+  Offset? selfVideoOffset;
 
   String get roomId =>
       widget.incomingCall?['roomId']?.toString() ??
@@ -595,8 +597,9 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
 
   bool _matches(Map raw, {bool allowMissingRoom = false}) {
     final rawRoom = raw['roomId']?.toString() ?? '';
-    if (!allowMissingRoom && rawRoom.isNotEmpty && rawRoom != roomId)
+    if (!allowMissingRoom && rawRoom.isNotEmpty && rawRoom != roomId) {
       return false;
+    }
     if (rawRoom.isNotEmpty && rawRoom != roomId) return false;
     final rawCall = raw['callId']?.toString() ?? '';
     return callId == null ||
@@ -738,6 +741,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     final tracks = localStream?.getVideoTracks() ?? const <MediaStreamTrack>[];
     if (tracks.isEmpty) return;
     await Helper.switchCamera(tracks.first, null, localStream);
+    if (mounted) setState(() => frontCamera = !frontCamera);
   }
 
   Future<void> _disposeMedia() async {
@@ -1041,32 +1045,127 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
       );
     }
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (_remoteRenderer.srcObject != null)
-          RTCVideoView(
-            _remoteRenderer,
-            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-          )
-        else
-          const ColoredBox(color: Color(0xFF071018)),
-        if (_localRenderer.srcObject != null)
-          Positioned(
-            right: 12,
-            top: 58,
-            width: 112,
-            height: 154,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: RTCVideoView(
-                _localRenderer,
-                mirror: true,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const pipWidth = 112.0;
+        const pipHeight = 154.0;
+        const edge = 8.0;
+        const topGuard = 58.0;
+        const bottomGuard = 96.0;
+        final maxLeft = (constraints.maxWidth - pipWidth - edge)
+            .clamp(edge, constraints.maxWidth)
+            .toDouble();
+        final maxTop = (constraints.maxHeight - pipHeight - bottomGuard)
+            .clamp(topGuard, constraints.maxHeight)
+            .toDouble();
+        final initial = Offset(maxLeft, topGuard);
+        final raw = selfVideoOffset ?? initial;
+        final left = raw.dx.clamp(edge, maxLeft).toDouble();
+        final top = raw.dy.clamp(topGuard, maxTop).toDouble();
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_remoteRenderer.srcObject != null)
+              RTCVideoView(
+                _remoteRenderer,
                 objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+              )
+            else
+              const ColoredBox(color: Color(0xFF071018)),
+            if (_localRenderer.srcObject != null)
+              Positioned(
+                left: left,
+                top: top,
+                width: pipWidth,
+                height: pipHeight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: () => _switchCamera(),
+                  onPanUpdate: (details) {
+                    final nextLeft = (left + details.delta.dx)
+                        .clamp(edge, maxLeft)
+                        .toDouble();
+                    final nextTop = (top + details.delta.dy)
+                        .clamp(topGuard, maxTop)
+                        .toDouble();
+                    setState(() => selfVideoOffset = Offset(nextLeft, nextTop));
+                  },
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1A21),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.white24, width: 1.2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x55000000),
+                          blurRadius: 12,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(17),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          RTCVideoView(
+                            _localRenderer,
+                            mirror: frontCamera,
+                            objectFit:
+                                RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                          ),
+                          Positioned(
+                            right: 6,
+                            top: 6,
+                            child: Material(
+                              color: const Color(0x88000000),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _switchCamera,
+                                child: const SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: Icon(
+                                    Icons.cameraswitch_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Positioned(
+                            left: 7,
+                            bottom: 6,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Color(0x77000000),
+                                borderRadius: BorderRadius.all(Radius.circular(8)),
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                child: Text(
+                                  'You',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 

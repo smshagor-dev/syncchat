@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/auth_repository.dart';
 import '../theme.dart';
+import 'device_link_qr_screen.dart';
 
 enum _Mode { signIn, signUp, forgot }
 enum _Reset { email, code, password }
@@ -65,6 +66,18 @@ class _AuthScreenState extends State<AuthScreen> {
       password.clear();
       confirm.clear();
     });
+  }
+
+  Future<void> openQrLogin() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => DeviceLinkQrScreen(
+          authRepository: widget.authRepository,
+          onAuthenticated: widget.onAuthenticated,
+        ),
+      ),
+    );
   }
 
   Future<void> submit() async {
@@ -254,6 +267,22 @@ class _AuthScreenState extends State<AuthScreen> {
                   if (notice != null) _message(notice!, false),
                   ...fields,
                   const SizedBox(height: 20),
+                  if (mode == _Mode.signIn && tempToken == null) ...[
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: busy ? null : openQrLogin,
+                        icon: const Icon(Icons.qr_code_scanner_rounded),
+                        label: const Text('Scan QR code to sign in', style: TextStyle(fontWeight: FontWeight.w900)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: SyncColors.sky600,
+                          side: const BorderSide(color: SyncColors.sky, width: 1.4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   SizedBox(
                     height: 54,
                     child: FilledButton(
@@ -295,11 +324,9 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _brand(Color ink, Color muted) => Row(
     children: [
-      Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(color: SyncColors.sky, borderRadius: BorderRadius.circular(15)),
-        child: const Icon(Icons.forum_rounded, color: Colors.white, size: 29),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Image.asset('assets/syncchat_logo.png', width: 52, height: 52, fit: BoxFit.cover),
       ),
       const SizedBox(width: 12),
       Column(
@@ -481,7 +508,7 @@ class _AuthScreenState extends State<AuthScreen> {
     if (tempToken != null) return 'Enter your authenticator code or a saved recovery code.';
     if (mode == _Mode.signUp) return 'Create your account and start secure conversations.';
     if (mode == _Mode.forgot) return 'Verify your account before changing your password.';
-    return 'Sign in to continue to chats, calls, communities, and channels.';
+    return 'Sign in with your password or securely link this device with a QR code.';
   }
 
   String get buttonLabel {
