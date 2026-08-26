@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
@@ -15,6 +17,7 @@ class GlobalCallLayer extends StatefulWidget {
 
 class _GlobalCallLayerState extends State<GlobalCallLayer> {
   CallingRepository? calling;
+  StreamSubscription<Map<String, dynamic>>? nativeAcceptSubscription;
   bool bound = false;
   bool presenting = false;
   String? activeCallId;
@@ -28,6 +31,7 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
   @override
   void dispose() {
     if (bound) calling?.off('call/incoming', _onIncoming);
+    nativeAcceptSubscription?.cancel();
     super.dispose();
   }
 
@@ -35,12 +39,22 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
     if (!mounted || bound) return;
     calling = context.services.calling;
     calling!.on('call/incoming', _onIncoming);
+    nativeAcceptSubscription = context.services.nativeCallPush.acceptedCalls.listen(
+      (call) => _presentIncoming(call, autoAccept: true),
+    );
     bound = true;
   }
 
   Future<void> _onIncoming(dynamic raw) async {
-    if (!mounted || raw is! Map) return;
-    final call = Map<String, dynamic>.from(raw);
+    if (raw is! Map) return;
+    await _presentIncoming(Map<String, dynamic>.from(raw));
+  }
+
+  Future<void> _presentIncoming(
+    Map<String, dynamic> call, {
+    bool autoAccept = false,
+  }) async {
+    if (!mounted) return;
     final callId = call['callId']?.toString() ?? '';
     final roomId = call['roomId']?.toString() ?? '';
     if (callId.isEmpty || roomId.isEmpty) return;
@@ -87,6 +101,7 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
             incomingCall: call,
             name: name,
             video: call['mediaType']?.toString() == 'video',
+            autoAccept: autoAccept,
           ),
         ),
       );
