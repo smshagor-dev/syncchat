@@ -109,12 +109,13 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
         itemBuilder: (context, index) {
           final status = items[index];
           final profile = _profile(status);
-          final name = _name(profile, mine: status['isMine'] == true);
           final mine = status['isMine'] == true;
+          final name = _name(profile, mine: mine);
           final type = status['type']?.toString() ?? 'text';
           final viewCount = (status['viewCount'] as num?)?.toInt() ?? 0;
           final reactionCount = (status['reactionCount'] as num?)?.toInt() ?? 0;
           final replyCount = (status['replyCount'] as num?)?.toInt() ?? 0;
+
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             leading: Container(
@@ -134,7 +135,14 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
                 if (mine)
                   const Padding(
                     padding: EdgeInsets.only(left: 6),
-                    child: Text('You', style: TextStyle(color: SyncColors.sky, fontSize: 11, fontWeight: FontWeight.w900)),
+                    child: Text(
+                      'You',
+                      style: TextStyle(
+                        color: SyncColors.sky,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -183,10 +191,10 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
   }
 
   Future<void> _viewStatus(Map<String, dynamic> status) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => _StatusViewerScreen(status: status)),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => _StatusViewerScreen(status: status)),
     );
-    if (changed == true && mounted) await _load();
+    if (mounted) await _load();
   }
 
   Future<void> _deleteStatus(Map<String, dynamic> status) async {
@@ -222,6 +230,7 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
       final views = activity['views'] is List ? activity['views'] as List : const [];
       final reactions = activity['reactions'] is List ? activity['reactions'] as List : const [];
       final replies = activity['replies'] is List ? activity['replies'] as List : const [];
+
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -240,19 +249,23 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
                 if (reactions.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text('Reactions', style: TextStyle(fontWeight: FontWeight.w900)),
-                  ...reactions.whereType<Map>().map((item) => ListTile(
-                        leading: Text(item['emoji']?.toString() ?? '❤', style: const TextStyle(fontSize: 24)),
-                        title: Text(_activityName(item)),
-                      )),
+                  ...reactions.whereType<Map>().map(
+                    (item) => ListTile(
+                      leading: Text(item['emoji']?.toString() ?? '❤', style: const TextStyle(fontSize: 24)),
+                      title: Text(_activityName(item)),
+                    ),
+                  ),
                 ],
                 if (replies.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text('Replies', style: TextStyle(fontWeight: FontWeight.w900)),
-                  ...replies.whereType<Map>().map((item) => ListTile(
-                        leading: const Icon(Icons.reply_rounded),
-                        title: Text(_activityName(item)),
-                        subtitle: Text(item['text']?.toString() ?? ''),
-                      )),
+                  ...replies.whereType<Map>().map(
+                    (item) => ListTile(
+                      leading: const Icon(Icons.reply_rounded),
+                      title: Text(_activityName(item)),
+                      subtitle: Text(item['text']?.toString() ?? ''),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -410,7 +423,11 @@ class _StatusComposerScreenState extends State<_StatusComposerScreen> {
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(type == 'video' ? Icons.video_library_outlined : Icons.add_photo_alternate_outlined, size: 54, color: SyncColors.sky),
+                          Icon(
+                            type == 'video' ? Icons.video_library_outlined : Icons.add_photo_alternate_outlined,
+                            size: 54,
+                            color: SyncColors.sky,
+                          ),
                           const SizedBox(height: 10),
                           Text(type == 'video' ? 'Choose a video' : 'Choose a photo'),
                         ],
@@ -418,11 +435,20 @@ class _StatusComposerScreenState extends State<_StatusComposerScreen> {
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(type == 'video' ? Icons.play_circle_outline_rounded : Icons.image_rounded, size: 54, color: SyncColors.sky),
+                          Icon(
+                            type == 'video' ? Icons.play_circle_outline_rounded : Icons.image_rounded,
+                            size: 54,
+                            color: SyncColors.sky,
+                          ),
                           const SizedBox(height: 10),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 18),
-                            child: Text(media!.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                            child: Text(
+                              media!.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           const Text('Tap to change', style: TextStyle(fontSize: 12)),
@@ -513,7 +539,6 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
   final reply = TextEditingController();
   late Map<String, dynamic> status;
   bool sending = false;
-  bool changed = false;
 
   @override
   void initState() {
@@ -533,9 +558,9 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     if (id.isEmpty || status['isMine'] == true) return;
     try {
       await context.services.statuses.markViewed(id);
-      if (mounted) setState(() => status['hasViewed'] = true);
+      if (mounted) setState(() => status = {...status, 'hasViewed': true});
     } on Object {
-      // Viewing should remain available even if the receipt fails.
+      // Viewing remains available even if the receipt fails.
     }
   }
 
@@ -546,75 +571,97 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     final type = status['type']?.toString() ?? 'text';
     final text = status['text']?.toString() ?? '';
     final mediaUrl = status['mediaUrl']?.toString() ?? '';
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) {},
-      child: SyncStandardPage(
-        title: _name(profile, mine: mine),
-        actions: [
+
+    return SyncStandardPage(
+      title: _name(profile, mine: mine),
+      actions: [
+        if (mine)
+          IconButton(
+            tooltip: 'Delete',
+            onPressed: _delete,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
+      ],
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              color: type == 'text'
+                  ? _hexColor(status['bgColor']?.toString() ?? '#0ea5e9')
+                  : Colors.black,
+              child: Center(
+                child: type == 'text'
+                    ? Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: Text(
+                          text,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 25,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      )
+                    : type == 'photo' && mediaUrl.isNotEmpty
+                        ? InteractiveViewer(
+                            child: Image.network(
+                              mediaUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.white,
+                                size: 62,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.play_circle_outline_rounded,
+                                color: Colors.white,
+                                size: 76,
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Video status',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              if (text.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Text(
+                                    text,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+              ),
+            ),
+          ),
+          if (!mine) _interactionBar(),
           if (mine)
-            IconButton(
-              tooltip: 'Delete',
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline_rounded),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+              color: context.panel,
+              child: Text(
+                '${status['viewCount'] ?? 0} views · ${status['reactionCount'] ?? 0} reactions · ${status['replyCount'] ?? 0} replies',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.muted, fontWeight: FontWeight.w700),
+              ),
             ),
         ],
-        child: Column(
-          children: [
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                color: type == 'text' ? _hexColor(status['bgColor']?.toString() ?? '#0ea5e9') : Colors.black,
-                child: Center(
-                  child: type == 'text'
-                      ? Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Text(
-                            text,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w800),
-                          ),
-                        )
-                      : type == 'photo' && mediaUrl.isNotEmpty
-                          ? InteractiveViewer(
-                              child: Image.network(
-                                mediaUrl,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white, size: 62),
-                              ),
-                            )
-                          : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.play_circle_outline_rounded, color: Colors.white, size: 76),
-                                const SizedBox(height: 12),
-                                const Text('Video status', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-                                if (text.isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                                    child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
-                                  ),
-                                ],
-                              ],
-                            ),
-                ),
-              ),
-            ),
-            if (!mine) _interactionBar(),
-            if (mine)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-                color: context.panel,
-                child: Text(
-                  '${status['viewCount'] ?? 0} views · ${status['reactionCount'] ?? 0} reactions · ${status['replyCount'] ?? 0} replies',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: context.muted, fontWeight: FontWeight.w700),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -623,7 +670,12 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     const emojis = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
     return Container(
       color: context.panel,
-      padding: EdgeInsets.fromLTRB(12, 10, 12, 12 + MediaQuery.paddingOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        10,
+        12,
+        12 + MediaQuery.paddingOf(context).bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -671,7 +723,11 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
               IconButton.filled(
                 onPressed: sending ? null : _sendReply,
                 icon: sending
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.send_rounded),
               ),
             ],
@@ -686,12 +742,9 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     if (id.isEmpty) return;
     setState(() => sending = true);
     try {
-      final updated = await context.services.statuses.react(id, emoji);
+      final patch = await context.services.statuses.react(id, emoji);
       if (!mounted) return;
-      setState(() {
-        status = updated.isEmpty ? {...status, 'myReaction': emoji} : updated;
-        changed = true;
-      });
+      setState(() => status = {...status, ...patch});
     } on Object catch (failure) {
       if (!mounted) return;
       _message(_errorText(failure));
@@ -708,8 +761,9 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     try {
       await context.services.statuses.reply(id, value);
       if (!mounted) return;
+      final currentCount = (status['replyCount'] as num?)?.toInt() ?? 0;
       reply.clear();
-      setState(() => changed = true);
+      setState(() => status = {...status, 'replyCount': currentCount + 1});
       _message('Reply sent.');
     } on Object catch (failure) {
       if (!mounted) return;
@@ -737,7 +791,7 @@ class _StatusViewerScreenState extends State<_StatusViewerScreen> {
     try {
       await context.services.statuses.delete(id);
       if (!mounted) return;
-      Navigator.pop(context, true);
+      Navigator.pop(context);
     } on Object catch (failure) {
       if (!mounted) return;
       _message(_errorText(failure));
@@ -805,7 +859,11 @@ class _ErrorState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
           ],
         ),
       ),
