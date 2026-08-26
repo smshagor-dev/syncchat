@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   audioplayers: ^6.8.1
-  file_picker: ^10.3.10
+  file_picker: ^12.1.1
   firebase_core: ^4.14.0
   firebase_messaging: ^16.6.0
   flutter_callkit_incoming: ^3.1.5
