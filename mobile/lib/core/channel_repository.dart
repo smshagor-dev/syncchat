@@ -59,6 +59,81 @@ class ChannelRepository {
     )).payload,
   );
 
+  Future<void> edit({
+    required String channelId,
+    required String name,
+    String desc = '',
+  }) async {
+    final cleanName = name.trim();
+    final cleanDesc = desc.trim();
+    if (cleanName.isEmpty) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Channel name is required.',
+      );
+    }
+    if (cleanDesc.length > 300) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Description too long (max. 300).',
+      );
+    }
+
+    final userId = await _currentUserId();
+    await _ensureRealtime();
+    final ack = await _realtime.emitWithAck('channel/edit', {
+      'channelId': channelId,
+      'userId': userId,
+      'form': {'name': cleanName, 'desc': cleanDesc},
+    });
+    _requireAck(ack, fallback: 'Failed to update channel info.');
+  }
+
+  Future<void> promoteAdmin(String channelId, String participantId) async {
+    final userId = await _currentUserId();
+    await _ensureRealtime();
+    _realtime.emit('channel/add-admin', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    await _waitForChannelState(
+      channelId,
+      (channel) => _ids(channel['adminsId']).contains(participantId),
+      fallback: 'Channel admin promotion was not confirmed.',
+    );
+  }
+
+  Future<void> demoteAdmin(String channelId, String participantId) async {
+    final userId = await _currentUserId();
+    await _ensureRealtime();
+    _realtime.emit('channel/remove-admin', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    await _waitForChannelState(
+      channelId,
+      (channel) => !_ids(channel['adminsId']).contains(participantId),
+      fallback: 'Channel admin removal was not confirmed.',
+    );
+  }
+
+  Future<void> removeParticipant(String channelId, String participantId) async {
+    final userId = await _currentUserId();
+    await _ensureRealtime();
+    _realtime.emit('channel/remove-participant', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    await _waitForChannelState(
+      channelId,
+      (channel) => !_ids(channel['participantsId']).contains(participantId),
+      fallback: 'Subscriber removal was not confirmed.',
+    );
+  }
+
   Future<Map<String, dynamic>> updatePermissions(
     String channelId,
     Map<String, dynamic> permissions,
@@ -117,7 +192,10 @@ class ChannelRepository {
 
     final normalized = accessType == 'private' ? 'private' : 'public';
     if (name.trim().isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Channel name is required.');
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Channel name is required.',
+      );
     }
     if (normalized == 'private' && password.length < 4) {
       throw const ApiException(
@@ -144,14 +222,7 @@ class ChannelRepository {
     String channelId, {
     String password = '',
   }) async {
-    final user = await currentUser();
-    final userId = user['_id']?.toString() ?? '';
-    if (userId.isEmpty) {
-      throw const ApiException(
-        statusCode: 401,
-        message: 'Current user is unavailable.',
-      );
-    }
+    final userId = await _currentUserId();
     await _ensureRealtime();
     final ack = await _realtime.emitWithAck('channel/subscribe', {
       'channelId': channelId,
@@ -162,14 +233,7 @@ class ChannelRepository {
   }
 
   Future<void> exit(String channelId) async {
-    final user = await currentUser();
-    final userId = user['_id']?.toString() ?? '';
-    if (userId.isEmpty) {
-      throw const ApiException(
-        statusCode: 401,
-        message: 'Current user is unavailable.',
-      );
-    }
+    final userId = await _currentUserId();
     await _ensureRealtime();
     final ack = await _realtime.emitWithAck('channel/exit', {
       'channelId': channelId,
@@ -225,6 +289,47 @@ class ChannelRepository {
       body: {'oldPassword': oldPassword, 'newPassword': newPassword},
     )).payload,
   );
+
+  Future<String> _currentUserId() async {
+    final user = await currentUser();
+    final userId = user['_id']?.toString() ?? '';
+    if (userId.isEmpty) {
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Current user is unavailable.',
+      );
+    }
+    return userId;
+  }
+
+  Future<void> _waitForChannelState(
+    String channelId,
+    bool Function(Map<String, dynamic> channel) predicate, {
+    required String fallback,
+  }) async {
+    const attempts = 12;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      try {
+        final channel = await find(channelId);
+        if (channel.isNotEmpty && predicate(channel)) return;
+      } on ApiException catch (error) {
+        if (error.statusCode == 404) rethrow;
+        if (attempt == attempts - 1) rethrow;
+      }
+    }
+    throw ApiException(statusCode: 409, message: fallback);
+  }
+
+  Set<String> _ids(dynamic value) {
+    if (value is! List) return const <String>{};
+    return value
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toSet();
+  }
 
   Future<void> _ensureRealtime() async {
     if (_realtime.isConnected) return;
