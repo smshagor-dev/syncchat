@@ -58,10 +58,7 @@ jobs:
           path = Path('.github/scripts/integrate_flutter_calling.py')
           text = path.read_text()
           old = "        text = replace_once(text, '</dict>', additions + '</dict>', \"ios calling permissions\")"
-          new = """        head, separator, tail = text.rpartition('</dict>')
-          if not separator:
-              raise SystemExit('ios calling permissions: top-level dict close not found')
-          text = head + additions + separator + tail"""
+          new = "        text = text.rsplit('</dict>', 1)[0] + additions + '</dict>' + text.rsplit('</dict>', 1)[1]"
           if text.count(old) != 1:
               raise SystemExit(f'plist patch source mismatch: {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
