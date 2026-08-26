@@ -1,0 +1,99 @@
+name: Syncchat Android Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/mobile-final-e2e-parity
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/flutter-android-release.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: syncchat-android-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: mobile
+
+    env:
+      GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Configure production signing when available
+        env:
+          KEYSTORE_B64: ${{ secrets.SYNCCHAT_ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.SYNCCHAT_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SYNCCHAT_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SYNCCHAT_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/syncchat-release.jks"
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+            echo "SYNCCHAT_ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+            echo "SYNCCHAT_ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "SYNCCHAT_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "SYNCCHAT_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SYNCCHAT_RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+          else
+            echo "SYNCCHAT_RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Syncchat release APK
+        run: >-
+          flutter build apk --release
+          --target-platform android-arm64
+          --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
+          --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
+          --dart-define=SYNCCHAT_APP_VERSION=0.1.0
+
+      - name: Package Syncchat release artifact
+        run: |
+          mkdir -p build/release
+          APK="$(find build/app/outputs -type f -name '*release*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" build/release/Syncchat-release.apk
+          sha256sum build/release/Syncchat-release.apk > build/release/SHA256SUMS.txt
+          printf 'signed=%s\n' "$SYNCCHAT_RELEASE_SIGNED" > build/release/BUILD-INFO.txt
+          printf 'abi=arm64-v8a\n' >> build/release/BUILD-INFO.txt
+          printf 'api=https://api.syncchat.live/api\n' >> build/release/BUILD-INFO.txt
+          printf 'socket=https://api.syncchat.live\n' >> build/release/BUILD-INFO.txt
+          printf 'version=0.1.0+4\n' >> build/release/BUILD-INFO.txt
+
+      - name: Upload Syncchat release
+        uses: actions/upload-artifact@v4
+        with:
+          name: Syncchat-release-android-arm64
+          path: |
+            mobile/build/release/Syncchat-release.apk
+            mobile/build/release/SHA256SUMS.txt
+            mobile/build/release/BUILD-INFO.txt
+          if-no-files-found: error
+          retention-days: 30
