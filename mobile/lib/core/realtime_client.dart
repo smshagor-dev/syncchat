@@ -33,6 +33,7 @@ class RealtimeClient {
   final _stateController = StreamController<RealtimeConnectionState>.broadcast(
     sync: true,
   );
+  final Map<String, Set<void Function(dynamic)>> _listeners = {};
 
   io.Socket? _socket;
   RealtimeConnectionState _state = RealtimeConnectionState.disconnected;
@@ -71,7 +72,19 @@ class RealtimeClient {
     final socket = io.io(_config.validatedSocketUrl, options);
     _socket = socket;
 
+    for (final entry in _listeners.entries) {
+      for (final handler in entry.value) {
+        socket.on(entry.key, handler);
+      }
+    }
+
     socket.onConnect((_) {
+      // The backend socket auth middleware derives the authoritative user id
+      // from the access token and rewrites this payload. Emitting user/connect
+      // joins the user's private socket room, updates presence/delivery state,
+      // processes send-when-online messages, and activates same-account
+      // session invalidation exactly like the web client.
+      socket.emit('user/connect', '');
       _setState(RealtimeConnectionState.connected);
     });
     socket.onDisconnect((_) {
@@ -91,15 +104,22 @@ class RealtimeClient {
   }
 
   void on(String event, void Function(dynamic data) handler) {
+    final handlers = _listeners.putIfAbsent(event, () => <void Function(dynamic)>{});
+    if (!handlers.add(handler)) return;
     _socket?.on(event, handler);
   }
 
   void off(String event, [void Function(dynamic data)? handler]) {
     if (handler == null) {
+      _listeners.remove(event);
       _socket?.off(event);
-    } else {
-      _socket?.off(event, handler);
+      return;
     }
+
+    final handlers = _listeners[event];
+    handlers?.remove(handler);
+    if (handlers?.isEmpty == true) _listeners.remove(event);
+    _socket?.off(event, handler);
   }
 
   void emit(String event, [dynamic payload]) {
@@ -150,6 +170,7 @@ class RealtimeClient {
   Future<void> dispose() async {
     _socket?.dispose();
     _socket = null;
+    _listeners.clear();
     _setState(RealtimeConnectionState.disconnected);
     await _stateController.close();
   }
