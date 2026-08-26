@@ -4,8 +4,8 @@ import '../core/api_client.dart';
 import '../core/auth_repository.dart';
 import '../theme.dart';
 
-enum _AuthMode { signIn, signUp, forgot }
-enum _ResetStage { email, code, password }
+enum _Mode { signIn, signUp, forgot }
+enum _Reset { email, code, password }
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -22,62 +22,56 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _username = TextEditingController();
-  final _fullName = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  final _confirmPassword = TextEditingController();
-  final _otp = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+  final username = TextEditingController();
+  final fullName = TextEditingController();
+  final email = TextEditingController();
+  final password = TextEditingController();
+  final confirm = TextEditingController();
+  final otp = TextEditingController();
 
-  _AuthMode mode = _AuthMode.signIn;
-  _ResetStage resetStage = _ResetStage.email;
+  _Mode mode = _Mode.signIn;
+  _Reset reset = _Reset.email;
   bool busy = false;
-  bool obscurePassword = true;
-  bool obscureConfirmPassword = true;
-  bool rememberUsername = true;
-  bool recoveryCode = false;
-  String? error;
-  String? notice;
+  bool showPassword = false;
+  bool showConfirm = false;
+  bool remember = true;
+  bool recovery = false;
   String? tempToken;
   String? resetToken;
+  String? error;
+  String? notice;
 
   @override
   void dispose() {
-    _username.dispose();
-    _fullName.dispose();
-    _email.dispose();
-    _password.dispose();
-    _confirmPassword.dispose();
-    _otp.dispose();
+    username.dispose();
+    fullName.dispose();
+    email.dispose();
+    password.dispose();
+    confirm.dispose();
+    otp.dispose();
     super.dispose();
   }
 
-  void _setMode(_AuthMode next) {
+  void switchMode(_Mode value) {
     setState(() {
-      mode = next;
-      error = null;
-      notice = null;
+      mode = value;
+      reset = _Reset.email;
       tempToken = null;
       resetToken = null;
-      resetStage = _ResetStage.email;
-      _otp.clear();
-      _password.clear();
-      _confirmPassword.clear();
+      error = null;
+      notice = null;
+      otp.clear();
+      password.clear();
+      confirm.clear();
     });
   }
 
-  Future<void> _submit() async {
+  Future<void> submit() async {
     if (busy) return;
-    if (tempToken != null) {
-      await _verifyTwoFactor();
-      return;
-    }
-    if (mode == _AuthMode.forgot) {
-      await _submitForgot();
-      return;
-    }
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (tempToken != null) return verifyTwoFactor();
+    if (mode == _Mode.forgot) return submitReset();
+    if (!(formKey.currentState?.validate() ?? false)) return;
 
     setState(() {
       busy = true;
@@ -85,22 +79,22 @@ class _AuthScreenState extends State<AuthScreen> {
       notice = null;
     });
     try {
-      final AuthResult result;
-      if (mode == _AuthMode.signUp) {
-        if (_password.text != _confirmPassword.text) {
+      AuthResult result;
+      if (mode == _Mode.signUp) {
+        if (password.text != confirm.text) {
           throw const ApiException(statusCode: 400, message: 'Passwords do not match.');
         }
         result = await widget.authRepository.register(
-          fullName: _fullName.text,
-          username: _username.text,
-          email: _email.text,
-          password: _password.text,
+          fullName: fullName.text,
+          username: username.text,
+          email: email.text,
+          password: password.text,
         );
       } else {
         result = await widget.authRepository.login(
-          username: _username.text,
-          password: _password.text,
-          rememberUsername: rememberUsername,
+          username: username.text,
+          password: password.text,
+          rememberUsername: remember,
         );
       }
 
@@ -110,48 +104,39 @@ class _AuthScreenState extends State<AuthScreen> {
           busy = false;
           tempToken = result.tempToken;
           notice = result.message;
-          _otp.clear();
+          otp.clear();
         });
         return;
       }
       setState(() => busy = false);
       await widget.onAuthenticated(context);
     } on Object catch (failure) {
-      if (!mounted) return;
-      setState(() {
-        busy = false;
-        error = _errorText(failure);
-      });
+      fail(failure);
     }
   }
 
-  Future<void> _verifyTwoFactor() async {
-    final challenge = tempToken;
-    if (challenge == null || _otp.text.trim().isEmpty || busy) return;
+  Future<void> verifyTwoFactor() async {
+    if (tempToken == null || otp.text.trim().isEmpty || busy) return;
     setState(() {
       busy = true;
       error = null;
     });
     try {
       await widget.authRepository.verifyTwoFactor(
-        tempToken: challenge,
-        code: _otp.text,
-        recoveryCode: recoveryCode,
-        rememberedUsername: rememberUsername ? _username.text.trim() : null,
+        tempToken: tempToken!,
+        code: otp.text,
+        recoveryCode: recovery,
+        rememberedUsername: remember ? username.text.trim() : null,
       );
       if (!mounted) return;
       setState(() => busy = false);
       await widget.onAuthenticated(context);
     } on Object catch (failure) {
-      if (!mounted) return;
-      setState(() {
-        busy = false;
-        error = _errorText(failure);
-      });
+      fail(failure);
     }
   }
 
-  Future<void> _submitForgot() async {
+  Future<void> submitReset() async {
     if (busy) return;
     setState(() {
       busy = true;
@@ -159,177 +144,147 @@ class _AuthScreenState extends State<AuthScreen> {
       notice = null;
     });
     try {
-      if (resetStage == _ResetStage.email) {
-        if (_email.text.trim().isEmpty) {
+      if (reset == _Reset.email) {
+        if (email.text.trim().isEmpty) {
           throw const ApiException(statusCode: 400, message: 'Email is required.');
         }
-        final message = await widget.authRepository.requestPasswordReset(_email.text);
-        if (!mounted) return;
-        setState(() {
-          resetStage = _ResetStage.code;
-          notice = message;
-        });
-      } else if (resetStage == _ResetStage.code) {
-        final challenge = await widget.authRepository.verifyPasswordResetCode(
-          email: _email.text,
-          otp: _otp.text,
-        );
-        if (!mounted) return;
-        setState(() {
-          resetToken = challenge.resetToken;
-          resetStage = _ResetStage.password;
-          notice = challenge.message;
-          _password.clear();
-          _confirmPassword.clear();
-        });
-      } else {
-        if (_password.text.length < 8) {
-          throw const ApiException(statusCode: 400, message: 'Use at least 8 characters.');
-        }
-        if (_password.text != _confirmPassword.text) {
-          throw const ApiException(statusCode: 400, message: 'Passwords do not match.');
-        }
-        final message = await widget.authRepository.resetPassword(
-          email: _email.text,
-          resetToken: resetToken ?? '',
-          newPassword: _password.text,
-          confirmNewPassword: _confirmPassword.text,
-        );
+        final message = await widget.authRepository.requestPasswordReset(email.text);
         if (!mounted) return;
         setState(() {
           busy = false;
-          mode = _AuthMode.signIn;
-          resetStage = _ResetStage.email;
-          resetToken = null;
-          _otp.clear();
-          _password.clear();
-          _confirmPassword.clear();
+          reset = _Reset.code;
           notice = message;
         });
         return;
       }
-      if (mounted) setState(() => busy = false);
-    } on Object catch (failure) {
+      if (reset == _Reset.code) {
+        final challenge = await widget.authRepository.verifyPasswordResetCode(
+          email: email.text,
+          otp: otp.text,
+        );
+        if (!mounted) return;
+        setState(() {
+          busy = false;
+          reset = _Reset.password;
+          resetToken = challenge.resetToken;
+          notice = challenge.message;
+          password.clear();
+          confirm.clear();
+        });
+        return;
+      }
+      if (password.text.length < 8) {
+        throw const ApiException(statusCode: 400, message: 'Use at least 8 characters.');
+      }
+      if (password.text != confirm.text) {
+        throw const ApiException(statusCode: 400, message: 'Passwords do not match.');
+      }
+      final message = await widget.authRepository.resetPassword(
+        email: email.text,
+        resetToken: resetToken ?? '',
+        newPassword: password.text,
+        confirmNewPassword: confirm.text,
+      );
       if (!mounted) return;
       setState(() {
         busy = false;
-        error = _errorText(failure);
+        mode = _Mode.signIn;
+        reset = _Reset.email;
+        resetToken = null;
+        notice = message;
+        otp.clear();
+        password.clear();
+        confirm.clear();
       });
+    } on Object catch (failure) {
+      fail(failure);
     }
   }
 
-  String _errorText(Object failure) {
-    if (failure is ApiException) return failure.message;
-    return failure.toString().replaceFirst('Exception: ', '');
+  void fail(Object failure) {
+    if (!mounted) return;
+    setState(() {
+      busy = false;
+      error = failure is ApiException
+          ? failure.message
+          : failure.toString().replaceFirst('Exception: ', '');
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final background = dark ? const Color(0xFF071018) : const Color(0xFFF7FAFC);
-    final foreground = dark ? Colors.white : const Color(0xFF0F172A);
+    final ink = dark ? Colors.white : const Color(0xFF0F172A);
     final muted = dark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: background,
-      body: DecoratedBox(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: BoxDecoration(
-          color: background,
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: dark
                 ? const [Color(0xFF071018), Color(0xFF0A2430), Color(0xFF071018)]
-                : const [Color(0xFFF7FAFC), Color(0xFFEAF8FD), Color(0xFFF7FAFC)],
+                : const [Color(0xFFF8FAFC), Color(0xFFE8F7FD), Color(0xFFF8FAFC)],
           ),
         ),
         child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: constraints.maxHeight < 720 ? 28 : 54,
-                bottom: 28,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 82),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: SyncColors.sky,
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            child: const Icon(Icons.forum_rounded, color: Colors.white, size: 29),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('SyncChat', style: TextStyle(color: foreground, fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.6)),
-                              Text('Private. Fast. Connected.', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ],
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
+            child: Form(
+              key: formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _brand(ink, muted),
+                  const SizedBox(height: 46),
+                  Text(title, style: TextStyle(color: ink, fontSize: 32, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                  const SizedBox(height: 9),
+                  Text(subtitle, style: TextStyle(color: muted, fontSize: 15, height: 1.45)),
+                  const SizedBox(height: 26),
+                  if (mode != _Mode.forgot && tempToken == null) ...[
+                    _tabs(muted),
+                    const SizedBox(height: 22),
+                  ],
+                  if (error != null) _message(error!, true),
+                  if (notice != null) _message(notice!, false),
+                  ...fields,
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: busy ? null : submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: SyncColors.sky,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
-                      SizedBox(height: constraints.maxHeight < 720 ? 32 : 56),
-                      Text(_title(), style: TextStyle(color: foreground, fontSize: 32, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
-                      const SizedBox(height: 9),
-                      Text(_subtitle(), style: TextStyle(color: muted, fontSize: 15, height: 1.45)),
-                      const SizedBox(height: 28),
-                      if (mode != _AuthMode.forgot && tempToken == null) _modeSelector(foreground, muted),
-                      if (mode != _AuthMode.forgot && tempToken == null) const SizedBox(height: 24),
-                      if (error != null) _messageBox(error!, danger: true),
-                      if (notice != null) _messageBox(notice!, danger: false),
-                      if (tempToken != null) ..._twoFactorFields(),
-                      if (tempToken == null && mode == _AuthMode.signIn) ..._signInFields(),
-                      if (tempToken == null && mode == _AuthMode.signUp) ..._signUpFields(),
-                      if (tempToken == null && mode == _AuthMode.forgot) ..._forgotFields(),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: 54,
-                        child: FilledButton(
-                          onPressed: busy ? null : _submit,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: SyncColors.sky,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          ),
-                          child: busy
-                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                              : Text(_buttonLabel(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (mode == _AuthMode.signIn && tempToken == null)
-                        TextButton(onPressed: () => _setMode(_AuthMode.forgot), child: const Text('Forgot your password?')),
-                      if (mode == _AuthMode.forgot)
-                        TextButton(onPressed: () => _setMode(_AuthMode.signIn), child: const Text('Back to sign in')),
-                      if (tempToken != null)
-                        TextButton(
-                          onPressed: () => setState(() {
-                            tempToken = null;
-                            _otp.clear();
-                            recoveryCode = false;
-                          }),
-                          child: const Text('Back to sign in'),
-                        ),
-                      const Spacer(),
-                      const SizedBox(height: 24),
-                      Text('By continuing, you agree to SyncChat Terms and Privacy Policy.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.4)),
-                    ],
+                      child: busy
+                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.3, color: Colors.white))
+                          : Text(buttonLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  if (mode == _Mode.signIn && tempToken == null)
+                    TextButton(onPressed: () => switchMode(_Mode.forgot), child: const Text('Forgot your password?')),
+                  if (mode == _Mode.forgot)
+                    TextButton(onPressed: () => switchMode(_Mode.signIn), child: const Text('Back to sign in')),
+                  if (tempToken != null)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        tempToken = null;
+                        recovery = false;
+                        otp.clear();
+                      }),
+                      child: const Text('Back to sign in'),
+                    ),
+                  const SizedBox(height: 36),
+                  Text('By continuing, you agree to SyncChat Terms and Privacy Policy.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.4)),
+                ],
               ),
             ),
           ),
@@ -338,181 +293,205 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _modeSelector(Color foreground, Color muted) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .06) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFE2E8F0)),
+  Widget _brand(Color ink, Color muted) => Row(
+    children: [
+      Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(color: SyncColors.sky, borderRadius: BorderRadius.circular(15)),
+        child: const Icon(Icons.forum_rounded, color: Colors.white, size: 29),
       ),
-      child: Row(
+      const SizedBox(width: 12),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: _modeButton('Sign in', _AuthMode.signIn, foreground, muted)),
-          Expanded(child: _modeButton('Create account', _AuthMode.signUp, foreground, muted)),
+          Text('SyncChat', style: TextStyle(color: ink, fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.6)),
+          Text('Private. Fast. Connected.', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
-    );
-  }
+    ],
+  );
 
-  Widget _modeButton(String label, _AuthMode value, Color foreground, Color muted) {
+  Widget _tabs(Color muted) => Container(
+    height: 48,
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(
+      color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .055) : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFE2E8F0)),
+    ),
+    child: Row(
+      children: [
+        Expanded(child: _tab('Sign in', _Mode.signIn, muted)),
+        Expanded(child: _tab('Create account', _Mode.signUp, muted)),
+      ],
+    ),
+  );
+
+  Widget _tab(String label, _Mode value, Color muted) {
     final selected = mode == value;
     return InkWell(
       borderRadius: BorderRadius.circular(11),
-      onTap: busy ? null : () => _setMode(value),
+      onTap: busy ? null : () => switchMode(value),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
+        duration: const Duration(milliseconds: 150),
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? SyncColors.sky : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Text(label, style: TextStyle(color: selected ? Colors.white : muted, fontWeight: FontWeight.w800, fontSize: 13)),
+        decoration: BoxDecoration(color: selected ? SyncColors.sky : Colors.transparent, borderRadius: BorderRadius.circular(11)),
+        child: Text(label, style: TextStyle(color: selected ? Colors.white : muted, fontSize: 13, fontWeight: FontWeight.w800)),
       ),
     );
   }
 
-  List<Widget> _signInFields() => [
-    _field(_username, 'Username or email', Icons.person_outline_rounded, validator: _required),
-    const SizedBox(height: 14),
-    _field(_password, 'Password', Icons.lock_outline_rounded, obscure: obscurePassword, trailing: IconButton(onPressed: () => setState(() => obscurePassword = !obscurePassword), icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)), validator: _required),
-    const SizedBox(height: 9),
-    CheckboxListTile(
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      dense: true,
-      value: rememberUsername,
-      onChanged: (value) => setState(() => rememberUsername = value == true),
-      title: const Text('Remember me', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-    ),
-  ];
-
-  List<Widget> _signUpFields() => [
-    _field(_fullName, 'Full name', Icons.badge_outlined, validator: _required),
-    const SizedBox(height: 13),
-    _field(_username, 'Username', Icons.alternate_email_rounded, validator: _required),
-    const SizedBox(height: 13),
-    _field(_email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: _emailValidator),
-    const SizedBox(height: 13),
-    _field(_password, 'Password', Icons.lock_outline_rounded, obscure: obscurePassword, trailing: IconButton(onPressed: () => setState(() => obscurePassword = !obscurePassword), icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)), validator: _passwordValidator),
-    const SizedBox(height: 13),
-    _field(_confirmPassword, 'Confirm password', Icons.lock_reset_rounded, obscure: obscureConfirmPassword, trailing: IconButton(onPressed: () => setState(() => obscureConfirmPassword = !obscureConfirmPassword), icon: Icon(obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)), validator: _required),
-  ];
-
-  List<Widget> _twoFactorFields() => [
-    _field(_otp, recoveryCode ? 'Recovery code' : '6-digit authenticator code', Icons.verified_user_outlined, keyboardType: recoveryCode ? TextInputType.text : TextInputType.number, validator: _required),
-    const SizedBox(height: 8),
-    SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      value: recoveryCode,
-      onChanged: (value) => setState(() {
-        recoveryCode = value;
-        _otp.clear();
-      }),
-      title: const Text('Use a recovery code', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-    ),
-  ];
-
-  List<Widget> _forgotFields() {
-    if (resetStage == _ResetStage.email) {
-      return [_field(_email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: _emailValidator)];
-    }
-    if (resetStage == _ResetStage.code) {
+  List<Widget> get fields {
+    if (tempToken != null) {
       return [
-        _field(_otp, 'Verification code', Icons.pin_outlined, keyboardType: TextInputType.number, validator: _required),
-        const SizedBox(height: 10),
-        Text('Code sent to ${_email.text.trim()}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+        field(otp, recovery ? 'Recovery code' : '6-digit authenticator code', Icons.verified_user_outlined, keyboardType: recovery ? TextInputType.text : TextInputType.number),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: recovery,
+          onChanged: (value) => setState(() {
+            recovery = value;
+            otp.clear();
+          }),
+          title: const Text('Use a recovery code', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ),
       ];
     }
+    if (mode == _Mode.signUp) {
+      return [
+        field(fullName, 'Full name', Icons.badge_outlined),
+        gap,
+        field(username, 'Username', Icons.alternate_email_rounded),
+        gap,
+        field(email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: emailValidator),
+        gap,
+        passwordField(password, 'Password', false),
+        gap,
+        passwordField(confirm, 'Confirm password', true),
+      ];
+    }
+    if (mode == _Mode.forgot) {
+      if (reset == _Reset.email) {
+        return [field(email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: emailValidator)];
+      }
+      if (reset == _Reset.code) {
+        return [
+          field(otp, 'Verification code', Icons.pin_outlined, keyboardType: TextInputType.number),
+          const SizedBox(height: 10),
+          Text('Code sent to ${email.text.trim()}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+        ];
+      }
+      return [passwordField(password, 'New password', false), gap, passwordField(confirm, 'Confirm new password', true)];
+    }
     return [
-      _field(_password, 'New password', Icons.lock_outline_rounded, obscure: obscurePassword, trailing: IconButton(onPressed: () => setState(() => obscurePassword = !obscurePassword), icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)), validator: _passwordValidator),
-      const SizedBox(height: 13),
-      _field(_confirmPassword, 'Confirm new password', Icons.lock_reset_rounded, obscure: obscureConfirmPassword, trailing: IconButton(onPressed: () => setState(() => obscureConfirmPassword = !obscureConfirmPassword), icon: Icon(obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)), validator: _required),
+      field(username, 'Username or email', Icons.person_outline_rounded),
+      gap,
+      passwordField(password, 'Password', false),
+      const SizedBox(height: 8),
+      CheckboxListTile(
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        dense: true,
+        value: remember,
+        onChanged: (value) => setState(() => remember = value == true),
+        title: const Text('Remember me', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+      ),
     ];
   }
 
-  Widget _field(
+  Widget get gap => const SizedBox(height: 13);
+
+  Widget passwordField(TextEditingController controller, String label, bool confirmation) {
+    final visible = confirmation ? showConfirm : showPassword;
+    return field(
+      controller,
+      label,
+      confirmation ? Icons.lock_reset_rounded : Icons.lock_outline_rounded,
+      obscure: !visible,
+      validator: (value) => (value ?? '').length < 8 ? 'Use at least 8 characters.' : null,
+      suffix: IconButton(
+        onPressed: () => setState(() {
+          if (confirmation) {
+            showConfirm = !showConfirm;
+          } else {
+            showPassword = !showPassword;
+          }
+        }),
+        icon: Icon(visible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+      ),
+    );
+  }
+
+  Widget field(
     TextEditingController controller,
     String label,
     IconData icon, {
     bool obscure = false,
     TextInputType? keyboardType,
-    Widget? trailing,
+    Widget? suffix,
     String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      keyboardType: keyboardType,
-      textInputAction: TextInputAction.next,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: trailing,
-        filled: true,
-        fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .055) : Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFDDE5ED))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: SyncColors.sky, width: 1.6)),
-      ),
-    );
+  }) => TextFormField(
+    controller: controller,
+    obscureText: obscure,
+    keyboardType: keyboardType,
+    validator: validator ?? requiredValidator,
+    decoration: InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .055) : Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFDDE5ED))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: SyncColors.sky, width: 1.6)),
+    ),
+  );
+
+  Widget _message(String text, bool danger) => Container(
+    margin: const EdgeInsets.only(bottom: 15),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: (danger ? Colors.red : Colors.green).withValues(alpha: .09),
+      borderRadius: BorderRadius.circular(13),
+    ),
+    child: Text(text, style: TextStyle(color: danger ? Colors.red.shade400 : Colors.green.shade600, fontWeight: FontWeight.w700, fontSize: 13)),
+  );
+
+  String? requiredValidator(String? value) => (value?.trim().isEmpty ?? true) ? 'This field is required.' : null;
+
+  String? emailValidator(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return 'Email is required.';
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text) ? null : 'Enter a valid email address.';
   }
 
-  Widget _messageBox(String message, {required bool danger}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: (danger ? Colors.red : Colors.green).withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: (danger ? Colors.red : Colors.green).withValues(alpha: .22)),
-      ),
-      child: Text(message, style: TextStyle(color: danger ? Colors.red.shade400 : Colors.green.shade600, fontWeight: FontWeight.w700, fontSize: 13)),
-    );
-  }
-
-  String _title() {
+  String get title {
     if (tempToken != null) return 'Two-step verification';
-    if (mode == _AuthMode.signUp) return 'Create your account';
-    if (mode == _AuthMode.forgot) {
-      if (resetStage == _ResetStage.code) return 'Check your email';
-      if (resetStage == _ResetStage.password) return 'Set a new password';
+    if (mode == _Mode.signUp) return 'Create your account';
+    if (mode == _Mode.forgot) {
+      if (reset == _Reset.code) return 'Check your email';
+      if (reset == _Reset.password) return 'Set a new password';
       return 'Reset your password';
     }
     return 'Welcome back';
   }
 
-  String _subtitle() {
-    if (tempToken != null) return 'Enter your authenticator code or use one of your saved recovery codes.';
-    if (mode == _AuthMode.signUp) return 'Create your SyncChat account and start secure conversations.';
-    if (mode == _AuthMode.forgot) return 'We will verify your account before allowing a password change.';
-    return 'Sign in to continue to your chats, calls, communities, and channels.';
+  String get subtitle {
+    if (tempToken != null) return 'Enter your authenticator code or a saved recovery code.';
+    if (mode == _Mode.signUp) return 'Create your account and start secure conversations.';
+    if (mode == _Mode.forgot) return 'Verify your account before changing your password.';
+    return 'Sign in to continue to chats, calls, communities, and channels.';
   }
 
-  String _buttonLabel() {
+  String get buttonLabel {
     if (tempToken != null) return 'Verify and continue';
-    if (mode == _AuthMode.signUp) return 'Create account';
-    if (mode == _AuthMode.forgot) {
-      if (resetStage == _ResetStage.email) return 'Send verification code';
-      if (resetStage == _ResetStage.code) return 'Verify code';
+    if (mode == _Mode.signUp) return 'Create account';
+    if (mode == _Mode.forgot) {
+      if (reset == _Reset.email) return 'Send verification code';
+      if (reset == _Reset.code) return 'Verify code';
       return 'Reset password';
     }
     return 'Sign in';
-  }
-
-  String? _required(String? value) => (value?.trim().isEmpty ?? true) ? 'This field is required.' : null;
-
-  String? _emailValidator(String? value) {
-    final text = value?.trim() ?? '';
-    if (text.isEmpty) return 'Email is required.';
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)) return 'Enter a valid email address.';
-    return null;
-  }
-
-  String? _passwordValidator(String? value) {
-    if ((value ?? '').length < 8) return 'Use at least 8 characters.';
-    return null;
   }
 }
