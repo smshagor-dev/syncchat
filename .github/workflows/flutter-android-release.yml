@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - fix/mobile-final-e2e-parity
+      - fix/android-release-runner-stability
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-android-release.yml'
@@ -14,19 +16,19 @@ permissions:
 
 concurrency:
   group: syncchat-android-release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     defaults:
       run:
         working-directory: mobile
 
     env:
-      GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
+      GRADLE_OPTS: -Dorg.gradle.vfs.watch=false -Dorg.gradle.daemon=false
 
     steps:
       - name: Checkout
