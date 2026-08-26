@@ -15,6 +15,9 @@ const JWT_SECRET = configuredSecret || DEV_FALLBACK_SECRET;
 const USER_ACCESS_TOKEN_TTL = String(
   process.env.USER_ACCESS_TOKEN_TTL || '7d'
 ).trim();
+const USER_REFRESH_TOKEN_TTL = String(
+  process.env.USER_REFRESH_TOKEN_TTL || '365d'
+).trim();
 const ADMIN_ACCESS_TOKEN_TTL = String(
   process.env.ADMIN_ACCESS_TOKEN_TTL || '7d'
 ).trim();
@@ -33,5 +36,6 @@ module.exports = {
   JWT_SECRET,
   TWO_FACTOR_TOKEN_TTL,
   USER_ACCESS_TOKEN_TTL,
+  USER_REFRESH_TOKEN_TTL,
   USER_AUDIENCE,
 };
