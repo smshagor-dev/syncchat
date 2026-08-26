@@ -42,3 +42,14 @@ test('backend pins the known-good Vercel sharp runtime', () => {
   );
   assert.equal(packageJson.dependencies?.sharp, '0.34.5');
 });
+
+test('Express 5 route registrations do not use unnamed wildcard paths', () => {
+  const serverSource = fs.readFileSync(
+    path.resolve(serverRoot, 'server.js'),
+    'utf8',
+  );
+  const unnamedWildcardRoute =
+    /\bapp\.(?:all|delete|get|head|options|patch|post|put)\(\s*['"]\*['"]/;
+
+  assert.doesNotMatch(serverSource, unnamedWildcardRoute);
+});
