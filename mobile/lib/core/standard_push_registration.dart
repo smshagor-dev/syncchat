@@ -32,12 +32,14 @@ class StandardPushRegistration {
       );
     }
 
-    final permission = await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (permission.authorizationStatus == AuthorizationStatus.denied) return;
+    // Registration runs during authenticated bootstrap as well as after the
+    // explicit Settings permission action. Bootstrap must never show a system
+    // permission prompt, so only continue when authorization already exists.
+    final permission = await FirebaseMessaging.instance.getNotificationSettings();
+    if (permission.authorizationStatus != AuthorizationStatus.authorized &&
+        permission.authorizationStatus != AuthorizationStatus.provisional) {
+      return;
+    }
 
     String? apnsToken;
     for (var attempt = 0; attempt < 8; attempt += 1) {
