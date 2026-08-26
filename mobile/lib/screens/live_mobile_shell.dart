@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'core_screens.dart';
+import 'live_calls_screen.dart';
 import 'live_home_screens.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
@@ -50,7 +51,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       LiveHomeTab.status => const LiveStatusScreen(),
       LiveHomeTab.communities => const LiveCommunitiesScreen(),
       LiveHomeTab.channels => const LiveChannelsScreen(),
-      LiveHomeTab.calls => const CallsScreen(),
+      LiveHomeTab.calls => const LiveCallsScreen(),
     };
   }
 
