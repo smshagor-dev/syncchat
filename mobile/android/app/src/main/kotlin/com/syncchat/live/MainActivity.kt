@@ -1,4 +1,4 @@
-package com.syncchat.syncchat_mobile
+package com.syncchat.live
 
 import io.flutter.embedding.android.FlutterActivity
 

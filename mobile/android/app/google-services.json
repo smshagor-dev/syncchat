@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "183539740148",
+    "project_id": "chat-c001b",
+    "storage_bucket": "chat-c001b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:183539740148:android:aeb359ff30de6297f85da1",
+        "android_client_info": {
+          "package_name": "com.syncchat.live"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIabLqUfQeyrD5e8D6wQj58ktPKKzKWcg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
