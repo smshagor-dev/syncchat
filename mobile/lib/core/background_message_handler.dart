@@ -12,6 +12,12 @@ const _messageChannel = AndroidNotificationChannel(
   importance: Importance.high,
 );
 
+Future<void> registerSyncChatBackgroundMessaging() async {
+  if (!Platform.isAndroid) return;
+  if (!await NativeCallPushService.ensureFirebaseForAndroid()) return;
+  FirebaseMessaging.onBackgroundMessage(syncChatBackgroundMessage);
+}
+
 @pragma('vm:entry-point')
 Future<void> syncChatBackgroundMessage(RemoteMessage message) async {
   if (!Platform.isAndroid) return;
@@ -62,13 +68,13 @@ Future<void> syncChatBackgroundMessage(RemoteMessage message) async {
     ),
   );
   await plugin.show(
-    id: _notificationId(message.messageId ?? '${DateTime.now().microsecondsSinceEpoch}'),
+    id: _notificationId(
+      message.messageId ?? '${DateTime.now().microsecondsSinceEpoch}',
+    ),
     title: title,
     body: body,
     notificationDetails: details,
-    payload: roomId.isEmpty
-        ? data['requestId']?.toString()
-        : roomId,
+    payload: roomId.isEmpty ? data['requestId']?.toString() : roomId,
   );
 }
 
