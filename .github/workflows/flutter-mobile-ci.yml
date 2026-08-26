@@ -1,6 +1,7 @@
 name: Flutter Mobile CI
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'mobile/**'
