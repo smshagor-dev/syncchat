@@ -9,6 +9,7 @@ import 'core/background_message_handler.dart';
 import 'core/biometric_service.dart';
 import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
+import 'core/standard_push_registration.dart';
 import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'screens/mobile_social_auth_screen.dart';
@@ -133,6 +134,15 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
           .timeout(const Duration(seconds: 8));
     } on Object catch (error) {
       debugPrint('SyncChat native push startup deferred: $error');
+    }
+
+    try {
+      await StandardPushRegistration.registerIOS(
+        api: _services.api,
+        config: _services.config,
+      ).timeout(const Duration(seconds: 8));
+    } on Object catch (error) {
+      debugPrint('SyncChat iOS standard push registration deferred: $error');
     }
 
     try {
