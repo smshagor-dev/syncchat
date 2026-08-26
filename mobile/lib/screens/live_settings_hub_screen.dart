@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
-import '../core/app_scope.dart';
 import '../core/device_integration_service.dart';
 import '../theme.dart';
 import 'live_settings_screen.dart';
@@ -147,7 +147,7 @@ class LiveSettingsHubScreen extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final result = await DeviceIntegrationService.requestCommunicationPermissions();
-      final granted = result.values.where((status) => status.isGranted).length;
+      final granted = result.values.where((status) => status == ph.PermissionStatus.granted).length;
       messenger.showSnackBar(SnackBar(content: Text('$granted of ${result.length} requested permissions are enabled.')));
     } on Object catch (failure) {
       messenger.showSnackBar(SnackBar(content: Text(failure.toString().replaceFirst('Exception: ', ''))));
