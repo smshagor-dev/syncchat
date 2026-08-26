@@ -68,7 +68,7 @@ jobs:
 
       - name: Build Syncchat release APK
         run: >-
-          flutter build apk --release --no-pub
+          flutter build apk --release
           --target-platform android-arm64
           --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
           --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
