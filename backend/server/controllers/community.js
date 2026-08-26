@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const sharp = require('sharp');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 
 const CommunityModel = require('../db/models/community');
 const GroupModel = require('../db/models/group');

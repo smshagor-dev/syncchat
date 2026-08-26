@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const { DataTypes } = require('sequelize');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const { db, isDev } = require('../config');
 
 const registry = new Map();
