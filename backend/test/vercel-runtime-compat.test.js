@@ -29,10 +29,16 @@ test('Node crypto.randomUUID provides a UUID v4 compatible identifier', () => {
   );
 });
 
-
 test('backend package does not carry the unused uuid runtime dependency', () => {
   const packageJson = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
   );
   assert.equal(packageJson.dependencies?.uuid, undefined);
+});
+
+test('backend pins the known-good Vercel sharp runtime', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
+  );
+  assert.equal(packageJson.dependencies?.sharp, '0.34.5');
 });
