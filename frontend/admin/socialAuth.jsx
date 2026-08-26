@@ -19,12 +19,6 @@ const initial = {
     appSecret: '',
     appSecretSet: false,
   },
-  telegram: {
-    enabled: false,
-    botUsername: '',
-    botToken: '',
-    botTokenSet: false,
-  },
 };
 
 const styles = {
@@ -106,11 +100,6 @@ function SocialAuthAdmin() {
             ...(payload.facebook || {}),
             appSecret: '',
           },
-          telegram: {
-            ...initial.telegram,
-            ...(payload.telegram || {}),
-            botToken: '',
-          },
         });
       })
       .catch((err) => setError(err?.response?.data?.message || err.message))
@@ -137,21 +126,12 @@ function SocialAuthAdmin() {
         enabled: Boolean(form.facebook.enabled),
         appId: String(form.facebook.appId || '').trim(),
       },
-      telegram: {
-        enabled: Boolean(form.telegram.enabled),
-        botUsername: String(form.telegram.botUsername || '')
-          .trim()
-          .replace(/^@+/, ''),
-      },
     };
     if (String(form.google.clientSecret || '').trim()) {
       payload.google.clientSecret = form.google.clientSecret;
     }
     if (String(form.facebook.appSecret || '').trim()) {
       payload.facebook.appSecret = form.facebook.appSecret;
-    }
-    if (String(form.telegram.botToken || '').trim()) {
-      payload.telegram.botToken = form.telegram.botToken;
     }
     return payload;
   };
@@ -176,11 +156,6 @@ function SocialAuthAdmin() {
           ...prev.facebook,
           ...(payload.facebook || {}),
           appSecret: '',
-        },
-        telegram: {
-          ...prev.telegram,
-          ...(payload.telegram || {}),
-          botToken: '',
         },
       }));
       setMessage(data?.message || 'Social login configuration saved');
@@ -213,8 +188,8 @@ function SocialAuthAdmin() {
           <div>
             <h1 style={{ margin: 0, fontSize: 28 }}>Social Login</h1>
             <p style={{ ...styles.help, marginTop: 7 }}>
-              Google, Facebook and Telegram credentials are loaded from MongoDB.
-              Provider secrets are encrypted at rest and are never returned to the browser.
+              Google and Facebook credentials are loaded from MongoDB. Provider
+              secrets are encrypted at rest and are never returned to the browser.
             </p>
           </div>
           <a href="/admin" style={{ textDecoration: 'none', fontWeight: 700 }}>
@@ -330,51 +305,6 @@ function SocialAuthAdmin() {
               />
               <span style={styles.help}>
                 Used server-side to validate that access tokens belong to this Facebook app.
-              </span>
-            </label>
-          </div>
-        </section>
-
-        <section style={styles.provider}>
-          <label style={{ display: 'flex', gap: 10, fontWeight: 700 }}>
-            <input
-              type="checkbox"
-              checked={Boolean(form.telegram.enabled)}
-              onChange={(e) =>
-                setProvider('telegram', 'enabled', e.target.checked)
-              }
-            />
-            Enable Telegram login
-          </label>
-          <div style={{ ...styles.row, marginTop: 16 }}>
-            <label style={styles.field}>
-              <span>Telegram Bot Username</span>
-              <input
-                style={styles.input}
-                value={String(form.telegram.botUsername || '')}
-                onChange={(e) =>
-                  setProvider('telegram', 'botUsername', e.target.value)
-                }
-                placeholder="SyncChatBot"
-              />
-            </label>
-            <label style={styles.field}>
-              <span>Telegram Bot Token</span>
-              <input
-                style={styles.input}
-                type="password"
-                value={String(form.telegram.botToken || '')}
-                onChange={(e) =>
-                  setProvider('telegram', 'botToken', e.target.value)
-                }
-                placeholder={
-                  form.telegram.botTokenSet
-                    ? 'Saved — leave blank to keep'
-                    : 'Bot token from BotFather'
-                }
-              />
-              <span style={styles.help}>
-                Used only on the backend to verify Telegram Login Widget signatures.
               </span>
             </label>
           </div>
