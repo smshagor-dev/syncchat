@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 env:
-  RELEASE_TAG: mobile-v0.1.0-demo.1
-  RELEASE_TITLE: SyncChat Mobile Demo v0.1.0
+  RELEASE_TAG: mobile-v0.1.0-demo.2
+  RELEASE_TITLE: SyncChat Mobile Demo v0.1.0 Demo 2
 
 jobs:
   build-and-publish:
@@ -72,9 +72,9 @@ jobs:
 
           Android demo build connected to the production SyncChat API and Socket.IO service.
 
-          Included mobile capabilities include realtime messaging, media and voice notes, message actions, scheduling, device E2EE text messaging, WebRTC/LiveKit calling, native incoming-call wake, CallKit integration, group-call moderation, live collections and account/settings surfaces.
+          This build includes camera-based QR device login, phonebook contact sync and new-contact support, message/settings parity, production Firebase configuration, the supplied SyncChat app logo, realtime messaging, media and voice notes, device E2EE text messaging, native notifications/incoming-call wake, and WhatsApp-style WebRTC/LiveKit calling with draggable self-video and camera switching.
 
-          This GitHub demo APK uses the repository demo signing configuration and is intended for direct testing outside Google Play. Native Firebase call-push features require the repository Firebase client secrets to be configured at build time.
+          The APK uses the repository demo signing configuration and is intended for direct testing outside Google Play. Native Firebase call-push features require the repository Firebase client secrets to be configured at build time.
           EOF
 
       - name: Upload APK workflow artifact
