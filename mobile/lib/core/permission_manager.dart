@@ -73,7 +73,7 @@ class AppPermissionManager {
 
       if (completed == '1') {
         _bootstrappedThisProcess = true;
-        return currentStatuses();
+        return await currentStatuses();
       }
 
       final result = await startupPermissions.request();
