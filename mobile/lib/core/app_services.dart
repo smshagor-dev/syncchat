@@ -1,3 +1,4 @@
+import 'account_storage_repository.dart';
 import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
@@ -30,6 +31,7 @@ class AppServices {
     required this.groups,
     required this.profile,
     required this.settings,
+    required this.accountStorage,
   });
 
   factory AppServices.create({
@@ -84,6 +86,7 @@ class AppServices {
       groups: GroupRepository(api: api, auth: auth, realtime: realtime),
       profile: ProfileRepository(api),
       settings: SettingsRepository(api),
+      accountStorage: AccountStorageRepository(api),
     );
   }
 
@@ -104,6 +107,7 @@ class AppServices {
   final GroupRepository groups;
   final ProfileRepository profile;
   final SettingsRepository settings;
+  final AccountStorageRepository accountStorage;
 
   Future<void> dispose() async {
     await nativeCallPush.dispose();

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -25,6 +26,28 @@ class ApiEnvelope {
       message: json['message']?.toString(),
       payload: json['payload'],
     );
+  }
+}
+
+class ApiBinaryResponse {
+  const ApiBinaryResponse({
+    required this.statusCode,
+    required this.bytes,
+    required this.headers,
+  });
+
+  final int statusCode;
+  final Uint8List bytes;
+  final Map<String, String> headers;
+
+  String? get contentDisposition => headers['content-disposition'];
+
+  String? get filename {
+    final value = contentDisposition;
+    if (value == null || value.isEmpty) return null;
+    final match = RegExp(r'''filename\*?=(?:UTF-8''|["'])?([^"';]+)''', caseSensitive: false)
+        .firstMatch(value);
+    return match?.group(1)?.trim();
   }
 }
 
@@ -132,6 +155,64 @@ class ApiClient {
     authenticated: authenticated,
     extraHeaders: headers,
   );
+
+  Future<ApiBinaryResponse> download(
+    String path, {
+    String method = 'GET',
+    Object? body,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _config.apiUri(path, queryParameters: query);
+    final requestHeaders = <String, String>{
+      'accept': 'application/octet-stream, application/json',
+      if (body != null) 'content-type': 'application/json; charset=utf-8',
+      ...?headers,
+    };
+    if (authenticated) {
+      requestHeaders['authorization'] = 'Bearer ${await _requireAccessToken()}';
+    }
+
+    final request = http.Request(method, uri)..headers.addAll(requestHeaders);
+    if (body != null) request.body = jsonEncode(body);
+
+    http.StreamedResponse streamed;
+    try {
+      streamed = await _httpClient.send(request);
+    } on Exception catch (error) {
+      throw ApiException(
+        statusCode: 0,
+        message: 'Unable to connect to SyncChat: $error',
+      );
+    }
+
+    final bytes = Uint8List.fromList(await streamed.stream.toBytes());
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      String message = 'SyncChat download failed';
+      dynamic payload;
+      try {
+        final decoded = jsonDecode(utf8.decode(bytes));
+        if (decoded is Map<String, dynamic>) {
+          message = decoded['message']?.toString() ?? message;
+          payload = decoded['payload'];
+        }
+      } on Object {
+        // Binary/non-JSON error body. Keep the controlled fallback message.
+      }
+      throw ApiException(
+        statusCode: streamed.statusCode,
+        message: message,
+        payload: payload,
+      );
+    }
+
+    return ApiBinaryResponse(
+      statusCode: streamed.statusCode,
+      bytes: bytes,
+      headers: Map<String, String>.from(streamed.headers),
+    );
+  }
 
   Future<ApiEnvelope> multipart(
     String path, {
