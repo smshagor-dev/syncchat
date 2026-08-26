@@ -1,13 +1,42 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const authenticate = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const chatSendIdempotency = require('../middleware/chatSendIdempotency');
 const roomAccess = require('../middleware/roomAccess');
 const ctrl = require('../controllers/chat');
 const chatUpload = require('../controllers/chatUpload');
+const resumableUpload = require('../controllers/resumableUpload');
 const chatDeletion = require('../controllers/chatDeletion');
 
+const resumableChunk = express.raw({
+  type: 'application/octet-stream',
+  limit: '8mb',
+});
+
 router.post('/chats/upload', authenticate, upload.single('file'), chatUpload.upload);
+router.post('/chats/uploads/resumable', authenticate, resumableUpload.create);
+router.get(
+  '/chats/uploads/resumable/:uploadId',
+  authenticate,
+  resumableUpload.status
+);
+router.put(
+  '/chats/uploads/resumable/:uploadId/chunk',
+  authenticate,
+  resumableChunk,
+  resumableUpload.chunk
+);
+router.post(
+  '/chats/uploads/resumable/:uploadId/complete',
+  authenticate,
+  resumableUpload.complete
+);
+router.delete(
+  '/chats/uploads/resumable/:uploadId',
+  authenticate,
+  resumableUpload.cancel
+);
 router.post('/chats/send-file', authenticate, chatSendIdempotency, ctrl.sendFile);
 router.post('/chats/:chatId/view-once-open', authenticate, ctrl.openViewOnce);
 router.get('/chats/scheduled', authenticate, ctrl.findScheduled);
