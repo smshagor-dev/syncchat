@@ -1,0 +1,110 @@
+name: Flutter Mobile Calling Integration
+
+on:
+  push:
+    branches: [flutter-mobile-parity]
+    paths:
+      - '.github/scripts/integrate_flutter_calling.py'
+      - '.github/workflows/flutter-mobile-integrate-calling.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-validate-build:
+    if: github.ref == 'refs/heads/flutter-mobile-parity'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: flutter-mobile-parity
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate native platform runners
+        run: |
+          rm -rf /tmp/syncchat_mobile_scaffold
+          flutter create \
+            --platforms=android,ios \
+            --org com.syncchat \
+            --project-name syncchat_mobile \
+            /tmp/syncchat_mobile_scaffold
+          if [ ! -d mobile/android ]; then
+            cp -R /tmp/syncchat_mobile_scaffold/android mobile/android
+          fi
+          if [ ! -d mobile/ios ]; then
+            cp -R /tmp/syncchat_mobile_scaffold/ios mobile/ios
+          fi
+          if [ ! -f mobile/.metadata ]; then
+            cp /tmp/syncchat_mobile_scaffold/.metadata mobile/.metadata
+          fi
+
+      - name: Integrate calling runtime and permissions
+        run: python3 .github/scripts/integrate_flutter_calling.py
+
+      - name: Remove one-time integration files
+        run: |
+          rm -f .github/scripts/integrate_flutter_calling.py
+          rm -f .github/workflows/flutter-mobile-integrate-calling.yml
+
+      - name: Format calling changes
+        run: |
+          dart format \
+            mobile/lib/core/calling_repository.dart \
+            mobile/lib/core/app_services.dart \
+            mobile/lib/main.dart \
+            mobile/lib/screens/global_call_layer.dart \
+            mobile/lib/screens/live_call_screen.dart \
+            mobile/lib/screens/live_calls_screen.dart \
+            mobile/lib/screens/live_chat_room_screen.dart \
+            mobile/lib/screens/live_mobile_shell.dart \
+            mobile/test/calling_repository_test.dart
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Verify native calling declarations
+        run: |
+          grep -q 'android.permission.CAMERA' mobile/android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.RECORD_AUDIO' mobile/android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.BLUETOOTH_CONNECT' mobile/android/app/src/main/AndroidManifest.xml
+          grep -q 'NSCameraUsageDescription' mobile/ios/Runner/Info.plist
+          grep -q 'NSMicrophoneUsageDescription' mobile/ios/Runner/Info.plist
+          grep -q 'UIBackgroundModes' mobile/ios/Runner/Info.plist
+
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build Android debug APK
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Commit validated calling integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile .github/scripts .github/workflows
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat(flutter): integrate native realtime calling"
+          git push origin HEAD:flutter-mobile-parity
