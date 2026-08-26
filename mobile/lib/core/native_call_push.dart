@@ -118,17 +118,8 @@ class NativeCallPushService {
     );
 
     if (Platform.isAndroid && await ensureFirebaseForAndroid()) {
-      await FirebaseMessaging.instance.requestPermission();
-      await FlutterCallkitIncoming.requestNotificationPermission({
-        'title': 'Incoming call notifications',
-        'rationaleMessagePermission':
-            'Notification permission is required to show incoming calls.',
-        'postNotificationMessageRequired':
-            'Allow notifications so SyncChat can ring for incoming calls.',
-      });
-      if (!await FlutterCallkitIncoming.canUseFullScreenIntent()) {
-        await FlutterCallkitIncoming.requestFullIntentPermission();
-      }
+      // Token registration is silent. Android notification/full-screen intent
+      // permission is requested only from an explicit notification/call action.
       _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
           .listen(
             (token) => _registerToken(
@@ -154,6 +145,21 @@ class NativeCallPushService {
     }
 
     await _consumePendingBackgroundAction();
+  }
+
+  Future<void> requestAndroidCallPermissions() async {
+    if (!Platform.isAndroid || !await ensureFirebaseForAndroid()) return;
+    await FirebaseMessaging.instance.requestPermission();
+    await FlutterCallkitIncoming.requestNotificationPermission({
+      'title': 'Incoming call notifications',
+      'rationaleMessagePermission':
+          'Notification permission is required to show incoming calls.',
+      'postNotificationMessageRequired':
+          'Allow notifications so SyncChat can ring for incoming calls.',
+    });
+    if (!await FlutterCallkitIncoming.canUseFullScreenIntent()) {
+      await FlutterCallkitIncoming.requestFullIntentPermission();
+    }
   }
 
   Future<void> _onCallkitEvent(CallEvent? event) async {
@@ -343,8 +349,8 @@ class NativeCallPushService {
     final caller = fromName.isNotEmpty
         ? fromName
         : fromUsername.isNotEmpty
-        ? '@$fromUsername'
-        : 'SyncChat caller';
+            ? '@$fromUsername'
+            : 'SyncChat caller';
     final timeout = int.tryParse(payload['ringingTimeoutSec'] ?? '') ?? 45;
 
     await FlutterCallkitIncoming.showCallkitIncoming(
