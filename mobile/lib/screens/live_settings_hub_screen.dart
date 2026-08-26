@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
+import 'live_backup_recovery_screen.dart';
 import 'live_settings_screen.dart';
 
 class LiveSettingsHubScreen extends StatelessWidget {
@@ -38,6 +39,11 @@ class LiveSettingsHubScreen extends StatelessWidget {
           _section(context, 'Account', [
             _item(Icons.manage_accounts_outlined, 'Account settings', () => _details(context)),
             _item(Icons.devices_outlined, 'Devices', () => _details(context)),
+            _item(
+              Icons.backup_outlined,
+              'Backup & restore',
+              () => _backupRecovery(context),
+            ),
           ]),
           _section(context, 'Privacy', [
             _item(Icons.lock_outline_rounded, 'Privacy', () => _details(context)),
@@ -56,7 +62,11 @@ class LiveSettingsHubScreen extends StatelessWidget {
             _item(Icons.security_rounded, 'Google 2FA', () => _details(context)),
             _item(Icons.lock_person_outlined, 'App lock', () => _details(context)),
             _item(Icons.password_rounded, 'Change app lock password', () => _details(context)),
-            _item(Icons.key_rounded, 'Recovery codes', () => _details(context)),
+            _item(
+              Icons.key_rounded,
+              'Recovery codes',
+              () => _backupRecovery(context, initialSection: 'recovery'),
+            ),
           ]),
           _section(context, 'Help', [
             _item(Icons.keyboard_alt_outlined, 'Keyboard shortcuts', () => _help(context, 'Keyboard shortcuts', 'Web keyboard shortcuts are desktop-only. Mobile uses touch, long-press, swipe, and system accessibility actions.')),
@@ -139,6 +149,17 @@ class LiveSettingsHubScreen extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => LiveSettingsScreen(onThemeChanged: onThemeChanged),
+      ),
+    );
+  }
+
+  void _backupRecovery(
+    BuildContext context, {
+    String initialSection = 'backup',
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LiveBackupRecoveryScreen(initialSection: initialSection),
       ),
     );
   }
