@@ -18,7 +18,6 @@ import config from '../config';
 function Chat() {
   const dispatch = useDispatch();
   const imageCropper = useSelector((state) => state.modal.imageCropper);
-  const master = useSelector((state) => state.user.master);
   const showCallUiPreview =
     new URLSearchParams(window.location.search).get('preview') === 'call-ui';
   const seo = config.seo || {};
@@ -30,19 +29,20 @@ function Chat() {
   const seoTwitterCard =
     seo.twitterCard || (seoImage ? 'summary_large_image' : 'summary');
 
-  const requestNotification = async () => {
-    if (Notification.permission !== 'granted') {
-      await Notification.requestPermission();
-    }
-  };
-
   useEffect(() => {
-    requestNotification();
+    // Browser notification permission is intentionally not requested during
+    // application mount. The Notifications settings action owns that explicit
+    // user gesture so browsers do not block or downgrade the permission prompt.
+    const preserveChatHistory = () => {
+      window.history.pushState(null, '', window.location.href);
+    };
 
     window.history.pushState(null, '', window.location.href);
-    window.addEventListener('popstate', () => {
-      window.history.pushState(null, '', window.location.href);
-    });
+    window.addEventListener('popstate', preserveChatHistory);
+
+    return () => {
+      window.removeEventListener('popstate', preserveChatHistory);
+    };
   }, []);
 
   if (showCallUiPreview) {
