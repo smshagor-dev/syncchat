@@ -50,17 +50,33 @@ jobs:
         working-directory: mobile
         run: flutter test
 
+      - name: Validate Android launcher PNGs
+        working-directory: mobile
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          icons = sorted(Path('android/app/src/main/res').glob('mipmap-*/ic_launcher.png'))
+          if not icons:
+              raise SystemExit('No Android launcher icons found')
+          for icon in icons:
+              raw = icon.read_bytes()
+              if raw[:8] != b'\x89PNG\r\n\x1a\n' or len(raw) < 24:
+                  raise SystemExit(f'Invalid PNG: {icon}')
+              width, height = struct.unpack('>II', raw[16:24])
+              if width < 48 or height < 48:
+                  raise SystemExit(f'Launcher icon too small: {icon} ({width}x{height})')
+              print(f'{icon}: {width}x{height} PNG')
+          PY
+
       - name: Build online demo APK
         working-directory: mobile
         run: |
           flutter build apk --release \
             --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api \
             --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live \
-            --dart-define=SYNCCHAT_APP_VERSION=${RELEASE_TAG} \
-            --dart-define=SYNCCHAT_FIREBASE_API_KEY=${{ secrets.SYNCCHAT_FIREBASE_API_KEY }} \
-            --dart-define=SYNCCHAT_FIREBASE_APP_ID=${{ secrets.SYNCCHAT_FIREBASE_APP_ID }} \
-            --dart-define=SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID }} \
-            --dart-define=SYNCCHAT_FIREBASE_PROJECT_ID=${{ secrets.SYNCCHAT_FIREBASE_PROJECT_ID }}
+            --dart-define=SYNCCHAT_APP_VERSION=${RELEASE_TAG}
 
       - name: Prepare release files
         run: |
@@ -72,9 +88,9 @@ jobs:
 
           Android demo build connected to the production SyncChat API and Socket.IO service.
 
-          This build includes camera-based QR device login, phonebook contact sync and new-contact support, message/settings parity, production Firebase configuration, the supplied SyncChat app logo, realtime messaging, media and voice notes, device E2EE text messaging, native notifications/incoming-call wake, and WhatsApp-style WebRTC/LiveKit calling with draggable self-video and camera switching.
+          This build includes camera-based QR device login, phonebook contact sync and new-contact support, message/settings parity, the supplied SyncChat app logo, realtime messaging, media and voice notes, device E2EE text messaging, Firebase notifications/incoming-call wake, and WhatsApp-style WebRTC/LiveKit calling with draggable self-video and camera switching.
 
-          The APK uses the repository demo signing configuration and is intended for direct testing outside Google Play. Native Firebase call-push features require the repository Firebase client secrets to be configured at build time.
+          The APK uses the repository demo signing configuration and is intended for direct testing outside Google Play. Firebase values come from the validated mobile client configuration committed for package com.syncchat.live.
           EOF
 
       - name: Upload APK workflow artifact
