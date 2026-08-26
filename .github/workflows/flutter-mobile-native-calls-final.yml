@@ -96,10 +96,10 @@ jobs:
           from pathlib import Path
           path = Path('mobile/ios/Runner/AppDelegate.swift')
           text = path.read_text()
-          old = '    data.extra = payload\n'
-          new = '    data.extra = payload as NSDictionary\n'
+          old = '    data.extra = extra\n'
+          new = '    data.extra = extra as NSDictionary\n'
           if old not in text and new not in text:
-              raise SystemExit('CallKit payload assignment not found')
+              raise SystemExit('CallKit extra assignment not found')
           path.write_text(text.replace(old, new, 1))
           PY
       - name: Format
@@ -155,10 +155,10 @@ jobs:
           from pathlib import Path
           path = Path('mobile/ios/Runner/AppDelegate.swift')
           text = path.read_text()
-          old = '    data.extra = payload\n'
-          new = '    data.extra = payload as NSDictionary\n'
+          old = '    data.extra = extra\n'
+          new = '    data.extra = extra as NSDictionary\n'
           if old not in text and new not in text:
-              raise SystemExit('CallKit payload assignment not found')
+              raise SystemExit('CallKit extra assignment not found')
           path.write_text(text.replace(old, new, 1))
           PY
       - name: Remove one-time integration files
