@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/app_scope.dart';
 import 'core/app_services.dart';
+import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
 import 'screens.dart';
 import 'screens/global_call_layer.dart';
@@ -12,6 +13,7 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NativeCallPushService.bootstrapBeforeRunApp();
+  await DeviceIntegrationService.initialize();
   runApp(const SyncChatMobileApp());
 }
 
@@ -38,6 +40,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
 
   @override
   void dispose() {
+    DeviceIntegrationService.dispose();
     _services.dispose();
     super.dispose();
   }
@@ -50,7 +53,42 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
 
   Widget _authenticatedHome() {
     return GlobalCallLayer(
-      child: LiveMobileShell(onThemeChanged: _setDarkMode),
+      child: LiveMobileShell(
+        onThemeChanged: _setDarkMode,
+        onLogout: _logout,
+      ),
+    );
+  }
+
+  Widget _authScreen() {
+    return AuthScreen(
+      authRepository: _services.auth,
+      onAuthenticated: (context) async {
+        await _services.realtime.connect();
+        await _services.nativeCallPush.startAuthenticated();
+        await DeviceIntegrationService.startForegroundMessaging();
+        if (!context.mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => _authenticatedHome()),
+          (_) => false,
+        );
+      },
+    );
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    try {
+      await _services.nativeCallPush.unregisterCurrentDevice();
+    } on Object {
+      // Local logout must still succeed when the network is unavailable.
+    }
+    _services.realtime.disconnect();
+    await _services.auth.logoutLocal();
+    await DeviceIntegrationService.dispose();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => _authScreen()),
+      (_) => false,
     );
   }
 
@@ -60,6 +98,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       await _services.auth.currentUser();
       await _services.realtime.connect();
       await _services.nativeCallPush.startAuthenticated();
+      await DeviceIntegrationService.startForegroundMessaging();
       return true;
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -90,17 +129,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
             if (snapshot.data == true) {
               return _authenticatedHome();
             }
-            return AuthScreen(
-              authRepository: _services.auth,
-              onAuthenticated: (context) async {
-                await _services.realtime.connect();
-                await _services.nativeCallPush.startAuthenticated();
-                if (!context.mounted) return;
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(builder: (_) => _authenticatedHome()),
-                );
-              },
-            );
+            return _authScreen();
           },
         ),
       ),
@@ -119,7 +148,7 @@ class _BootScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.sync_rounded, color: SyncColors.sky, size: 52),
+            Icon(Icons.forum_rounded, color: SyncColors.sky, size: 52),
             SizedBox(height: 16),
             CircularProgressIndicator(),
             SizedBox(height: 12),
