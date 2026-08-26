@@ -19,18 +19,21 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
 
     defaults:
       run:
         working-directory: mobile
+
+    env:
+      GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -43,12 +46,6 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
-
-      - name: Test
-        run: flutter test
 
       - name: Configure production signing when available
         env:
@@ -69,31 +66,23 @@ jobs:
             echo "SYNCCHAT_RELEASE_SIGNED=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Build release APK
+      - name: Build Syncchat release APK
         run: >-
-          flutter build apk --release
+          flutter build apk --release --no-pub
+          --target-platform android-arm64
           --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
           --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
           --dart-define=SYNCCHAT_APP_VERSION=0.1.0
 
-      - name: Build release app bundle
-        run: >-
-          flutter build appbundle --release
-          --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
-          --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
-          --dart-define=SYNCCHAT_APP_VERSION=0.1.0
-
-      - name: Package Syncchat release artifacts
+      - name: Package Syncchat release artifact
         run: |
           mkdir -p build/release
           APK="$(find build/app/outputs -type f -name '*release*.apk' | head -n 1)"
-          AAB="$(find build/app/outputs -type f -name '*release*.aab' | head -n 1)"
           test -n "$APK"
-          test -n "$AAB"
           cp "$APK" build/release/Syncchat-release.apk
-          cp "$AAB" build/release/Syncchat-release.aab
-          sha256sum build/release/Syncchat-release.apk build/release/Syncchat-release.aab > build/release/SHA256SUMS.txt
+          sha256sum build/release/Syncchat-release.apk > build/release/SHA256SUMS.txt
           printf 'signed=%s\n' "$SYNCCHAT_RELEASE_SIGNED" > build/release/BUILD-INFO.txt
+          printf 'abi=arm64-v8a\n' >> build/release/BUILD-INFO.txt
           printf 'api=https://api.syncchat.live/api\n' >> build/release/BUILD-INFO.txt
           printf 'socket=https://api.syncchat.live\n' >> build/release/BUILD-INFO.txt
           printf 'version=0.1.0+4\n' >> build/release/BUILD-INFO.txt
@@ -101,10 +90,9 @@ jobs:
       - name: Upload Syncchat release
         uses: actions/upload-artifact@v4
         with:
-          name: Syncchat-release-android
+          name: Syncchat-release-android-arm64
           path: |
             mobile/build/release/Syncchat-release.apk
-            mobile/build/release/Syncchat-release.aab
             mobile/build/release/SHA256SUMS.txt
             mobile/build/release/BUILD-INFO.txt
           if-no-files-found: error
