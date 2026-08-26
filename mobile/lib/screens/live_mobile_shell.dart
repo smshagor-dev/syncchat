@@ -7,6 +7,7 @@ import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
 import 'live_calls_screen.dart';
+import 'live_channels_screen.dart';
 import 'live_chat_tools_screen.dart';
 import 'live_collection_screens.dart';
 import 'live_device_contacts_screen.dart';
@@ -114,7 +115,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     LiveHomeTab.chats => LiveChatsScreen(onMenu: () => scaffoldKey.currentState?.openDrawer()),
     LiveHomeTab.status => const LiveStatusScreen(),
     LiveHomeTab.communities => const LiveCommunitiesScreen(),
-    LiveHomeTab.channels => const LiveChannelsScreen(),
+    LiveHomeTab.channels => const ChannelHubScreen(),
     LiveHomeTab.calls => const LiveCallsScreen(),
   };
 
