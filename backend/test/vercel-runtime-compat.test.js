@@ -28,3 +28,11 @@ test('Node crypto.randomUUID provides a UUID v4 compatible identifier', () => {
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
 });
+
+
+test('backend package does not carry the unused uuid runtime dependency', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
+  );
+  assert.equal(packageJson.dependencies?.uuid, undefined);
+});
