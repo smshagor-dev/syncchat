@@ -271,9 +271,12 @@ class DeviceIntegrationService {
   static void _queueNotificationTap(String? payload) {
     final value = payload?.trim() ?? '';
     if (value.isEmpty) return;
-    _pendingNotificationTaps.add(value);
-    if (!_notificationTapController.isClosed) {
+    if (_notificationTapController.hasListener) {
       _notificationTapController.add(value);
+      return;
+    }
+    if (!_pendingNotificationTaps.contains(value)) {
+      _pendingNotificationTaps.add(value);
     }
   }
 
