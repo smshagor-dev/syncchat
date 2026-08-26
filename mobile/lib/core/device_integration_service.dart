@@ -15,33 +15,58 @@ class DeviceIntegrationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  static Future<void>? _initializeFuture;
   static bool _initialized = false;
 
-  static Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
+  static Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    final inFlight = _initializeFuture;
+    if (inFlight != null) return inFlight;
 
-    const settings = InitializationSettings(
-      android: AndroidInitializationSettings('ic_stat_syncchat'),
-      iOS: DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestBadgePermission: false,
-        requestSoundPermission: false,
-      ),
-    );
-    await _notifications.initialize(settings: settings);
+    final future = _initializeOnce();
+    _initializeFuture = future;
+    return future;
+  }
 
-    if (Platform.isAndroid) {
-      final androidPlugin = _notifications
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      await androidPlugin?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          'syncchat_messages',
-          'Messages and activity',
-          description: 'Messages, message requests, mentions, and SyncChat activity.',
-          importance: Importance.high,
+  static Future<void> _initializeOnce() async {
+    try {
+      const settings = InitializationSettings(
+        android: AndroidInitializationSettings('ic_stat_syncchat'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
         ),
       );
+
+      await _notifications
+          .initialize(settings: settings)
+          .timeout(const Duration(seconds: 5));
+
+      if (Platform.isAndroid) {
+        final androidPlugin = _notifications
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin
+            ?.createNotificationChannel(
+              const AndroidNotificationChannel(
+                'syncchat_messages',
+                'Messages and activity',
+                description:
+                    'Messages, message requests, mentions, and SyncChat activity.',
+                importance: Importance.high,
+              ),
+            )
+            .timeout(const Duration(seconds: 5));
+      }
+
+      _initialized = true;
+    } finally {
+      // A failed/timeout initialization must be retryable. The old code set
+      // _initialized before the first platform-channel call, permanently
+      // disabling retries after an OEM/plugin startup failure.
+      if (!_initialized) {
+        _initializeFuture = null;
+      }
     }
   }
 
