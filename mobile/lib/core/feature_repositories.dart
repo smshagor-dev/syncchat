@@ -18,8 +18,14 @@ class InboxRepository {
 
   final ApiClient _api;
 
-  Future<List<Map<String, dynamic>>> list() async =>
-      _mapList((await _api.get('/inboxes')).payload);
+  Future<List<Map<String, dynamic>>> list({String? search}) async => _mapList(
+    (await _api.get(
+      '/inboxes',
+      query: {
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      },
+    )).payload,
+  );
 
   Future<Map<String, dynamic>> findByRoom(String roomId) async =>
       _mapPayload((await _api.get('/inboxes/$roomId')).payload);
@@ -34,42 +40,67 @@ class InboxRepository {
     )).payload,
   );
 
+  Future<Map<String, dynamic>> setPreference(
+    String roomId,
+    String action,
+    dynamic value,
+  ) => updatePreferences(roomId, {'action': action, 'value': value});
+
   Future<void> clearRoom(String roomId) async {
     await _api.post('/inboxes/$roomId/clear');
   }
+
+  Future<Map<String, dynamic>> deleteRoom(
+    String roomId, {
+    String scope = 'self',
+  }) async => _mapPayload(
+    (await _api.delete(
+      '/chats/$roomId',
+      body: {'scope': scope == 'both' ? 'both' : 'self'},
+    )).payload,
+  );
 
   Future<void> markAllRead() async {
     await _api.post('/inboxes/read-all');
   }
 
-  Future<void> enableChatLock(String roomId, String password) async {
-    await _api.post('/inboxes/$roomId/chat-lock', body: {'password': password});
-  }
+  Future<Map<String, dynamic>> enableChatLock(
+    String roomId,
+    String password, {
+    String scope = 'self',
+  }) async => _mapPayload(
+    (await _api.post(
+      '/inboxes/$roomId/chat-lock',
+      body: {
+        'scope': scope == 'both' ? 'both' : 'self',
+        'password': password,
+      },
+    )).payload,
+  );
 
-  Future<void> verifyChatLock(String roomId, String password) async {
-    await _api.post(
+  Future<Map<String, dynamic>> verifyChatLock(
+    String roomId,
+    String password,
+  ) async => _mapPayload(
+    (await _api.post(
       '/inboxes/$roomId/verify-lock',
       body: {'password': password},
-    );
-  }
+    )).payload,
+  );
 
-  Future<void> changeChatLock(
+  Future<Map<String, dynamic>> changeChatLock(
     String roomId, {
-    required String currentPassword,
+    required String oldPassword,
     required String newPassword,
-  }) async {
-    await _api.patch(
+  }) async => _mapPayload(
+    (await _api.patch(
       '/inboxes/$roomId/chat-lock',
-      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
-    );
-  }
+      body: {'oldPassword': oldPassword, 'newPassword': newPassword},
+    )).payload,
+  );
 
-  Future<void> removeChatLock(String roomId, String password) async {
-    await _api.delete(
-      '/inboxes/$roomId/chat-lock',
-      body: {'password': password},
-    );
-  }
+  Future<Map<String, dynamic>> removeChatLock(String roomId) async =>
+      _mapPayload((await _api.delete('/inboxes/$roomId/chat-lock')).payload);
 }
 
 class ContactRepository {
