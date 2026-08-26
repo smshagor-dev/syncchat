@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/app_scope.dart';
 import 'core/app_services.dart';
+import 'core/native_call_push.dart';
 import 'screens.dart';
 import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NativeCallPushService.bootstrapBeforeRunApp();
   runApp(const SyncChatMobileApp());
 }
 
@@ -56,6 +59,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     try {
       await _services.auth.currentUser();
       await _services.realtime.connect();
+      await _services.nativeCallPush.startAuthenticated();
       return true;
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -90,6 +94,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
               authRepository: _services.auth,
               onAuthenticated: (context) async {
                 await _services.realtime.connect();
+                await _services.nativeCallPush.startAuthenticated();
                 if (!context.mounted) return;
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute<void>(builder: (_) => _authenticatedHome()),
