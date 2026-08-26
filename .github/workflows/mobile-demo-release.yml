@@ -1,0 +1,94 @@
+name: SyncChat Mobile Demo Release
+
+on:
+  push:
+    tags:
+      - 'mobile-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build online demo APK
+        working-directory: mobile
+        run: |
+          flutter build apk --release \
+            --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api \
+            --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live \
+            --dart-define=SYNCCHAT_APP_VERSION=${GITHUB_REF_NAME} \
+            --dart-define=SYNCCHAT_FIREBASE_API_KEY=${{ secrets.SYNCCHAT_FIREBASE_API_KEY }} \
+            --dart-define=SYNCCHAT_FIREBASE_APP_ID=${{ secrets.SYNCCHAT_FIREBASE_APP_ID }} \
+            --dart-define=SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID }} \
+            --dart-define=SYNCCHAT_FIREBASE_PROJECT_ID=${{ secrets.SYNCCHAT_FIREBASE_PROJECT_ID }}
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release/SyncChat-Mobile-Demo-${GITHUB_REF_NAME}.apk"
+          sha256sum "release/SyncChat-Mobile-Demo-${GITHUB_REF_NAME}.apk" > "release/SyncChat-Mobile-Demo-${GITHUB_REF_NAME}.apk.sha256"
+          cat > release/RELEASE_NOTES.md <<EOF
+          # SyncChat Mobile Demo ${GITHUB_REF_NAME}
+
+          Android demo build connected to the production SyncChat API and Socket.IO service.
+
+          Included mobile capabilities include realtime messaging, media and voice notes, message actions, scheduling, device E2EE text messaging, WebRTC/LiveKit calling, native incoming-call wake, CallKit integration, group-call moderation, live collections and account/settings surfaces.
+
+          This GitHub demo APK uses the repository's demo release signing configuration and is intended for direct testing outside Google Play. Native Firebase call-push features require the repository Firebase client secrets to be configured when the APK is built.
+          EOF
+
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: syncchat-mobile-demo-${{ github.ref_name }}
+          path: |
+            release/*.apk
+            release/*.sha256
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/*.apk release/*.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              release/*.apk release/*.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SyncChat Mobile Demo $GITHUB_REF_NAME" \
+              --notes-file release/RELEASE_NOTES.md \
+              --prerelease
+          fi
