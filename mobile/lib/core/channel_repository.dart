@@ -49,6 +49,54 @@ class ChannelRepository {
   Future<List<Map<String, dynamic>>> pendingMembers(String channelId) async =>
       _list((await _api.get('/channels/$channelId/pending-members')).payload);
 
+  Future<Map<String, dynamic>> addParticipants(
+    String channelId,
+    List<String> userIds,
+  ) async => _map(
+    (await _api.post(
+      '/channels/$channelId/participants',
+      body: {'friendsId': userIds},
+    )).payload,
+  );
+
+  Future<Map<String, dynamic>> updatePermissions(
+    String channelId,
+    Map<String, dynamic> permissions,
+  ) async => _map(
+    (await _api.patch(
+      '/channels/$channelId/permissions',
+      body: {'permissions': permissions},
+    )).payload,
+  );
+
+  Future<Map<String, dynamic>> updateModeration(
+    String channelId,
+    Map<String, dynamic> moderation,
+  ) async => _map(
+    (await _api.patch(
+      '/channels/$channelId/moderation',
+      body: {'moderation': moderation},
+    )).payload,
+  );
+
+  Future<Map<String, dynamic>> approvePending(
+    String channelId,
+    String memberId,
+  ) async => _map(
+    (await _api.post(
+      '/channels/$channelId/pending-members/$memberId/approve',
+    )).payload,
+  );
+
+  Future<Map<String, dynamic>> rejectPending(
+    String channelId,
+    String memberId,
+  ) async => _map(
+    (await _api.post(
+      '/channels/$channelId/pending-members/$memberId/reject',
+    )).payload,
+  );
+
   Future<Map<String, dynamic>> create({
     required String name,
     String desc = '',
