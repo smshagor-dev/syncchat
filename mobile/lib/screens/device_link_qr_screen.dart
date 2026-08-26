@@ -3,6 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../core/api_client.dart';
 import '../core/auth_repository.dart';
+import '../core/permission_manager.dart';
 import '../theme.dart';
 
 enum _LinkStage { scan, verify, twoFactor }
@@ -23,6 +24,7 @@ class DeviceLinkQrScreen extends StatefulWidget {
 
 class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   final MobileScannerController scanner = MobileScannerController(
+    autoStart: false,
     formats: const [BarcodeFormat.qrCode],
   );
   final emailCode = TextEditingController();
@@ -36,7 +38,15 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   bool recoveryCode = false;
   bool busy = false;
   bool detected = false;
+  bool cameraReady = false;
+  bool requestingCamera = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareCamera());
+  }
 
   @override
   void dispose() {
@@ -45,6 +55,44 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
     supportCode.dispose();
     twoFactorCode.dispose();
     super.dispose();
+  }
+
+  Future<void> _prepareCamera() async {
+    if (!mounted || requestingCamera) return;
+    setState(() {
+      requestingCamera = true;
+      error = null;
+    });
+    final granted = await AppPermissionManager.ensureCamera(
+      context,
+      reason: 'Camera permission is required to scan a SyncChat device-link QR code.',
+    );
+    if (!mounted) return;
+    if (!granted) {
+      setState(() {
+        requestingCamera = false;
+        cameraReady = false;
+        error = 'Camera permission is required to scan a QR code.';
+      });
+      return;
+    }
+
+    try {
+      await scanner.start();
+      if (!mounted) return;
+      setState(() {
+        requestingCamera = false;
+        cameraReady = true;
+        error = null;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        requestingCamera = false;
+        cameraReady = false;
+        error = 'Camera could not start. ${_message(failure)}';
+      });
+    }
   }
 
   String _extractToken(String rawValue) {
@@ -60,7 +108,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (detected || busy || stage != _LinkStage.scan) return;
+    if (!cameraReady || detected || busy || stage != _LinkStage.scan) return;
     final raw = capture.barcodes
         .map((barcode) => barcode.rawValue?.trim() ?? '')
         .firstWhere((value) => value.isNotEmpty, orElse: () => '');
@@ -93,7 +141,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         detected = false;
         error = _message(failure);
       });
-      await scanner.start();
+      if (cameraReady) await scanner.start();
     }
   }
 
@@ -172,12 +220,19 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
       detected = false;
       error = null;
     });
+    if (!cameraReady) {
+      await _prepareCamera();
+      return;
+    }
     await scanner.start();
   }
 
   String _message(Object failure) => failure is ApiException
       ? failure.message
-      : failure.toString().replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '');
+      : failure
+          .toString()
+          .replaceFirst('Exception: ', '')
+          .replaceFirst('Bad state: ', '');
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +243,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         backgroundColor: context.panel,
         surfaceTintColor: Colors.transparent,
         actions: [
-          if (stage == _LinkStage.scan)
+          if (stage == _LinkStage.scan && cameraReady)
             IconButton(
               tooltip: 'Flashlight',
               onPressed: scanner.toggleTorch,
@@ -201,6 +256,43 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   }
 
   Widget _scannerBody() {
+    if (!cameraReady) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.qr_code_scanner_rounded, size: 72, color: SyncColors.sky),
+              const SizedBox(height: 18),
+              const Text(
+                'Camera access is required',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error ?? 'Allow Camera permission to scan the QR code from your signed-in SyncChat device.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.muted, height: 1.45),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: requestingCamera ? null : _prepareCamera,
+                icon: requestingCamera
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.camera_alt_outlined),
+                label: Text(requestingCamera ? 'Requesting…' : 'Allow camera'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [

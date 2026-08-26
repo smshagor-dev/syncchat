@@ -76,6 +76,8 @@
 	<string>SyncChat can save media to your photo library when you choose to download it.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>SyncChat can compare your address book with SyncChat accounts so you can find people you know.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SyncChat uses your location only when you choose to share your current location in a conversation.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

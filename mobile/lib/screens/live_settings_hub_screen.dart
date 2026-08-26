@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart' as ph;
 
 import '../core/device_integration_service.dart';
+import '../core/permission_manager.dart';
 import '../theme.dart';
 import 'live_settings_screen.dart';
 
@@ -146,18 +146,36 @@ class LiveSettingsHubScreen extends StatelessWidget {
   Future<void> _permissions(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final result = await DeviceIntegrationService.requestCommunicationPermissions();
-      final granted = result.values.where((status) => status == ph.PermissionStatus.granted).length;
-      messenger.showSnackBar(SnackBar(content: Text('$granted of ${result.length} requested permissions are enabled.')));
+      final result = await AppPermissionManager.requestAllFromSettings(context);
+      if (!context.mounted) return;
+      final granted = result.values
+          .where(AppPermissionManager.isUsableStatus)
+          .length;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('$granted of ${result.length} app permissions are enabled.'),
+        ),
+      );
     } on Object catch (failure) {
-      messenger.showSnackBar(SnackBar(content: Text(failure.toString().replaceFirst('Exception: ', ''))));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(failure.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
   Future<void> _notifications(BuildContext context) async {
+    final allowed = await AppPermissionManager.ensure(
+      context,
+      SyncPermission.notifications,
+      reason: 'Notification permission is needed for messages and incoming-call alerts.',
+    );
+    if (!allowed || !context.mounted) return;
     await DeviceIntegrationService.requestNotificationPermission();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notification permission updated.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Notification permission updated.')),
+    );
   }
 
   void _help(BuildContext context, String title, String body) {

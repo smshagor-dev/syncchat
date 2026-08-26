@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/permission_manager.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'live_call_screen.dart';
@@ -55,6 +56,24 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
         loading = false;
       });
     }
+  }
+
+  Future<void> _startPermissionedCall(
+    Map<String, dynamic> inbox, {
+    required String name,
+    required bool video,
+  }) async {
+    final granted = await AppPermissionManager.ensureCallPermissions(
+      context,
+      video: video,
+    );
+    if (!granted || !mounted) return;
+    await openOutgoingCall(
+      context,
+      inbox: inbox,
+      name: name,
+      video: video,
+    );
   }
 
   @override
@@ -213,7 +232,7 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     try {
       final inbox = await context.services.inbox.findByRoom(roomId);
       if (!mounted) return;
-      await openOutgoingCall(context, inbox: inbox, name: name, video: video);
+      await _startPermissionedCall(inbox, name: name, video: video);
       if (mounted) await _load();
     } on Object catch (failure) {
       if (mounted) _snack(_messageFor(failure));
@@ -281,11 +300,10 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
                                 children: [
                                   IconButton(
                                     tooltip: 'Voice call',
-                                    onPressed: () {
+                                    onPressed: () async {
                                       Navigator.pop(sheetContext);
-                                      openOutgoingCall(
-                                        context,
-                                        inbox: inbox,
+                                      await _startPermissionedCall(
+                                        inbox,
                                         name: name,
                                         video: false,
                                       );
@@ -294,11 +312,10 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
                                   ),
                                   IconButton(
                                     tooltip: 'Video call',
-                                    onPressed: () {
+                                    onPressed: () async {
                                       Navigator.pop(sheetContext);
-                                      openOutgoingCall(
-                                        context,
-                                        inbox: inbox,
+                                      await _startPermissionedCall(
+                                        inbox,
                                         name: name,
                                         video: true,
                                       );

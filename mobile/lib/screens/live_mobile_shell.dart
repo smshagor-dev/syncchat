@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../core/app_scope.dart';
+import '../core/device_integration_service.dart';
+import '../core/permission_manager.dart';
 import '../theme.dart';
 import 'live_calls_screen.dart';
 import 'live_chat_tools_screen.dart';
@@ -29,6 +34,56 @@ class LiveMobileShell extends StatefulWidget {
 class _LiveMobileShellState extends State<LiveMobileShell> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   LiveHomeTab selected = LiveHomeTab.chats;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_bootstrapPermissionsAndContacts());
+    });
+  }
+
+  Future<void> _bootstrapPermissionsAndContacts() async {
+    try {
+      final statuses = await AppPermissionManager.requestInitialPermissions();
+      if (!mounted) return;
+      final contactsPermission =
+          AppPermissionManager.permissionFor(SyncPermission.contacts);
+      final contactsStatus = statuses[contactsPermission];
+      if (contactsStatus != null &&
+          AppPermissionManager.isUsableStatus(contactsStatus)) {
+        unawaited(_syncAddressBookSilently());
+      }
+    } on Object catch (failure) {
+      debugPrint('SyncChat permission bootstrap deferred: $failure');
+    }
+  }
+
+  Future<void> _syncAddressBookSilently() async {
+    try {
+      await DeviceIntegrationService.syncAddressBook(
+        context.services.contacts,
+      ).timeout(const Duration(seconds: 20));
+    } on Object catch (failure) {
+      debugPrint('SyncChat address-book auto-sync deferred: $failure');
+    }
+  }
+
+  Future<void> _ensureContactsAndSync() async {
+    final granted = await AppPermissionManager.ensureContacts(
+      context,
+      reason:
+          'Contacts permission is needed to read your phone book and find people you know on SyncChat.',
+    );
+    if (!granted || !mounted) return;
+    try {
+      await DeviceIntegrationService.syncAddressBook(
+        context.services.contacts,
+      ).timeout(const Duration(seconds: 20));
+    } on Object catch (failure) {
+      debugPrint('SyncChat contact sync failed: $failure');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +135,11 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     if (target == 'logout') {
       await widget.onLogout(context);
       return;
+    }
+
+    if (target == 'contacts') {
+      await _ensureContactsAndSync();
+      if (!mounted) return;
     }
 
     final Widget screen = switch (target) {

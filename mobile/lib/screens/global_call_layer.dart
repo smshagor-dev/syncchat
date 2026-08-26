@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/calling_repository.dart';
+import '../core/permission_manager.dart';
 import 'live_call_screen.dart';
 
 class GlobalCallLayer extends StatefulWidget {
@@ -62,6 +63,22 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
     presenting = true;
     activeCallId = callId;
 
+    final video = call['mediaType']?.toString() == 'video';
+    if (autoAccept) {
+      final granted = await AppPermissionManager.ensureCallPermissions(
+        context,
+        video: video,
+      );
+      if (!mounted || !granted) {
+        presenting = false;
+        activeCallId = null;
+        if (callId.isNotEmpty) {
+          await context.services.nativeCallPush.endNativeUi(callId).catchError((_) {});
+        }
+        return;
+      }
+    }
+
     Map<String, dynamic>? inbox;
     try {
       inbox = await context.services.inbox.findByRoom(roomId);
@@ -99,7 +116,7 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
             inbox: inbox,
             incomingCall: call,
             name: name,
-            video: call['mediaType']?.toString() == 'video',
+            video: video,
             autoAccept: autoAccept,
           ),
         ),

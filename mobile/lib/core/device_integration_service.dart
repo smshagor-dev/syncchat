@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'feature_repositories.dart';
 import 'native_call_push.dart';
+import 'permission_manager.dart';
 
 class DeviceIntegrationService {
   DeviceIntegrationService._();
@@ -61,25 +62,14 @@ class DeviceIntegrationService {
 
       _initialized = true;
     } finally {
-      // A failed/timeout initialization must be retryable. The old code set
-      // _initialized before the first platform-channel call, permanently
-      // disabling retries after an OEM/plugin startup failure.
       if (!_initialized) {
         _initializeFuture = null;
       }
     }
   }
 
-  static Future<Map<ph.Permission, ph.PermissionStatus>> requestCommunicationPermissions() async {
-    final permissions = <ph.Permission>[
-      ph.Permission.notification,
-      ph.Permission.camera,
-      ph.Permission.microphone,
-      ph.Permission.contacts,
-      ph.Permission.photos,
-      if (Platform.isAndroid) ph.Permission.videos,
-    ];
-    return permissions.request();
+  static Future<Map<ph.Permission, ph.PermissionStatus>> requestCommunicationPermissions() {
+    return AppPermissionManager.requestInitialPermissions();
   }
 
   static Future<Map<String, dynamic>> syncAddressBook(ContactRepository repository) async {
