@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/realtime_client.dart';
 import '../theme.dart';
 
 class AuthenticatedAccountGate extends StatefulWidget {
@@ -21,6 +22,7 @@ class AuthenticatedAccountGate extends StatefulWidget {
 
 class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
   Future<Map<String, dynamic>>? _accountFuture;
+  RealtimeClient? _realtime;
   bool _bound = false;
   bool _sessionInactive = false;
 
@@ -32,14 +34,15 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
     }
     if (!_bound) {
       _bound = true;
-      context.services.realtime.on('user/inactivate', _onInactive);
+      _realtime = context.services.realtime;
+      _realtime?.on('user/inactivate', _onInactive);
     }
   }
 
   @override
   void dispose() {
     if (_bound) {
-      context.services.realtime.off('user/inactivate', _onInactive);
+      _realtime?.off('user/inactivate', _onInactive);
     }
     super.dispose();
   }
@@ -51,11 +54,12 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
 
   Future<void> _reload() async {
     if (!mounted) return;
+    final future = context.services.chat.currentUser(refresh: true);
     setState(() {
       _sessionInactive = false;
-      _accountFuture = context.services.chat.currentUser(refresh: true);
+      _accountFuture = future;
     });
-    await _accountFuture;
+    await future;
   }
 
   @override
