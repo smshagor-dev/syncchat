@@ -1,3 +1,4 @@
+# Verification-only CI trigger for the merged P0/P1 mobile tree.
 name: syncchat_mobile
 description: Native Flutter mobile client for SyncChat with web-client design parity.
 publish_to: "none"
