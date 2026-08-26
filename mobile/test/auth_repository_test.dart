@@ -14,30 +14,50 @@ void main() {
     socketUrl: 'https://api.example.test',
   );
 
-  test('login stores access token and matches web request shape', () async {
+  test('login stores persistent access and refresh tokens', () async {
     final store = MemorySessionStore();
+    final requests = <String>[];
     final client = MockClient((request) async {
-      expect(request.method, 'POST');
-      expect(request.url.toString(), 'https://api.example.test/api/users/login');
-      expect(request.headers['authorization'], isNull);
-      expect(
-        jsonDecode(request.body),
-        <String, dynamic>{
-          'username': 'atia',
-          'password': 'secret123',
-          'me': true,
-        },
-      );
-      return http.Response(
-        jsonEncode({
-          'code': 200,
-          'success': true,
-          'message': 'Signed in',
-          'payload': {'token': 'access-token'},
-        }),
-        200,
-        headers: {'content-type': 'application/json'},
-      );
+      requests.add(request.url.path);
+      if (request.url.path == '/api/users/login') {
+        expect(request.method, 'POST');
+        expect(request.headers['authorization'], isNull);
+        expect(
+          jsonDecode(request.body),
+          <String, dynamic>{
+            'username': 'atia',
+            'password': 'secret123',
+            'me': true,
+          },
+        );
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'success': true,
+            'message': 'Signed in',
+            'payload': {'token': 'access-token'},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/api/users/session/persist') {
+        expect(request.method, 'POST');
+        expect(request.headers['authorization'], 'Bearer access-token');
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'success': true,
+            'payload': {
+              'token': 'access-token-rotated',
+              'refreshToken': 'refresh-token',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      fail('Unexpected request: ${request.method} ${request.url}');
     });
     final api = ApiClient(config: config, sessionStore: store, httpClient: client);
     final auth = AuthRepository(api: api, sessionStore: store);
@@ -49,8 +69,73 @@ void main() {
     );
 
     expect(result.requiresTwoFactor, isFalse);
-    expect(await store.readAccessToken(), 'access-token');
+    expect(await store.readAccessToken(), 'access-token-rotated');
+    expect(await store.readRefreshToken(), 'refresh-token');
     expect(await store.readRememberedUsername(), 'atia');
+    expect(requests, ['/api/users/login', '/api/users/session/persist']);
+  });
+
+  test('expired access token refreshes once and retries request', () async {
+    final store = MemorySessionStore()
+      ..accessToken = 'expired-access'
+      ..refreshToken = 'refresh-token';
+    var userRequests = 0;
+    var refreshRequests = 0;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/users') {
+        userRequests += 1;
+        if (userRequests == 1) {
+          expect(request.headers['authorization'], 'Bearer expired-access');
+          return http.Response(
+            jsonEncode({
+              'code': 401,
+              'success': false,
+              'message': 'jwt expired',
+            }),
+            401,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        expect(request.headers['authorization'], 'Bearer fresh-access');
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'success': true,
+            'payload': {'_id': 'user-1'},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/api/users/session/refresh') {
+        refreshRequests += 1;
+        expect(request.headers['authorization'], isNull);
+        expect(jsonDecode(request.body), {'refreshToken': 'refresh-token'});
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'success': true,
+            'payload': {
+              'token': 'fresh-access',
+              'refreshToken': 'fresh-refresh',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      fail('Unexpected request: ${request.method} ${request.url}');
+    });
+    final api = ApiClient(config: config, sessionStore: store, httpClient: client);
+    final auth = AuthRepository(api: api, sessionStore: store);
+
+    final user = await auth.currentUser();
+
+    expect(user['_id'], 'user-1');
+    expect(userRequests, 2);
+    expect(refreshRequests, 1);
+    expect(await store.readAccessToken(), 'fresh-access');
+    expect(await store.readRefreshToken(), 'fresh-refresh');
   });
 
   test('login preserves two-factor challenge without storing access token', () async {
@@ -78,6 +163,7 @@ void main() {
     expect(result.requiresTwoFactor, isTrue);
     expect(result.tempToken, 'temporary-2fa-token');
     expect(await store.readAccessToken(), isNull);
+    expect(await store.readRefreshToken(), isNull);
   });
 
   test('authenticated API request sends bearer token', () async {
