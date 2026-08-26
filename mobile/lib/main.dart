@@ -4,6 +4,7 @@ import 'core/api_client.dart';
 import 'core/app_scope.dart';
 import 'core/app_services.dart';
 import 'screens.dart';
+import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
 
@@ -44,6 +45,12 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     });
   }
 
+  Widget _authenticatedHome() {
+    return GlobalCallLayer(
+      child: LiveMobileShell(onThemeChanged: _setDarkMode),
+    );
+  }
+
   Future<bool> _restoreSession() async {
     if (!await _services.auth.hasSession()) return false;
     try {
@@ -77,7 +84,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
               return const _BootScreen();
             }
             if (snapshot.data == true) {
-              return LiveMobileShell(onThemeChanged: _setDarkMode);
+              return _authenticatedHome();
             }
             return AuthScreen(
               authRepository: _services.auth,
@@ -85,11 +92,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
                 await _services.realtime.connect();
                 if (!context.mounted) return;
                 Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => LiveMobileShell(
-                      onThemeChanged: _setDarkMode,
-                    ),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => _authenticatedHome()),
                 );
               },
             );
