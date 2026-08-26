@@ -35,19 +35,16 @@ const loadExternalScript = ({ id, src }) =>
 
 function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null }) {
   const googleButtonRef = useRef(null);
-  const telegramButtonRef = useRef(null);
 
   const [socialConfig, setSocialConfig] = useState({
     googleClientId: '',
     facebookAppId: '',
-    telegramBotUsername: '',
   });
   const [loadingProvider, setLoadingProvider] = useState('');
   const [facebookReady, setFacebookReady] = useState(false);
 
   const googleEnabled = !!socialConfig.googleClientId;
   const facebookEnabled = !!socialConfig.facebookAppId;
-  const telegramEnabled = !!socialConfig.telegramBotUsername;
 
   useEffect(() => {
     let mounted = true;
@@ -59,7 +56,6 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
         setSocialConfig({
           googleClientId: data?.payload?.googleClientId || '',
           facebookAppId: data?.payload?.facebookAppId || '',
-          telegramBotUsername: data?.payload?.telegramBotUsername || '',
         });
       } catch (error0) {
         if (!mounted) return;
@@ -71,7 +67,6 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
     };
 
     loadConfig();
-
     return () => {
       mounted = false;
     };
@@ -147,7 +142,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
           size: 'medium',
           text: 'continue_with',
           shape: 'pill',
-          width: 122,
+          width: 150,
         });
       } catch (error0) {
         setRespond({
@@ -158,7 +153,6 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
     };
 
     setupGoogle();
-
     return () => {
       disposed = true;
     };
@@ -186,9 +180,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
           src: 'https://connect.facebook.net/en_US/sdk.js',
         });
 
-        if (!disposed && window.FB) {
-          setFacebookReady(true);
-        }
+        if (!disposed && window.FB) setFacebookReady(true);
       } catch (error0) {
         setRespond({
           success: false,
@@ -198,37 +190,10 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
     };
 
     setupFacebook();
-
     return () => {
       disposed = true;
     };
   }, [facebookEnabled, setRespond, socialConfig.facebookAppId]);
-
-  useEffect(() => {
-    if (!telegramEnabled || !telegramButtonRef.current) return undefined;
-
-    const callbackName = '__syncChatTelegramAuth';
-    window[callbackName] = (user) => {
-      doSocialAuth('telegram', { telegram: user });
-    };
-
-    const script = document.createElement('script');
-    script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.async = true;
-    script.setAttribute('data-telegram-login', socialConfig.telegramBotUsername);
-    script.setAttribute('data-size', 'small');
-    script.setAttribute('data-userpic', 'false');
-    script.setAttribute('data-radius', '10');
-    script.setAttribute('data-request-access', 'write');
-    script.setAttribute('data-onauth', `${callbackName}(user)`);
-
-    telegramButtonRef.current.innerHTML = '';
-    telegramButtonRef.current.appendChild(script);
-
-    return () => {
-      delete window[callbackName];
-    };
-  }, [telegramEnabled, socialConfig.telegramBotUsername]);
 
   return (
     <div className="mt-3 grid gap-3">
@@ -237,11 +202,11 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
       </div>
 
       <div className="flex justify-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <div className="relative shrink-0 min-w-[122px]">
+        <div className="relative shrink-0 min-w-[150px]">
           <button
             type="button"
             disabled={!googleEnabled || loadingProvider === 'google'}
-            className="flex h-[54px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
+            className="flex h-[54px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
           >
             <ri.RiGoogleFill size={18} />
             <span>{loadingProvider === 'google' ? 'Connecting...' : 'Google'}</span>
@@ -256,7 +221,7 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
 
         <button
           type="button"
-          className="shrink-0 min-w-[122px] flex h-[54px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
+          className="shrink-0 min-w-[150px] flex h-[54px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
           onClick={() => {
             if (!window.FB) return;
             window.FB.login(
@@ -278,30 +243,9 @@ function SocialAuth({ setRespond, rememberValue = '', onTwoFactorRequired = null
             !facebookEnabled || !facebookReady || loadingProvider === 'facebook'
           }
         >
-          <i>
-            <ri.RiFacebookCircleFill size={19} />
-          </i>
+          <ri.RiFacebookCircleFill size={19} />
           <span>{loadingProvider === 'facebook' ? 'Connecting...' : 'Facebook'}</span>
         </button>
-
-        <div className="relative shrink-0 min-w-[122px]">
-          <button
-            type="button"
-            disabled={!telegramEnabled || loadingProvider === 'telegram'}
-            className="flex h-[54px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-spill-700 dark:bg-spill-900 dark:text-white/80 dark:hover:bg-spill-800"
-          >
-            <ri.RiTelegramFill size={18} />
-            <span>
-              {loadingProvider === 'telegram' ? 'Connecting...' : 'Telegram'}
-            </span>
-          </button>
-          {telegramEnabled && (
-            <div
-              ref={telegramButtonRef}
-              className="absolute inset-0 grid place-items-center overflow-hidden opacity-0"
-            />
-          )}
-        </div>
       </div>
 
       {loadingProvider && (
