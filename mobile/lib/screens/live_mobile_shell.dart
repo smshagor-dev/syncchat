@@ -22,8 +22,8 @@ import 'live_p1_communities_screen.dart';
 import 'live_p1_rich_attachments_screen.dart';
 import 'live_p1_room_admin_screen.dart';
 import 'live_p1_room_security_screen.dart';
-import 'live_profile_edit_screen.dart';
 import 'live_settings_hub_screen.dart';
+import 'live_starred_messages_screen.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
 
@@ -49,21 +49,19 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_bootstrapPermissionsAndContacts());
+      unawaited(_syncPreviouslyGrantedContacts());
     });
   }
 
-  Future<void> _bootstrapPermissionsAndContacts() async {
+  Future<void> _syncPreviouslyGrantedContacts() async {
     try {
-      final statuses = await AppPermissionManager.requestInitialPermissions();
-      if (!mounted) return;
-      final contactsPermission = AppPermissionManager.permissionFor(SyncPermission.contacts);
-      final contactsStatus = statuses[contactsPermission];
-      if (contactsStatus != null && AppPermissionManager.isUsableStatus(contactsStatus)) {
-        unawaited(_syncAddressBookSilently());
-      }
+      final granted = await AppPermissionManager.hasPermission(
+        SyncPermission.contacts,
+      );
+      if (!mounted || !granted) return;
+      unawaited(_syncAddressBookSilently());
     } on Object catch (failure) {
-      debugPrint('SyncChat permission bootstrap deferred: $failure');
+      debugPrint('SyncChat granted-contact bootstrap deferred: $failure');
     }
   }
 
@@ -79,7 +77,8 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   Future<void> _ensureContactsAndSync() async {
     final granted = await AppPermissionManager.ensureContacts(
       context,
-      reason: 'Contacts permission is needed to read your phone book and find people you know on SyncChat.',
+      reason:
+          'Contacts permission is needed to read your phone book and find people you know on SyncChat.',
     );
     if (!granted || !mounted) return;
     try {
@@ -115,7 +114,9 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   }
 
   Widget pageForTab() => switch (selected) {
-        LiveHomeTab.chats => LiveP0ChatsScreen(onMenu: () => scaffoldKey.currentState?.openDrawer()),
+        LiveHomeTab.chats => LiveP0ChatsScreen(
+            onMenu: () => scaffoldKey.currentState?.openDrawer(),
+          ),
         LiveHomeTab.status => const LiveP0StatusScreen(),
         LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
         LiveHomeTab.channels => const ChannelHubScreen(),
@@ -157,17 +158,26 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'rich-attachments' => const LiveRichAttachmentsHubScreen(),
       'requests' => const LiveMessageRequestsScreen(),
       'chat-tools' => const LiveChatToolsScreen(),
-      'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
-      'lists' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.lists),
+      'archive' => const LiveInboxCollectionScreen(
+          kind: LiveInboxCollectionKind.archive,
+        ),
+      'lists' => const LiveInboxCollectionScreen(
+          kind: LiveInboxCollectionKind.lists,
+        ),
+      'starred' => const LiveStarredMessagesScreen(),
       'media' => const LiveMediaScreen(),
-      'settings' => LiveSettingsHubScreen(onThemeChanged: widget.onThemeChanged, onLogout: widget.onLogout),
-      'profile' => const LiveFullProfileScreen(),
-      'edit-profile' => const LiveProfileEditScreen(),
+      'settings' => LiveSettingsHubScreen(
+          onThemeChanged: widget.onThemeChanged,
+          onLogout: widget.onLogout,
+        ),
+      'profile' || 'edit-profile' => const LiveFullProfileScreen(),
       _ => const LiveP0ContactsScreen(),
     };
 
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => screen),
+    );
   }
 }
 
@@ -193,7 +203,13 @@ class _BottomDock extends StatelessWidget {
         color: context.panel.withValues(alpha: .96),
         borderRadius: BorderRadius.circular(27),
         border: Border.all(color: context.border),
-        boxShadow: const [BoxShadow(color: Color(0x500F172A), blurRadius: 30, offset: Offset(0, 12))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x500F172A),
+            blurRadius: 30,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Row(
         children: items.map((item) {
@@ -203,9 +219,12 @@ class _BottomDock extends StatelessWidget {
               borderRadius: BorderRadius.circular(19),
               onTap: () => onSelect(item.$1),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
                 decoration: BoxDecoration(
-                  color: active ? SyncColors.sky.withValues(alpha: .12) : Colors.transparent,
+                  color: active
+                      ? SyncColors.sky.withValues(alpha: .12)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(19),
                 ),
                 child: Column(
@@ -218,17 +237,31 @@ class _BottomDock extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: active ? SyncColors.sky : context.softPanel,
                         boxShadow: active
-                            ? [BoxShadow(color: SyncColors.sky.withValues(alpha: .38), blurRadius: 12, offset: const Offset(0, 5))]
+                            ? [
+                                BoxShadow(
+                                  color: SyncColors.sky.withValues(alpha: .38),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ]
                             : null,
                       ),
-                      child: Icon(item.$3, size: 17, color: active ? Colors.white : context.muted),
+                      child: Icon(
+                        item.$3,
+                        size: 17,
+                        color: active ? Colors.white : context.muted,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       item.$2,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: active ? SyncColors.sky : context.muted),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: active ? SyncColors.sky : context.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -266,6 +299,7 @@ class _FullPageDrawer extends StatelessWidget {
   static const library = [
     ('archive', 'Archive', Icons.archive_outlined),
     ('lists', 'Lists', Icons.format_list_bulleted_rounded),
+    ('starred', 'Starred messages', Icons.star_outline_rounded),
     ('media', 'Media', Icons.image_outlined),
   ];
 
@@ -280,7 +314,8 @@ class _FullPageDrawer extends StatelessWidget {
     return Drawer(
       width: MediaQuery.sizeOf(context).width,
       shape: const RoundedRectangleBorder(),
-      backgroundColor: context.isDark ? SyncColors.spill900 : SyncColors.slate900,
+      backgroundColor:
+          context.isDark ? SyncColors.spill900 : SyncColors.slate900,
       child: SafeArea(
         child: Column(
           children: [
@@ -291,27 +326,60 @@ class _FullPageDrawer extends StatelessWidget {
                   Container(
                     width: 45,
                     height: 45,
-                    decoration: BoxDecoration(color: SyncColors.sky, borderRadius: BorderRadius.circular(14)),
-                    child: const Icon(Icons.forum_rounded, color: Colors.white, size: 26),
+                    decoration: BoxDecoration(
+                      color: SyncColors.sky,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.forum_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('SyncChat', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
-                        Text('Menu', style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                          'SyncChat',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          'Menu',
+                          style: TextStyle(
+                            color: Colors.white60,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 25)),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white70,
+                      size: 25,
+                    ),
+                  ),
                 ],
               ),
             ),
             const Divider(height: 1, color: Colors.white12),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.fromLTRB(10, 10, 10, MediaQuery.paddingOf(context).bottom + 10),
+                padding: EdgeInsets.fromLTRB(
+                  10,
+                  10,
+                  10,
+                  MediaQuery.paddingOf(context).bottom + 10,
+                ),
                 children: [
                   ...primary.map((item) => row(item)),
                   section('Library'),
@@ -320,9 +388,20 @@ class _FullPageDrawer extends StatelessWidget {
                   ...account.map((item) => row(item)),
                   const SizedBox(height: 8),
                   ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    leading: const Icon(Icons.logout_rounded, color: Color(0xFFFF7B86)),
-                    title: const Text('Log out', style: TextStyle(color: Color(0xFFFF7B86), fontWeight: FontWeight.w900)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    leading: const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFFF7B86),
+                    ),
+                    title: const Text(
+                      'Log out',
+                      style: TextStyle(
+                        color: Color(0xFFFF7B86),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                     onTap: () => onSelected('logout'),
                   ),
                 ],
@@ -335,10 +414,20 @@ class _FullPageDrawer extends StatelessWidget {
   }
 
   Widget row((String, String, IconData) item) => ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         leading: Icon(item.$3, color: Colors.white70),
-        title: Text(item.$2, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+        title: Text(
+          item.$2,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        trailing:
+            const Icon(Icons.chevron_right_rounded, color: Colors.white38),
         onTap: () => onSelected(item.$1),
       );
 
@@ -346,7 +435,12 @@ class _FullPageDrawer extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 18, 14, 5),
         child: Text(
           label.toUpperCase(),
-          style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8),
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: .8,
+          ),
         ),
       );
 }
