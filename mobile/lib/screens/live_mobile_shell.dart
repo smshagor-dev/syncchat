@@ -10,6 +10,7 @@ import 'live_calls_screen.dart';
 import 'live_chat_tools_screen.dart';
 import 'live_collection_screens.dart';
 import 'live_device_contacts_screen.dart';
+import 'live_groups_screen.dart';
 import 'live_home_screens.dart';
 import 'live_message_requests_screen.dart';
 import 'live_profile_edit_screen.dart';
@@ -145,6 +146,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     final Widget screen = switch (target) {
       'contacts' => const LiveContactsScreen(),
       'device-contacts' => const LiveDeviceContactsScreen(),
+      'groups' => const LiveGroupsScreen(),
       'requests' => const LiveMessageRequestsScreen(),
       'chat-tools' => const LiveChatToolsScreen(),
       'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
@@ -237,6 +239,7 @@ class _FullPageDrawer extends StatelessWidget {
     ('status', 'Status', Icons.donut_large_rounded),
     ('contacts', 'Contacts', Icons.group_outlined),
     ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
+    ('groups', 'Groups', Icons.groups_rounded),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
   ];
