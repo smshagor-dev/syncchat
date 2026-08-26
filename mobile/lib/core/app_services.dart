@@ -5,6 +5,7 @@ import 'calling_repository.dart';
 import 'chat_repository.dart';
 import 'e2ee_service.dart';
 import 'feature_repositories.dart';
+import 'group_repository.dart';
 import 'native_call_push.dart';
 import 'realtime_client.dart';
 import 'session_store.dart';
@@ -25,6 +26,7 @@ class AppServices {
     required this.statuses,
     required this.communities,
     required this.channels,
+    required this.groups,
     required this.profile,
     required this.settings,
   });
@@ -74,6 +76,7 @@ class AppServices {
       statuses: StatusRepository(api),
       communities: CommunityRepository(api),
       channels: ChannelRepository(api),
+      groups: GroupRepository(api: api, auth: auth, realtime: realtime),
       profile: ProfileRepository(api),
       settings: SettingsRepository(api),
     );
@@ -93,6 +96,7 @@ class AppServices {
   final StatusRepository statuses;
   final CommunityRepository communities;
   final ChannelRepository channels;
+  final GroupRepository groups;
   final ProfileRepository profile;
   final SettingsRepository settings;
 
