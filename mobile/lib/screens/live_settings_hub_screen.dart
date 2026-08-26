@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
+import 'biometric_settings_screen.dart';
 import 'live_backup_recovery_screen.dart';
 import 'live_channel_insights_screen.dart';
 import 'live_collection_screens.dart';
@@ -72,6 +73,7 @@ class LiveSettingsHubScreen extends StatelessWidget {
             _item(Icons.video_call_outlined, 'Voice & Video', () => _details(context)),
           ]),
           _section(context, 'Security', [
+            _item(Icons.fingerprint_rounded, 'Biometric protection', () => _push(context, const BiometricSettingsScreen())),
             _item(Icons.qr_code_2_rounded, 'Google 2FA setup QR', () => _push(context, const LiveTwoFactorQrScreen())),
             _item(Icons.security_rounded, '2FA / account security', () => _details(context)),
             _item(Icons.lock_person_outlined, 'App lock', () => _details(context)),
