@@ -70,6 +70,10 @@ jobs:
               print(f'{icon}: {width}x{height} PNG')
           PY
 
+      - name: Validate release resource settings
+        working-directory: mobile
+        run: grep -F 'isCrunchPngs = false' android/app/build.gradle.kts
+
       - name: Build online demo APK
         working-directory: mobile
         run: |
