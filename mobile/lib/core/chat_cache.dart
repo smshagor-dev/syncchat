@@ -14,9 +14,11 @@ class ChatCache {
 
   static const _cacheKeyName = 'syncchat.chat_cache_key.v1';
   static const _inboxesKey = 'inboxes';
+  static const _currentUserKey = 'current-user';
   static const _maxRoomMessages = 500;
 
   final FlutterSecureStorage _secureStorage;
+  final Random _random = Random.secure();
   Database? _database;
   Future<Database>? _opening;
   Uint8List? _key;
@@ -25,6 +27,17 @@ class ChatCache {
 
   Future<void> writeInboxes(List<Map<String, dynamic>> inboxes) =>
       _write(_inboxesKey, inboxes);
+
+  Future<Map<String, dynamic>> readCurrentUser() => _readMap(_currentUserKey);
+
+  Future<void> writeCurrentUser(Map<String, dynamic> user) =>
+      _write(_currentUserKey, user);
+
+  Future<Map<String, dynamic>> readRoomState(String roomId) =>
+      _readMap('room-state:$roomId');
+
+  Future<void> writeRoomState(String roomId, Map<String, dynamic> state) =>
+      _write('room-state:$roomId', state);
 
   Future<List<Map<String, dynamic>>> readRoomMessages(String roomId) =>
       _readList('room:$roomId');
@@ -63,20 +76,20 @@ class ChatCache {
     await db.delete('cache_entries');
   }
 
+  Future<Map<String, dynamic>> _readMap(String key) async {
+    try {
+      final value = await _readDecoded(key);
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return const {};
+    } on Object catch (error) {
+      debugPrint('SyncChat cache map read skipped: $error');
+      return const {};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _readList(String key) async {
     try {
-      final db = await _db();
-      final rows = await db.query(
-        'cache_entries',
-        columns: ['payload'],
-        where: 'cache_key = ?',
-        whereArgs: [key],
-        limit: 1,
-      );
-      if (rows.isEmpty) return const [];
-      final encrypted = rows.first['payload']?.toString() ?? '';
-      if (encrypted.isEmpty) return const [];
-      final decoded = jsonDecode(await _decrypt(encrypted));
+      final decoded = await _readDecoded(key);
       if (decoded is! List) return const [];
       return decoded
           .whereType<Map>()
@@ -86,6 +99,21 @@ class ChatCache {
       debugPrint('SyncChat cache read skipped: $error');
       return const [];
     }
+  }
+
+  Future<dynamic> _readDecoded(String key) async {
+    final db = await _db();
+    final rows = await db.query(
+      'cache_entries',
+      columns: ['payload'],
+      where: 'cache_key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final encrypted = rows.first['payload']?.toString() ?? '';
+    if (encrypted.isEmpty) return null;
+    return jsonDecode(await _decrypt(encrypted));
   }
 
   Future<void> _write(String key, Object value) async {
@@ -147,9 +175,8 @@ class ChatCache {
         return key;
       }
     }
-    final random = Random.secure();
     final key = Uint8List.fromList(
-      List<int>.generate(32, (_) => random.nextInt(256)),
+      List<int>.generate(32, (_) => _random.nextInt(256)),
     );
     await _secureStorage.write(key: _cacheKeyName, value: base64Encode(key));
     _key = key;
@@ -158,7 +185,7 @@ class ChatCache {
 
   Future<String> _encrypt(String plaintext) async {
     final nonce = Uint8List.fromList(
-      List<int>.generate(12, (_) => Random.secure().nextInt(256)),
+      List<int>.generate(12, (_) => _random.nextInt(256)),
     );
     final cipher = GCMBlockCipher(AESEngine())
       ..init(
