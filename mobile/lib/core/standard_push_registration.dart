@@ -18,16 +18,26 @@ class StandardPushRegistration {
     required ApiClient api,
     required SyncChatConfig config,
   }) async {
-    if (!Platform.isIOS) return;
+    if (!Platform.isIOS || !config.hasIosFirebaseConfig) return;
+
     if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: config.firebaseIosApiKey,
+          appId: config.firebaseIosAppId,
+          messagingSenderId: config.firebaseMessagingSenderId,
+          projectId: config.firebaseProjectId,
+          iosBundleId: config.firebaseIosBundleId,
+        ),
+      );
     }
 
-    await FirebaseMessaging.instance.requestPermission(
+    final permission = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
+    if (permission.authorizationStatus == AuthorizationStatus.denied) return;
 
     String? apnsToken;
     for (var attempt = 0; attempt < 8; attempt += 1) {

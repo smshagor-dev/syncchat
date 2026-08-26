@@ -6,6 +6,9 @@ const { toAbsoluteUploadUrl } = require('./storage');
 const { DEFAULT_USER_AVATAR_URL } = require('./avatarDefaults');
 
 const PRIVACY_OPTIONS = ['everyone', 'my_contacts', 'nobody'];
+const PRIVACY_ALIASES = {
+  contacts: 'my_contacts',
+};
 
 const DEFAULT_PRIVACY = {
   lastSeenVisibility: 'everyone',
@@ -19,8 +22,10 @@ const DEFAULT_PRIVACY = {
   securityNotificationsEnabled: true,
 };
 
-const normalizePrivacyChoice = (value, fallback = 'everyone') =>
-  PRIVACY_OPTIONS.includes(value) ? value : fallback;
+const normalizePrivacyChoice = (value, fallback = 'everyone') => {
+  const normalized = PRIVACY_ALIASES[value] || value;
+  return PRIVACY_OPTIONS.includes(normalized) ? normalized : fallback;
+};
 
 const normalizePrivacySettingPayload = (raw = {}) => ({
   lastSeenVisibility: normalizePrivacyChoice(

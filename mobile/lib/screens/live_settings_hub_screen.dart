@@ -13,6 +13,7 @@ import 'live_resumable_upload_screen.dart';
 import 'live_settings_parity_screen.dart';
 import 'live_settings_screen.dart';
 import 'live_social_profiles_screen.dart';
+import 'live_starred_messages_screen.dart';
 
 class LiveSettingsHubScreen extends StatelessWidget {
   const LiveSettingsHubScreen({
@@ -45,43 +46,140 @@ class LiveSettingsHubScreen extends StatelessWidget {
             onChanged: onThemeChanged,
           ),
           _section(context, 'Account', [
-            _item(Icons.account_circle_outlined, 'Full profile', () => _push(context, const LiveFullProfileScreen())),
-            _item(Icons.manage_accounts_outlined, 'Account settings', () => _details(context)),
-            _item(Icons.devices_outlined, 'Devices', () => _details(context)),
-            _item(Icons.phonelink_lock_outlined, 'Link a device', () => _push(context, const LiveDeviceLinkSettingsScreen())),
-            _item(Icons.backup_outlined, 'Backup & restore', () => _backupRecovery(context)),
-            _item(Icons.add_to_drive_outlined, 'Google Drive backup', () => _push(context, const LiveGoogleDriveBackupScreen())),
+            _item(
+              Icons.account_circle_outlined,
+              'Full profile',
+              () => _push(context, const LiveFullProfileScreen()),
+            ),
+            _item(
+              Icons.manage_accounts_outlined,
+              'Account settings',
+              () => _details(context, 'security'),
+            ),
+            _item(
+              Icons.devices_outlined,
+              'Devices',
+              () => _push(context, const LiveDeviceSessionsScreen()),
+            ),
+            _item(
+              Icons.phonelink_lock_outlined,
+              'Link a device',
+              () => _push(context, const LiveDeviceLinkSettingsScreen()),
+            ),
+            _item(
+              Icons.backup_outlined,
+              'Backup & restore',
+              () => _backupRecovery(context),
+            ),
+            _item(
+              Icons.add_to_drive_outlined,
+              'Google Drive backup',
+              () => _push(context, const LiveGoogleDriveBackupScreen()),
+            ),
           ]),
           _section(context, 'Profile', [
-            _item(Icons.qr_code_rounded, 'Profile QR & links', () => _push(context, const LiveFullProfileScreen())),
-            _item(Icons.share_outlined, 'Social profiles', () => _push(context, const LiveSocialProfilesScreen())),
+            _item(
+              Icons.qr_code_rounded,
+              'Profile QR & links',
+              () => _push(context, const LiveFullProfileScreen()),
+            ),
+            _item(
+              Icons.share_outlined,
+              'Social profiles',
+              () => _push(context, const LiveSocialProfilesScreen()),
+            ),
           ]),
           _section(context, 'Privacy', [
-            _item(Icons.lock_outline_rounded, 'Privacy', () => _details(context)),
-            _item(Icons.admin_panel_settings_outlined, 'App permissions', () => _permissions(context)),
+            _item(
+              Icons.lock_outline_rounded,
+              'Privacy',
+              () => _details(context, 'privacy'),
+            ),
+            _item(
+              Icons.admin_panel_settings_outlined,
+              'App permissions',
+              () => _permissions(context),
+            ),
           ]),
           _section(context, 'Chat', [
-            _item(Icons.chat_bubble_outline_rounded, 'Chats', () => _details(context)),
-            _item(Icons.perm_media_outlined, 'Media', () => _push(context, const LiveMediaScreen())),
-            _item(Icons.cloud_upload_outlined, 'Large file upload', () => _push(context, const LiveResumableUploadScreen())),
+            _item(
+              Icons.chat_bubble_outline_rounded,
+              'Chats',
+              () => _details(context, 'chats'),
+            ),
+            _item(
+              Icons.star_outline_rounded,
+              'Starred messages',
+              () => _push(context, const LiveStarredMessagesScreen()),
+            ),
+            _item(
+              Icons.perm_media_outlined,
+              'Media',
+              () => _push(context, const LiveMediaScreen()),
+            ),
+            _item(
+              Icons.cloud_upload_outlined,
+              'Large file upload',
+              () => _push(context, const LiveResumableUploadScreen()),
+            ),
           ]),
           _section(context, 'Notification', [
-            _item(Icons.notifications_none_rounded, 'Notifications', () => _details(context)),
-            _item(Icons.notification_important_outlined, 'System notification permission', () => _notifications(context)),
+            _item(
+              Icons.notifications_none_rounded,
+              'Notifications',
+              () => _details(context, 'notifications'),
+            ),
+            _item(
+              Icons.notification_important_outlined,
+              'System notification permission',
+              () => _notifications(context),
+            ),
           ]),
           _section(context, 'Voice & Video', [
-            _item(Icons.video_call_outlined, 'Voice & Video', () => _details(context)),
+            _item(
+              Icons.video_call_outlined,
+              'Voice & Video',
+              () => _details(context, 'voiceVideo'),
+            ),
           ]),
           _section(context, 'Security', [
-            _item(Icons.fingerprint_rounded, 'Biometric protection', () => _push(context, const BiometricSettingsScreen())),
-            _item(Icons.qr_code_2_rounded, 'Google 2FA setup QR', () => _push(context, const LiveTwoFactorQrScreen())),
-            _item(Icons.security_rounded, '2FA / account security', () => _details(context)),
-            _item(Icons.lock_person_outlined, 'App lock', () => _details(context)),
-            _item(Icons.password_rounded, 'Passwords', () => _details(context)),
-            _item(Icons.key_rounded, 'Recovery codes', () => _backupRecovery(context, initialSection: 'recovery')),
+            _item(
+              Icons.fingerprint_rounded,
+              'Biometric protection',
+              () => _push(context, const BiometricSettingsScreen()),
+            ),
+            _item(
+              Icons.qr_code_2_rounded,
+              'Google 2FA setup QR',
+              () => _push(context, const LiveTwoFactorQrScreen()),
+            ),
+            _item(
+              Icons.security_rounded,
+              '2FA / account security',
+              () => _details(context, 'security'),
+            ),
+            _item(
+              Icons.lock_person_outlined,
+              'App lock',
+              () => _details(context, 'security'),
+            ),
+            _item(
+              Icons.password_rounded,
+              'Passwords',
+              () => _details(context, 'security'),
+            ),
+            _item(
+              Icons.key_rounded,
+              'Recovery codes',
+              () => _backupRecovery(context, initialSection: 'recovery'),
+            ),
           ]),
           _section(context, 'Channels', [
-            _item(Icons.insights_outlined, 'Analytics & reviews', () => _push(context, const LiveChannelInsightsScreen())),
+            _item(
+              Icons.insights_outlined,
+              'Analytics & reviews',
+              () => _push(context, const LiveChannelInsightsScreen()),
+            ),
           ]),
           _section(context, 'Help', [
             _item(
@@ -90,12 +188,24 @@ class LiveSettingsHubScreen extends StatelessWidget {
               () => _help(
                 context,
                 'Keyboard shortcuts',
-                'Web keyboard shortcuts are desktop-only. Mobile uses touch, long-press, swipe, and system accessibility actions.',
+                'Web keyboard shortcuts are desktop-only. Mobile uses touch, long-press, swipe, and system accessibility actions for the same workflows.',
               ),
             ),
-            _item(Icons.feedback_outlined, 'Feedback', () => _push(context, const LiveFeedbackScreen())),
-            _item(Icons.policy_outlined, 'Terms & privacy policy', () => _push(context, const LivePolicyScreen())),
-            _item(Icons.description_outlined, 'License', () => _push(context, const LiveLicenseScreen())),
+            _item(
+              Icons.feedback_outlined,
+              'Feedback',
+              () => _push(context, const LiveFeedbackScreen()),
+            ),
+            _item(
+              Icons.policy_outlined,
+              'Terms & privacy policy',
+              () => _push(context, const LivePolicyScreen()),
+            ),
+            _item(
+              Icons.description_outlined,
+              'License',
+              () => _push(context, const LiveLicenseScreen()),
+            ),
           ]),
           const SizedBox(height: 12),
           Card(
@@ -106,10 +216,16 @@ class LiveSettingsHubScreen extends StatelessWidget {
               side: BorderSide(color: context.border),
             ),
             child: ListTile(
-              leading: const Icon(Icons.logout_rounded, color: SyncColors.danger),
+              leading: const Icon(
+                Icons.logout_rounded,
+                color: SyncColors.danger,
+              ),
               title: const Text(
                 'Log out',
-                style: TextStyle(color: SyncColors.danger, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: SyncColors.danger,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               onTap: () => onLogout(context),
             ),
@@ -119,7 +235,12 @@ class LiveSettingsHubScreen extends StatelessWidget {
     );
   }
 
-  Widget _section(BuildContext context, String label, List<Widget> children) => Padding(
+  Widget _section(
+    BuildContext context,
+    String label,
+    List<Widget> children,
+  ) =>
+      Padding(
         padding: const EdgeInsets.only(top: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,7 +274,9 @@ class LiveSettingsHubScreen extends StatelessWidget {
   List<Widget> _withDividers(BuildContext context, List<Widget> children) {
     final result = <Widget>[];
     for (var i = 0; i < children.length; i++) {
-      if (i > 0) result.add(Divider(height: 1, indent: 56, color: context.border));
+      if (i > 0) {
+        result.add(Divider(height: 1, indent: 56, color: context.border));
+      }
       result.add(children[i]);
     }
     return result;
@@ -175,7 +298,8 @@ class LiveSettingsHubScreen extends StatelessWidget {
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
-  }) => Card(
+  }) =>
+      Card(
         color: context.panel,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -194,18 +318,25 @@ class LiveSettingsHubScreen extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
-  void _details(BuildContext context) {
+  void _details(BuildContext context, String section) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => LiveSettingsScreen(onThemeChanged: onThemeChanged),
+        builder: (_) => LiveSettingsScreen(
+          onThemeChanged: onThemeChanged,
+          initialSection: section,
+        ),
       ),
     );
   }
 
-  void _backupRecovery(BuildContext context, {String initialSection = 'backup'}) {
+  void _backupRecovery(
+    BuildContext context, {
+    String initialSection = 'backup',
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => LiveBackupRecoveryScreen(initialSection: initialSection),
+        builder: (_) =>
+            LiveBackupRecoveryScreen(initialSection: initialSection),
       ),
     );
   }
@@ -215,14 +346,21 @@ class LiveSettingsHubScreen extends StatelessWidget {
     try {
       final result = await AppPermissionManager.requestAllFromSettings(context);
       if (!context.mounted) return;
-      final granted = result.values.where(AppPermissionManager.isUsableStatus).length;
+      final granted =
+          result.values.where(AppPermissionManager.isUsableStatus).length;
       messenger.showSnackBar(
-        SnackBar(content: Text('$granted of ${result.length} app permissions are enabled.')),
+        SnackBar(
+          content: Text('$granted of ${result.length} app permissions are enabled.'),
+        ),
       );
     } on Object catch (failure) {
       if (!context.mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text(failure.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          content: Text(
+            failure.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
       );
     }
   }
@@ -231,7 +369,8 @@ class LiveSettingsHubScreen extends StatelessWidget {
     final allowed = await AppPermissionManager.ensure(
       context,
       SyncPermission.notifications,
-      reason: 'Notification permission is needed for messages and incoming-call alerts.',
+      reason:
+          'Notification permission is needed for messages and incoming-call alerts.',
     );
     if (!allowed || !context.mounted) return;
     await DeviceIntegrationService.requestNotificationPermission();
@@ -252,7 +391,13 @@ class LiveSettingsHubScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
               const SizedBox(height: 10),
               Text(body, style: TextStyle(color: context.muted, height: 1.45)),
             ],

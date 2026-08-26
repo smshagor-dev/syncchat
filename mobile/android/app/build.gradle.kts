@@ -4,6 +4,17 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val releaseKeystorePath = System.getenv("SYNCCHAT_ANDROID_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("SYNCCHAT_ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("SYNCCHAT_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("SYNCCHAT_ANDROID_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.syncchat.live"
     compileSdk = flutter.compileSdkVersion
@@ -23,11 +34,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
-            // AAPT2 9.1 can crash while crunching otherwise-valid launcher PNGs.
-            // Keep the supplied SyncChat icon bytes untouched for release builds.
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // Never sign production artifacts with the debug key. Local/CI
+            // release builds without the release secrets stay unsigned instead.
             isCrunchPngs = false
         }
     }

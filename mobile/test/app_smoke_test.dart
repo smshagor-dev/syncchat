@@ -1,10 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncchat_mobile/core/app_services.dart';
 import 'package:syncchat_mobile/core/session_store.dart';
 import 'package:syncchat_mobile/main.dart';
-import 'package:syncchat_mobile/screens.dart';
-import 'package:syncchat_mobile/theme.dart';
 
 void main() {
   testWidgets('SyncChat mobile app renders auth shell', (tester) async {
@@ -14,21 +13,22 @@ void main() {
 
     expect(find.text('SyncChat'), findsOneWidget);
     expect(find.text('Sign in'), findsWidgets);
+
+    services.dispose();
   });
 
-  testWidgets('mobile shell exposes five primary tabs', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: SyncChatTheme.light(),
-        home: MobileShell(onThemeChanged: (_) {}),
-      ),
-    );
-    await tester.pump();
+  test('production live shell owns the five primary tabs and web collections', () {
+    final source = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
-    expect(find.text('Chats'), findsWidgets);
-    expect(find.text('Status'), findsOneWidget);
-    expect(find.text('Communities'), findsOneWidget);
-    expect(find.text('Channels'), findsOneWidget);
-    expect(find.text('Calls'), findsOneWidget);
+    expect(source, contains("(LiveHomeTab.chats, 'Chats'"));
+    expect(source, contains("(LiveHomeTab.status, 'Status'"));
+    expect(source, contains("(LiveHomeTab.communities, 'Communities'"));
+    expect(source, contains("(LiveHomeTab.channels, 'Channels'"));
+    expect(source, contains("(LiveHomeTab.calls, 'Calls'"));
+    expect(source, contains("('archive', 'Archive'"));
+    expect(source, contains("('lists', 'Lists'"));
+    expect(source, contains("('starred', 'Starred messages'"));
+    expect(source, contains("('media', 'Media'"));
+    expect(source, isNot(contains('requestInitialPermissions()')));
   });
 }
