@@ -14,6 +14,9 @@ import 'live_device_contacts_screen.dart';
 import 'live_groups_screen.dart';
 import 'live_home_screens.dart';
 import 'live_message_requests_screen.dart';
+import 'live_p0_chats_screen.dart';
+import 'live_p0_contacts_screen.dart';
+import 'live_p0_status_screen.dart';
 import 'live_profile_edit_screen.dart';
 import 'live_settings_hub_screen.dart';
 
@@ -112,8 +115,10 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   }
 
   Widget pageForTab() => switch (selected) {
-    LiveHomeTab.chats => LiveChatsScreen(onMenu: () => scaffoldKey.currentState?.openDrawer()),
-    LiveHomeTab.status => const LiveStatusScreen(),
+    LiveHomeTab.chats => LiveP0ChatsScreen(
+        onMenu: () => scaffoldKey.currentState?.openDrawer(),
+      ),
+    LiveHomeTab.status => const LiveP0StatusScreen(),
     LiveHomeTab.communities => const LiveCommunitiesScreen(),
     LiveHomeTab.channels => const ChannelHubScreen(),
     LiveHomeTab.calls => const LiveCallsScreen(),
@@ -145,7 +150,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     }
 
     final Widget screen = switch (target) {
-      'contacts' => const LiveContactsScreen(),
+      'contacts' => const LiveP0ContactsScreen(),
       'device-contacts' => const LiveDeviceContactsScreen(),
       'groups' => const LiveGroupsScreen(),
       'requests' => const LiveMessageRequestsScreen(),
@@ -153,10 +158,13 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
       'lists' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.lists),
       'media' => const LiveMediaScreen(),
-      'settings' => LiveSettingsHubScreen(onThemeChanged: widget.onThemeChanged, onLogout: widget.onLogout),
+      'settings' => LiveSettingsHubScreen(
+          onThemeChanged: widget.onThemeChanged,
+          onLogout: widget.onLogout,
+        ),
       'profile' => const LiveProfileScreen(),
       'edit-profile' => const LiveProfileEditScreen(),
-      _ => const LiveContactsScreen(),
+      _ => const LiveP0ContactsScreen(),
     };
 
     if (!mounted) return;
