@@ -10,6 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   audioplayers: ^6.8.1
   connectivity_plus: ^7.0.0
   file_picker: ^10.3.10
@@ -38,13 +40,6 @@ dependencies:
 
 dev_dependencies:
   flutter_test:
-    sdk: flutter
-  integration_test:
-    sdk: flutter
-
-# integration_test is test-only and must not be registered in production APKs.
-dependency_overrides:
-  integration_test:
     sdk: flutter
 
 flutter:
