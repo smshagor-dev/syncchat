@@ -1,0 +1,58 @@
+name: Vercel UUID Runtime Fix
+
+on:
+  push:
+    branches: [vercel-uuid-runtime-fix]
+    paths:
+      - '.github/scripts/fix_vercel_uuid_runtime.py'
+      - '.github/workflows/vercel-uuid-runtime-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vercel-uuid-runtime-fix
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Apply CommonJS UUID fix
+        run: python3 .github/scripts/fix_vercel_uuid_runtime.py
+      - name: Assert UUID ESM import is gone
+        run: |
+          if grep -R "require(['\"]uuid['\"])" backend/server --include='*.js'; then
+            echo 'CommonJS uuid import remains'
+            exit 1
+          fi
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+      - name: Test backend
+        working-directory: backend
+        run: npm test
+      - name: Smoke native UUID runtime
+        working-directory: backend
+        run: node -e "const { randomUUID } = require('crypto'); const id=randomUUID(); if(!/^[0-9a-f-]{36}$/.test(id)) process.exit(1); console.log(id)"
+      - name: Remove one-time gate
+        run: |
+          rm -f .github/scripts/fix_vercel_uuid_runtime.py
+          rm -f .github/workflows/vercel-uuid-runtime-fix.yml
+      - name: Commit validated runtime fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(vercel): replace CommonJS uuid imports with crypto.randomUUID"
+          git push origin HEAD:vercel-uuid-runtime-fix
