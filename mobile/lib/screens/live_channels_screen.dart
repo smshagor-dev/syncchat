@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/app_scope.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'live_room_profile_screen.dart';
 
 class ChannelHubScreen extends StatefulWidget {
   const ChannelHubScreen({super.key});
@@ -26,12 +27,11 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        loading = true;
-        error = null;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final rows = await context.services.channels.list();
       if (!mounted) return;
@@ -48,43 +48,29 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     }
   }
 
-  List<Map<String, dynamic>> get visibleChannels {
-    return channels.where((channel) {
-      final accessType = _accessType(channel);
-      final subscribed = _subscribed(channel);
-      return switch (filter) {
-        'public' => accessType == 'public',
-        'private' => accessType == 'private',
-        'subscribed' => subscribed,
-        _ => true,
-      };
-    }).toList(growable: false);
-  }
+  List<Map<String, dynamic>> get visibleChannels => channels.where((channel) {
+        final access = _accessType(channel);
+        final subscribed = _subscribed(channel);
+        return switch (filter) {
+          'public' => access == 'public',
+          'private' => access == 'private',
+          'subscribed' => subscribed,
+          _ => true,
+        };
+      }).toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
     return SyncStandardPage(
       title: 'Channels',
       actions: [
-        IconButton(
-          tooltip: 'Join by invite',
-          onPressed: _joinByInvite,
-          icon: const Icon(Icons.link_rounded),
-        ),
-        IconButton(
-          tooltip: 'Create channel',
-          onPressed: _createChannel,
-          icon: const Icon(Icons.add_rounded),
-        ),
-        IconButton(
-          tooltip: 'Refresh',
-          onPressed: _load,
-          icon: const Icon(Icons.refresh_rounded),
-        ),
+        IconButton(tooltip: 'Join by invite', onPressed: _joinByInvite, icon: const Icon(Icons.link_rounded)),
+        IconButton(tooltip: 'Create channel', onPressed: _createChannel, icon: const Icon(Icons.add_rounded)),
+        IconButton(tooltip: 'Refresh', onPressed: loading ? null : _load, icon: const Icon(Icons.refresh_rounded)),
       ],
       child: Column(
         children: [
-          _filterBar(),
+          _filters(),
           Divider(height: 1, color: context.border),
           Expanded(child: _body()),
         ],
@@ -92,13 +78,8 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     );
   }
 
-  Widget _filterBar() {
-    const entries = [
-      ('all', 'All'),
-      ('public', 'Public'),
-      ('private', 'Private'),
-      ('subscribed', 'Subscribed'),
-    ];
+  Widget _filters() {
+    const values = [('all', 'All'), ('public', 'Public'), ('private', 'Private'), ('subscribed', 'Subscribed')];
     return Container(
       width: double.infinity,
       color: context.panel,
@@ -106,88 +87,52 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: entries.map((entry) {
-            final selected = filter == entry.$1;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(entry.$2),
-                selected: selected,
-                showCheckmark: false,
-                onSelected: (_) => setState(() => filter = entry.$1),
-              ),
-            );
-          }).toList(growable: false),
+          children: values.map((entry) => Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(entry.$2),
+              selected: filter == entry.$1,
+              showCheckmark: false,
+              onSelected: (_) => setState(() => filter = entry.$1),
+            ),
+          )).toList(growable: false),
         ),
       ),
     );
   }
 
   Widget _body() {
-    if (loading && channels.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (error != null && channels.isEmpty) {
-      return _ChannelErrorState(message: error!, onRetry: _load);
-    }
-
+    if (loading && channels.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (error != null && channels.isEmpty) return _ChannelError(message: error!, onRetry: _load);
     final items = visibleChannels;
-    if (items.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(top: 120),
-          children: [
-            const Icon(Icons.podcasts_rounded, size: 54, color: SyncColors.sky),
-            const SizedBox(height: 12),
-            Center(
-              child: Text(
-                filter == 'all'
-                    ? 'No channels yet.'
-                    : 'No ${filter == 'subscribed' ? 'subscribed' : filter} channels.',
-              ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: FilledButton.icon(
-                onPressed: _createChannel,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Create channel'),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          8,
-          6,
-          8,
-          116 + MediaQuery.paddingOf(context).bottom,
-        ),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => Divider(
-          height: 1,
-          indent: 72,
-          color: context.border.withValues(alpha: .7),
-        ),
-        itemBuilder: (context, index) => _channelTile(items[index]),
-      ),
+      child: items.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 120),
+              children: [
+                const Icon(Icons.podcasts_rounded, size: 54, color: SyncColors.sky),
+                const SizedBox(height: 12),
+                Center(child: Text(filter == 'all' ? 'No channels yet.' : 'No $filter channels.')),
+                const SizedBox(height: 16),
+                Center(child: FilledButton.icon(onPressed: _createChannel, icon: const Icon(Icons.add_rounded), label: const Text('Create channel'))),
+              ],
+            )
+          : ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(8, 6, 8, 116 + MediaQuery.paddingOf(context).bottom),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => Divider(height: 1, indent: 72, color: context.border.withValues(alpha: .7)),
+              itemBuilder: (_, index) => _tile(items[index]),
+            ),
     );
   }
 
-  Widget _channelTile(Map<String, dynamic> channel) {
+  Widget _tile(Map<String, dynamic> channel) {
     final id = channel['_id']?.toString() ?? '';
-    final name = channel['name']?.toString().trim().isNotEmpty == true
-        ? channel['name'].toString().trim()
-        : 'Channel';
-    final description = _description(channel);
+    final name = channel['name']?.toString().trim().isNotEmpty == true ? channel['name'].toString().trim() : 'Channel';
+    final description = (channel['desc'] ?? channel['description'] ?? '').toString().trim();
     final isPrivate = _accessType(channel) == 'private';
     final subscribed = _subscribed(channel);
     final total = _subscriberCount(channel);
@@ -210,41 +155,20 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
                 color: isPrivate ? SyncColors.slate700 : SyncColors.sky,
                 border: Border.all(color: context.panel, width: 2),
               ),
-              child: Icon(
-                isPrivate ? Icons.lock_rounded : Icons.public_rounded,
-                color: Colors.white,
-                size: 11,
-              ),
+              child: Icon(isPrivate ? Icons.lock_rounded : Icons.public_rounded, color: Colors.white, size: 11),
             ),
           ),
         ],
       ),
       title: Row(
         children: [
-          Expanded(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ),
+          Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900))),
           if (subscribed)
             Container(
               margin: const EdgeInsets.only(left: 6),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: SyncColors.success.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Subscribed',
-                style: TextStyle(
-                  color: SyncColors.success,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
+              decoration: BoxDecoration(color: SyncColors.success.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
+              child: const Text('Subscribed', style: TextStyle(color: SyncColors.success, fontSize: 10, fontWeight: FontWeight.w900)),
             ),
         ],
       ),
@@ -253,96 +177,67 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (description.isNotEmpty)
-              Text(
-                description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            if (description.isNotEmpty) Text(description, maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Text(
-              '${isPrivate ? 'Private' : 'Public'} · $total subscriber${total == 1 ? '' : 's'}',
-              style: TextStyle(
-                color: context.muted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            Text('${isPrivate ? 'Private' : 'Public'} · $total subscriber${total == 1 ? '' : 's'}', style: TextStyle(color: context.muted, fontSize: 11, fontWeight: FontWeight.w700)),
           ],
         ),
       ),
       trailing: busy
-          ? const SizedBox(
-              width: 30,
-              height: 30,
-              child: Padding(
-                padding: EdgeInsets.all(5),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
+          ? const SizedBox(width: 30, height: 30, child: Padding(padding: EdgeInsets.all(5), child: CircularProgressIndicator(strokeWidth: 2)))
           : subscribed
-              ? PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'leave') _leave(channel);
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'leave',
-                      child: Row(
-                        children: [
-                          Icon(Icons.logout_rounded, size: 19),
-                          SizedBox(width: 9),
-                          Text('Leave channel'),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
+              ? IconButton(tooltip: 'Channel info', onPressed: () => _openProfile(channel), icon: const Icon(Icons.info_outline_rounded))
               : SizedBox(
                   height: 36,
-                  child: FilledButton(
-                    onPressed: () => _subscribe(channel),
-                    child: Text(isPrivate ? 'Join' : 'Subscribe'),
-                  ),
+                  child: FilledButton(onPressed: () => _subscribe(channel), child: Text(isPrivate ? 'Join' : 'Subscribe')),
                 ),
-      onTap: subscribed ? () => _showDetails(channel) : () => _subscribe(channel),
+      onTap: subscribed ? () => _openProfile(channel) : () => _subscribe(channel),
+      onLongPress: subscribed ? () => _leave(channel) : null,
     );
+  }
+
+  Future<void> _openProfile(Map<String, dynamic> channel) async {
+    final roomId = channel['roomId']?.toString() ?? '';
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => LiveChannelProfileScreen(
+          inbox: {
+            'roomId': roomId,
+            'roomType': 'group',
+            'channel': channel,
+            'ownersId': channel['participantsId'] is List ? channel['participantsId'] : const <String>[],
+          },
+          name: channel['name']?.toString() ?? 'Channel',
+        ),
+      ),
+    );
+    if (changed == true && mounted) await _load();
   }
 
   Future<void> _createChannel() async {
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(builder: (_) => const ChannelCreateScreen()),
     );
-    if (created == true && mounted) {
-      await _load();
-    }
+    if (created == true && mounted) await _load();
   }
 
   Future<void> _subscribe(Map<String, dynamic> channel) async {
     final id = channel['_id']?.toString() ?? '';
     if (id.isEmpty || busyChannelId != null) return;
-
     String password = '';
     if (_accessType(channel) == 'private') {
-      final value = await _passwordDialog(
-        title: 'Join private channel',
-        body: 'Enter the channel password to join.',
-      );
+      final value = await _passwordDialog('Join private channel');
       if (value == null) return;
       password = value;
     }
-
     setState(() => busyChannelId = id);
     try {
       await context.services.channels.subscribe(id, password: password);
       if (!mounted) return;
-      _message(_accessType(channel) == 'private'
-          ? 'Joined channel successfully.'
-          : 'Subscribed successfully.');
+      _message('Subscribed successfully.');
       await _load();
     } on Object catch (failure) {
-      if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      if (mounted) _message(_errorText(failure));
     } finally {
       if (mounted) setState(() => busyChannelId = null);
     }
@@ -356,30 +251,22 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Leave channel?'),
-        content: Text('You will stop receiving updates from $name.'),
+        content: Text('Stop receiving updates from $name?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Leave'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Leave')),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
-
     setState(() => busyChannelId = id);
     try {
       await context.services.channels.exit(id);
       if (!mounted) return;
-      _message('Left channel successfully.');
+      _message('Left channel.');
       await _load();
     } on Object catch (failure) {
-      if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      if (mounted) _message(_errorText(failure));
     } finally {
       if (mounted) setState(() => busyChannelId = null);
     }
@@ -389,7 +276,7 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     final link = TextEditingController();
     final password = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    final result = await showDialog<(String, String)?>(
+    final result = await showDialog<(String, String)>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Join channel'),
@@ -401,37 +288,20 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
               TextFormField(
                 controller: link,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Invite link or token',
-                  prefixIcon: Icon(Icons.link_rounded),
-                ),
-                validator: (value) =>
-                    _inviteToken(value ?? '').isEmpty ? 'Invite link is required.' : null,
+                decoration: const InputDecoration(labelText: 'Invite link or token', prefixIcon: Icon(Icons.link_rounded)),
+                validator: (value) => _inviteToken(value ?? '').isEmpty ? 'Invite link is required.' : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: password,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password (private channel)',
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
-                ),
-              ),
+              TextFormField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password (if private)', prefixIcon: Icon(Icons.lock_outline_rounded))),
             ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
               if (formKey.currentState?.validate() != true) return;
-              Navigator.pop(
-                dialogContext,
-                (_inviteToken(link.text), password.text),
-              );
+              Navigator.pop(dialogContext, (_inviteToken(link.text), password.text));
             },
             child: const Text('Join'),
           ),
@@ -441,59 +311,35 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     link.dispose();
     password.dispose();
     if (result == null || !mounted) return;
-
     try {
-      await context.services.channels.joinByLink(
-        result.$1,
-        password: result.$2,
-      );
+      await context.services.channels.joinByLink(result.$1, password: result.$2);
       if (!mounted) return;
       _message('Joined channel successfully.');
       await _load();
     } on Object catch (failure) {
-      if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      if (mounted) _message(_errorText(failure));
     }
   }
 
-  Future<String?> _passwordDialog({
-    required String title,
-    required String body,
-  }) async {
+  Future<String?> _passwordDialog(String title) async {
     final controller = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    final value = await showDialog<String?>(
+    final value = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(title),
         content: Form(
           key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(body),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: controller,
-                autofocus: true,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
-                ),
-                validator: (text) => (text ?? '').length < 4
-                    ? 'Password must be at least 4 characters.'
-                    : null,
-              ),
-            ],
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline_rounded)),
+            validator: (value) => (value ?? '').length < 4 ? 'Password must be at least 4 characters.' : null,
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
               if (formKey.currentState?.validate() != true) return;
@@ -508,75 +354,9 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     return value;
   }
 
-  Future<void> _showDetails(Map<String, dynamic> channel) async {
-    final name = channel['name']?.toString() ?? 'Channel';
-    final description = _description(channel);
-    final isPrivate = _accessType(channel) == 'private';
-    final total = _subscriberCount(channel);
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  SyncAvatar(name: name, radius: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          '${isPrivate ? 'Private' : 'Public'} · $total subscriber${total == 1 ? '' : 's'}',
-                          style: TextStyle(color: context.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (description.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(description),
-              ],
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    _leave(channel);
-                  },
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text('Leave channel'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _message(String text, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), behavior: SnackBarBehavior.floating));
   }
 }
 
@@ -612,11 +392,7 @@ class _ChannelCreateScreenState extends State<ChannelCreateScreen> {
         TextButton(
           onPressed: saving ? null : _submit,
           child: saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Create'),
         ),
       ],
@@ -628,55 +404,28 @@ class _ChannelCreateScreenState extends State<ChannelCreateScreen> {
             SyncFeatureCard(
               icon: Icons.podcasts_rounded,
               title: 'New channel',
-              body:
-                  'Create a public channel anyone can subscribe to, or a private channel protected by a password.',
+              body: 'Create a public channel anyone can subscribe to, or a private channel protected by a password.',
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: name,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Channel name',
-                prefixIcon: Icon(Icons.podcasts_rounded),
-              ),
-              validator: (value) => (value ?? '').trim().isEmpty
-                  ? 'Channel name is required.'
-                  : null,
+              maxLength: 64,
+              decoration: const InputDecoration(labelText: 'Channel name', prefixIcon: Icon(Icons.podcasts_rounded)),
+              validator: (value) => (value ?? '').trim().isEmpty ? 'Channel name is required.' : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             TextFormField(
               controller: description,
               maxLength: 300,
               minLines: 3,
               maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                alignLabelWithHint: true,
-                prefixIcon: Icon(Icons.notes_rounded),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Privacy',
-              style: TextStyle(
-                color: context.muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
+              decoration: const InputDecoration(labelText: 'Description', alignLabelWithHint: true, prefixIcon: Icon(Icons.notes_rounded)),
             ),
             const SizedBox(height: 8),
             SegmentedButton<String>(
               segments: const [
-                ButtonSegment(
-                  value: 'public',
-                  icon: Icon(Icons.public_rounded),
-                  label: Text('Public'),
-                ),
-                ButtonSegment(
-                  value: 'private',
-                  icon: Icon(Icons.lock_rounded),
-                  label: Text('Private'),
-                ),
+                ButtonSegment(value: 'public', icon: Icon(Icons.public_rounded), label: Text('Public')),
+                ButtonSegment(value: 'private', icon: Icon(Icons.lock_rounded), label: Text('Private')),
               ],
               selected: {accessType},
               onSelectionChanged: saving
@@ -685,13 +434,6 @@ class _ChannelCreateScreenState extends State<ChannelCreateScreen> {
                         accessType = value.first;
                         if (accessType == 'public') password.clear();
                       }),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              accessType == 'public'
-                  ? 'Public channels are discoverable and can be subscribed to directly.'
-                  : 'Private channels require the password before a user can join.',
-              style: TextStyle(color: context.muted, height: 1.4),
             ),
             if (accessType == 'private') ...[
               const SizedBox(height: 14),
@@ -702,28 +444,15 @@ class _ChannelCreateScreenState extends State<ChannelCreateScreen> {
                   labelText: 'Channel password',
                   prefixIcon: const Icon(Icons.lock_outline_rounded),
                   suffixIcon: IconButton(
-                    onPressed: () => setState(
-                      () => obscurePassword = !obscurePassword,
-                    ),
-                    icon: Icon(
-                      obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
+                    onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                    icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                   ),
                 ),
-                validator: (value) => accessType == 'private' &&
-                        (value ?? '').length < 4
-                    ? 'Password must be at least 4 characters.'
-                    : null,
+                validator: (value) => accessType == 'private' && (value ?? '').length < 4 ? 'Password must be at least 4 characters.' : null,
               ),
             ],
             const SizedBox(height: 22),
-            FilledButton.icon(
-              onPressed: saving ? null : _submit,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Create channel'),
-            ),
+            FilledButton.icon(onPressed: saving ? null : _submit, icon: const Icon(Icons.add_rounded), label: const Text('Create channel')),
           ],
         ),
       ),
@@ -741,60 +470,45 @@ class _ChannelCreateScreenState extends State<ChannelCreateScreen> {
         password: password.text,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Channel created successfully.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Channel created successfully.')));
       Navigator.pop(context, true);
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorText(failure))),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
     } finally {
       if (mounted) setState(() => saving = false);
     }
   }
 }
 
-class _ChannelErrorState extends StatelessWidget {
-  const _ChannelErrorState({required this.message, required this.onRetry});
-
+class _ChannelError extends StatelessWidget {
+  const _ChannelError({required this.message, required this.onRetry});
   final String message;
   final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.cloud_off_outlined,
-              size: 46,
-              color: SyncColors.sky,
-            ),
-            const SizedBox(height: 10),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
-            ),
-          ],
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, size: 46, color: SyncColors.sky),
+              const SizedBox(height: 10),
+              Text(message, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
 
-String _accessType(Map<String, dynamic> channel) =>
-    channel['accessType']?.toString() == 'private' ? 'private' : 'public';
+String _accessType(Map<String, dynamic> channel) => channel['accessType']?.toString() == 'private' ? 'private' : 'public';
 
 bool _subscribed(Map<String, dynamic> channel) {
   if (channel['subscribed'] == true) return true;
+  if (channel['isSubscribed'] == true) return true;
   return false;
 }
 
@@ -805,9 +519,6 @@ int _subscriberCount(Map<String, dynamic> channel) {
   return participants is List ? participants.length : 0;
 }
 
-String _description(Map<String, dynamic> channel) =>
-    (channel['desc'] ?? channel['description'] ?? '').toString().trim();
-
 String _inviteToken(String raw) {
   var value = raw.trim();
   if (value.isEmpty) return '';
@@ -815,10 +526,10 @@ String _inviteToken(String raw) {
   final markerIndex = value.indexOf(marker);
   if (markerIndex >= 0) value = value.substring(markerIndex + marker.length);
   if (value.startsWith('+')) value = value.substring(1);
-  final slashIndex = value.indexOf('/');
-  if (slashIndex >= 0) value = value.substring(0, slashIndex);
-  final queryIndex = value.indexOf('?');
-  if (queryIndex >= 0) value = value.substring(0, queryIndex);
+  final slash = value.indexOf('/');
+  if (slash >= 0) value = value.substring(0, slash);
+  final query = value.indexOf('?');
+  if (query >= 0) value = value.substring(0, query);
   return value.trim();
 }
 
