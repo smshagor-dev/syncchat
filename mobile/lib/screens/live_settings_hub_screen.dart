@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_scope.dart';
 import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
+import '../core/standard_push_registration.dart';
 import '../theme.dart';
 import 'biometric_settings_screen.dart';
 import 'live_backup_recovery_screen.dart';
@@ -373,10 +375,20 @@ class LiveSettingsHubScreen extends StatelessWidget {
           'Notification permission is needed for messages and incoming-call alerts.',
     );
     if (!allowed || !context.mounted) return;
+
     await DeviceIntegrationService.requestNotificationPermission();
     if (!context.mounted) return;
+
+    await context.services.nativeCallPush.requestAndroidCallPermissions();
+    await StandardPushRegistration.registerIOS(
+      api: context.services.api,
+      config: context.services.config,
+    );
+    await DeviceIntegrationService.startForegroundMessaging();
+    if (!context.mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Notification permission updated.')),
+      const SnackBar(content: Text('Notification and incoming-call alerts are enabled.')),
     );
   }
 
