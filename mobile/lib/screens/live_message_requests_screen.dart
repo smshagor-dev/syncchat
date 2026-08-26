@@ -96,7 +96,7 @@ class _LiveMessageRequestsScreenState extends State<LiveMessageRequestsScreen> {
 
   Widget body() {
     if (loading) {
-      return const ListView(children: [SizedBox(height: 240), Center(child: CircularProgressIndicator())]);
+      return ListView(children: const [SizedBox(height: 240), Center(child: CircularProgressIndicator())]);
     }
     if (error != null) {
       return ListView(

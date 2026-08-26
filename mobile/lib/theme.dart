@@ -116,6 +116,7 @@ abstract final class SyncChatTheme {
 
 extension SyncContext on BuildContext {
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
+  Color get page => isDark ? SyncColors.spill950 : SyncColors.slate50;
   Color get panel => isDark ? SyncColors.spill900 : Colors.white;
   Color get softPanel => isDark ? SyncColors.spill800 : SyncColors.slate100;
   Color get border => isDark ? SyncColors.spill700 : SyncColors.slate200;
