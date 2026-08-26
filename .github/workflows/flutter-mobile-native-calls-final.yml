@@ -1,0 +1,134 @@
+name: Flutter Mobile Native Calls Final
+
+on:
+  push:
+    branches: [flutter-mobile-parity]
+    paths:
+      - '.github/scripts/finalize_flutter_native_calls.py'
+      - '.github/workflows/flutter-mobile-native-calls-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  android-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: flutter-mobile-parity
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply final native calling integration
+        run: python3 .github/scripts/finalize_flutter_native_calls.py
+      - name: Format
+        run: |
+          dart format \
+            mobile/lib/core/app_config.dart \
+            mobile/lib/core/app_services.dart \
+            mobile/lib/core/native_call_push.dart \
+            mobile/lib/main.dart \
+            mobile/lib/screens/global_call_layer.dart \
+            mobile/lib/screens/live_call_screen.dart
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+      - name: Test
+        working-directory: mobile
+        run: flutter test
+      - name: Build Android debug APK
+        working-directory: mobile
+        run: flutter build apk --debug
+
+  ios-validate:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: flutter-mobile-parity
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply final native calling integration
+        run: python3 .github/scripts/finalize_flutter_native_calls.py
+      - name: Format
+        run: |
+          dart format \
+            mobile/lib/core/app_config.dart \
+            mobile/lib/core/app_services.dart \
+            mobile/lib/core/native_call_push.dart \
+            mobile/lib/main.dart \
+            mobile/lib/screens/global_call_layer.dart \
+            mobile/lib/screens/live_call_screen.dart
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+      - name: Build iOS without signing
+        working-directory: mobile
+        run: flutter build ios --debug --no-codesign
+
+  finalize:
+    needs: [android-validate, ios-validate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: flutter-mobile-parity
+          fetch-depth: 0
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply validated native calling integration
+        run: python3 .github/scripts/finalize_flutter_native_calls.py
+      - name: Remove one-time integration files
+        run: |
+          rm -f .github/scripts/finalize_flutter_native_calls.py
+          rm -f .github/workflows/flutter-mobile-native-calls-final.yml
+      - name: Format
+        run: |
+          dart format \
+            mobile/lib/core/app_config.dart \
+            mobile/lib/core/app_services.dart \
+            mobile/lib/core/native_call_push.dart \
+            mobile/lib/main.dart \
+            mobile/lib/screens/global_call_layer.dart \
+            mobile/lib/screens/live_call_screen.dart
+      - name: Refresh lockfile
+        working-directory: mobile
+        run: flutter pub get
+      - name: Remove generated Flutter state from Git
+        run: |
+          git rm -r --cached --ignore-unmatch mobile/.dart_tool
+          git rm --cached --ignore-unmatch mobile/.flutter-plugins-dependencies
+      - name: Commit validated final native calling work
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat(flutter): finish native call wake and moderation"
+          git push origin HEAD:flutter-mobile-parity
