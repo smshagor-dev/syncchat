@@ -117,7 +117,10 @@ class ChannelRepository {
 
     final normalized = accessType == 'private' ? 'private' : 'public';
     if (name.trim().isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Channel name is required.');
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Channel name is required.',
+      );
     }
     if (normalized == 'private' && password.length < 4) {
       throw const ApiException(
@@ -138,6 +141,47 @@ class ChannelRepository {
       if (permissions != null) 'permissions': permissions,
     });
     return _ackPayload(ack, fallback: 'Failed to create channel.');
+  }
+
+  Future<void> edit({
+    required String channelId,
+    required String name,
+    required String desc,
+  }) async {
+    final userId = (await currentUser())['_id']?.toString() ?? '';
+    if (userId.isEmpty) {
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Current user is unavailable.',
+      );
+    }
+    await _ensureRealtime();
+    final ack = await _realtime.emitWithAck('channel/edit', {
+      'channelId': channelId,
+      'userId': userId,
+      'form': {'name': name.trim(), 'desc': desc.trim()},
+    });
+    _requireAck(ack, fallback: 'Failed to update channel info.');
+  }
+
+  Future<String> uploadAvatar(String channelId, String avatarDataUri) async {
+    final response = await _api.post(
+      '/avatars',
+      body: {
+        'avatar': avatarDataUri,
+        'targetId': channelId,
+        'isGroup': false,
+        'isChannel': true,
+      },
+    );
+    final value = response.payload?.toString() ?? '';
+    if (value.isEmpty) {
+      throw const ApiException(
+        statusCode: 500,
+        message: 'Channel photo upload returned no image URL.',
+      );
+    }
+    return value;
   }
 
   Future<Map<String, dynamic>> subscribe(
@@ -176,6 +220,60 @@ class ChannelRepository {
       'userId': userId,
     });
     _requireAck(ack, fallback: 'Failed to leave channel.');
+  }
+
+  Future<Map<String, dynamic>> promoteAdmin(
+    String channelId,
+    String participantId,
+  ) async {
+    final userId = (await currentUser())['_id']?.toString() ?? '';
+    await _ensureRealtime();
+    _realtime.emit('channel/add-admin', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    return _waitForChannel(
+      channelId,
+      (channel) => _ids(channel['adminsId']).contains(participantId),
+      error: 'Admin role was not confirmed by the server.',
+    );
+  }
+
+  Future<Map<String, dynamic>> demoteAdmin(
+    String channelId,
+    String participantId,
+  ) async {
+    final userId = (await currentUser())['_id']?.toString() ?? '';
+    await _ensureRealtime();
+    _realtime.emit('channel/remove-admin', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    return _waitForChannel(
+      channelId,
+      (channel) => !_ids(channel['adminsId']).contains(participantId),
+      error: 'Admin removal was not confirmed by the server.',
+    );
+  }
+
+  Future<Map<String, dynamic>> removeParticipant(
+    String channelId,
+    String participantId,
+  ) async {
+    final userId = (await currentUser())['_id']?.toString() ?? '';
+    await _ensureRealtime();
+    _realtime.emit('channel/remove-participant', {
+      'channelId': channelId,
+      'userId': userId,
+      'participantId': participantId,
+    });
+    return _waitForChannel(
+      channelId,
+      (channel) => !_ids(channel['participantsId']).contains(participantId),
+      error: 'Subscriber removal was not confirmed by the server.',
+    );
   }
 
   Future<Map<String, dynamic>> verifyPassword(
@@ -250,6 +348,27 @@ class ChannelRepository {
     );
   }
 
+  Future<Map<String, dynamic>> _waitForChannel(
+    String channelId,
+    bool Function(Map<String, dynamic> channel) predicate, {
+    required String error,
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      await Future<void>.delayed(
+        Duration(milliseconds: attempt == 0 ? 180 : 300),
+      );
+      try {
+        final channel = await find(channelId);
+        if (predicate(channel)) return channel;
+      } on Object catch (failure) {
+        lastError = failure;
+      }
+    }
+    if (lastError is ApiException) throw lastError;
+    throw ApiException(statusCode: 408, message: error);
+  }
+
   Map<String, dynamic> _ackPayload(dynamic ack, {required String fallback}) {
     final map = _ackMap(ack, fallback: fallback);
     final payload = map['payload'];
@@ -287,4 +406,11 @@ class ChannelRepository {
     if (payload is Map) return Map<String, dynamic>.from(payload);
     return const {};
   }
+
+  Set<String> _ids(dynamic value) => value is List
+      ? value
+          .map((item) => item.toString())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+      : <String>{};
 }
