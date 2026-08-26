@@ -17,6 +17,10 @@ import 'live_message_requests_screen.dart';
 import 'live_p0_chats_screen.dart';
 import 'live_p0_contacts_screen.dart';
 import 'live_p0_status_screen.dart';
+import 'live_p1_communities_screen.dart';
+import 'live_p1_rich_attachments_screen.dart';
+import 'live_p1_room_admin_screen.dart';
+import 'live_p1_room_security_screen.dart';
 import 'live_profile_edit_screen.dart';
 import 'live_settings_hub_screen.dart';
 
@@ -119,7 +123,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
         onMenu: () => scaffoldKey.currentState?.openDrawer(),
       ),
     LiveHomeTab.status => const LiveP0StatusScreen(),
-    LiveHomeTab.communities => const LiveCommunitiesScreen(),
+    LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
     LiveHomeTab.channels => const ChannelHubScreen(),
     LiveHomeTab.calls => const LiveCallsScreen(),
   };
@@ -153,6 +157,9 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'contacts' => const LiveP0ContactsScreen(),
       'device-contacts' => const LiveDeviceContactsScreen(),
       'groups' => const LiveGroupsScreen(),
+      'room-admin' => const LiveRoomAdminHubScreen(),
+      'room-security' => const LiveRoomSecurityHubScreen(),
+      'rich-attachments' => const LiveRichAttachmentsHubScreen(),
       'requests' => const LiveMessageRequestsScreen(),
       'chat-tools' => const LiveChatToolsScreen(),
       'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
@@ -244,11 +251,14 @@ class _FullPageDrawer extends StatelessWidget {
     ('chats', 'Chats', Icons.chat_bubble_outline_rounded),
     ('requests', 'Message requests', Icons.mark_unread_chat_alt_outlined),
     ('chat-tools', 'Chat tools', Icons.tune_rounded),
+    ('rich-attachments', 'Rich attachments', Icons.attach_file_rounded),
+    ('room-security', 'Friend & room security', Icons.shield_outlined),
     ('calls', 'Calls', Icons.call_outlined),
     ('status', 'Status', Icons.donut_large_rounded),
     ('contacts', 'Contacts', Icons.group_outlined),
     ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
     ('groups', 'Groups', Icons.groups_rounded),
+    ('room-admin', 'Group & channel admin', Icons.admin_panel_settings_outlined),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
   ];
