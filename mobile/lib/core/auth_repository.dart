@@ -340,8 +340,22 @@ class AuthRepository {
     );
   }
 
-  Future<bool> hasSession() async =>
-      (await _sessionStore.readAccessToken())?.isNotEmpty == true;
+  Future<bool> hasSession() async {
+    final access = (await _sessionStore.readAccessToken())?.trim() ?? '';
+    final refresh = (await _sessionStore.readRefreshToken())?.trim() ?? '';
+    return access.isNotEmpty || refresh.isNotEmpty;
+  }
+
+  Future<bool> refreshSession() => _api.refreshSession();
+
+  Future<void> logout() async {
+    try {
+      await _api.post('/users/session/logout');
+    } on Object {
+      // Explicit local sign-out must always clear credentials, even offline.
+    }
+    await _sessionStore.clearSession();
+  }
 
   Future<void> logoutLocal() => _sessionStore.clearSession();
 
@@ -351,6 +365,7 @@ class AuthRepository {
   }) async {
     await _sessionStore.writeAccessToken(token);
     await _sessionStore.writeRememberedUsername(rememberedUsername);
+    await _api.ensurePersistentSession();
   }
 
   String _extractToken(dynamic payload) {
