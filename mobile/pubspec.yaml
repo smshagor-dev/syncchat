@@ -19,6 +19,7 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   flutter_webrtc: ^1.6.0
   geolocator: 14.0.2
+  google_sign_in: 6.2.2
   http: ^1.6.0
   image_picker: ^1.1.2
   livekit_client: ^2.11.0
