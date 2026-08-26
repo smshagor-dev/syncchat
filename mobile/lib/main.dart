@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/app_scope.dart';
 import 'core/app_services.dart';
+import 'core/background_message_handler.dart';
 import 'core/biometric_service.dart';
 import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
@@ -29,6 +30,9 @@ void main() {
 Future<void> _bootstrapNativeServices() async {
   try {
     await NativeCallPushService.bootstrapBeforeRunApp().timeout(
+      const Duration(seconds: 8),
+    );
+    await registerSyncChatBackgroundMessaging().timeout(
       const Duration(seconds: 8),
     );
   } on Object catch (error, stackTrace) {
