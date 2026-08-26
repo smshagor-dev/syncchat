@@ -28,6 +28,18 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Normalize formatter target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/finalize_flutter_native_calls.py')
+          text = path.read_text()
+          old = "            icon: cameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,"
+          new = """            icon: cameraOff
+                          ? Icons.videocam_off_rounded
+                          : Icons.videocam_rounded,"""
+          path.write_text(text.replace(old, new))
+          PY
       - name: Apply final native calling integration
         run: python3 .github/scripts/finalize_flutter_native_calls.py
       - name: Format
@@ -64,6 +76,18 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Normalize formatter target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/finalize_flutter_native_calls.py')
+          text = path.read_text()
+          old = "            icon: cameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,"
+          new = """            icon: cameraOff
+                          ? Icons.videocam_off_rounded
+                          : Icons.videocam_rounded,"""
+          path.write_text(text.replace(old, new))
+          PY
       - name: Apply final native calling integration
         run: python3 .github/scripts/finalize_flutter_native_calls.py
       - name: Format
@@ -99,6 +123,18 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Normalize formatter target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/finalize_flutter_native_calls.py')
+          text = path.read_text()
+          old = "            icon: cameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,"
+          new = """            icon: cameraOff
+                          ? Icons.videocam_off_rounded
+                          : Icons.videocam_rounded,"""
+          path.write_text(text.replace(old, new))
+          PY
       - name: Apply validated native calling integration
         run: python3 .github/scripts/finalize_flutter_native_calls.py
       - name: Remove one-time integration files
