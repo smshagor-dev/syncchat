@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 env:
-  RELEASE_TAG: mobile-v0.1.0-demo.2
-  RELEASE_TITLE: SyncChat Mobile Demo v0.1.0 Demo 2
+  RELEASE_TAG: mobile-v0.1.0-demo.3
+  RELEASE_TITLE: SyncChat Mobile Demo v0.1.0 Demo 3
 
 jobs:
   build-and-publish:
@@ -50,7 +50,7 @@ jobs:
         working-directory: mobile
         run: flutter test
 
-      - name: Validate Android launcher PNGs
+      - name: Validate Android launcher resources
         working-directory: mobile
         run: |
           python3 - <<'PY'
@@ -68,7 +68,20 @@ jobs:
               if width < 48 or height < 48:
                   raise SystemExit(f'Launcher icon too small: {icon} ({width}x{height})')
               print(f'{icon}: {width}x{height} PNG')
+
+          required = [
+              Path('android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml'),
+              Path('android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml'),
+              Path('android/app/src/main/res/values/colors.xml'),
+          ]
+          for path in required:
+              if not path.is_file():
+                  raise SystemExit(f'Missing adaptive launcher resource: {path}')
+              print(f'{path}: present')
           PY
+          grep -F 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+          grep -F 'android:roundIcon="@mipmap/ic_launcher_round"' android/app/src/main/AndroidManifest.xml
+          grep -F 'version: 0.1.0+2' pubspec.yaml
 
       - name: Validate release resource settings
         working-directory: mobile
@@ -92,7 +105,7 @@ jobs:
 
           Android demo build connected to the production SyncChat API and Socket.IO service.
 
-          This build includes camera-based QR device login, phonebook contact sync and new-contact support, message/settings parity, the supplied SyncChat app logo, realtime messaging, media and voice notes, device E2EE text messaging, Firebase notifications/incoming-call wake, and WhatsApp-style WebRTC/LiveKit calling with draggable self-video and camera switching.
+          This build includes the supplied SyncChat app logo as the Android legacy, adaptive and round launcher icon, with an incremented Android version code so launchers refresh the installed icon. It also includes camera-based QR device login, phonebook contact sync and new-contact support, message/settings parity, realtime messaging, media and voice notes, device E2EE text messaging, Firebase notifications/incoming-call wake, and WhatsApp-style WebRTC/LiveKit calling with draggable self-video and camera switching.
 
           The APK uses the repository demo signing configuration and is intended for direct testing outside Google Play. Firebase values come from the validated mobile client configuration committed for package com.syncchat.live.
           EOF
