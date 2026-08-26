@@ -15,6 +15,7 @@ dependencies:
   http: ^1.6.0
   image_picker: ^1.1.2
   path_provider: ^2.1.6
+  pointycastle: ^4.0.0
   record: ^7.1.1
   socket_io_client: ^3.1.6
 
