@@ -2,6 +2,7 @@ import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
 import 'calling_repository.dart';
+import 'channel_repository.dart' as live_channel;
 import 'chat_repository.dart';
 import 'e2ee_service.dart';
 import 'feature_repositories.dart';
@@ -75,7 +76,11 @@ class AppServices {
       contacts: ContactRepository(api),
       statuses: StatusRepository(api),
       communities: CommunityRepository(api),
-      channels: ChannelRepository(api),
+      channels: live_channel.ChannelRepository(
+        api: api,
+        auth: auth,
+        realtime: realtime,
+      ),
       groups: GroupRepository(api: api, auth: auth, realtime: realtime),
       profile: ProfileRepository(api),
       settings: SettingsRepository(api),
@@ -95,7 +100,7 @@ class AppServices {
   final ContactRepository contacts;
   final StatusRepository statuses;
   final CommunityRepository communities;
-  final ChannelRepository channels;
+  final live_channel.ChannelRepository channels;
   final GroupRepository groups;
   final ProfileRepository profile;
   final SettingsRepository settings;
