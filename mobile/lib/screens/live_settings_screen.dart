@@ -7,9 +7,14 @@ import '../widgets.dart';
 import 'live_chat_room_screen.dart';
 
 class LiveSettingsScreen extends StatefulWidget {
-  const LiveSettingsScreen({super.key, required this.onThemeChanged});
+  const LiveSettingsScreen({
+    super.key,
+    required this.onThemeChanged,
+    this.initialSection = 'all',
+  });
 
   final ValueChanged<bool> onThemeChanged;
+  final String initialSection;
 
   @override
   State<LiveSettingsScreen> createState() => _LiveSettingsScreenState();
@@ -20,6 +25,24 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
   bool loading = true;
   String? error;
   final saving = <String>{};
+
+  String get _section => switch (widget.initialSection) {
+        'account' || 'security' => 'security',
+        'chat' || 'chats' => 'chats',
+        'notification' || 'notifications' => 'notifications',
+        'privacy' => 'privacy',
+        'voice' || 'voiceVideo' => 'voiceVideo',
+        _ => 'all',
+      };
+
+  String get _title => switch (_section) {
+        'security' => 'Account & security',
+        'chats' => 'Chats',
+        'notifications' => 'Notifications',
+        'privacy' => 'Privacy',
+        'voiceVideo' => 'Voice & Video',
+        _ => 'Settings',
+      };
 
   @override
   void initState() {
@@ -72,265 +95,336 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
 
   String _string(String key, String fallback) {
     final value = settings[key]?.toString().trim() ?? '';
+    if (value == 'contacts') return 'my_contacts';
     return value.isEmpty ? fallback : value;
   }
+
+  bool _show(String section) => _section == 'all' || _section == section;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.isDark ? SyncColors.spill950 : Colors.white,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(_title),
         actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _load,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-          ? _SettingsError(message: error!, onRetry: _load)
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-              children: [
-                _section('Appearance & chats', Icons.palette_outlined, [
-                  _toggle('Dark mode', 'Use the dark SyncChat theme.', 'dark'),
-                  _toggle(
-                    'Enter to send',
-                    'Send text when pressing Enter.',
-                    'enterToSend',
-                  ),
-                  _toggle(
-                    'Keep archived',
-                    'Keep chats archived when new messages arrive.',
-                    'keepArchived',
-                  ),
-                  _toggle(
-                    'Spell check',
-                    'Use spelling assistance while composing.',
-                    'spellCheckEnabled',
-                  ),
-                  _toggle(
-                    'Replace text with emoji',
-                    'Enable emoji text replacement.',
-                    'replaceTextWithEmoji',
-                  ),
-                  _choice(
-                    'Media quality',
-                    'Default upload/playback quality.',
-                    'mediaQuality',
-                    const {'standard': 'Standard', 'hd': 'HD'},
-                  ),
-                  _choice(
-                    'Wallpaper',
-                    'Conversation background preset.',
-                    'chatWallpaperPreset',
-                    const {
-                      'whatsapp': 'Sync pattern',
-                      'plain': 'Plain',
-                      'sunset': 'Sunset',
-                      'ocean': 'Ocean',
-                      'forest': 'Forest',
-                    },
-                  ),
-                ]),
-                _section('Notifications', Icons.notifications_none_rounded, [
-                  _toggle(
-                    'Messages',
-                    'Notify for direct messages.',
-                    'notifyMessages',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Groups',
-                    'Notify for group messages.',
-                    'notifyGroups',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Status',
-                    'Notify for status activity.',
-                    'notifyStatus',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Calls',
-                    'Notify for incoming calls.',
-                    'notifyCalls',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Previews',
-                    'Show message previews in notifications.',
-                    'showNotificationPreviews',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Push notifications',
-                    'Allow push delivery.',
-                    'showPushNotification',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'In-app banner',
-                    'Show foreground notification banners.',
-                    'showNotificationBanner',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Outgoing sound',
-                    'Play sound after sending.',
-                    'outgoingMessageSoundEnabled',
-                    fallback: true,
-                  ),
-                ]),
-                _section('Privacy', Icons.shield_outlined, [
-                  _choice(
-                    'Last seen',
-                    'Who can see your last seen.',
-                    'lastSeenVisibility',
-                    const {
-                      'everyone': 'Everyone',
-                      'contacts': 'Contacts',
-                      'nobody': 'Nobody',
-                    },
-                  ),
-                  _choice(
-                    'Online status',
-                    'Who can see when you are online.',
-                    'onlineVisibility',
-                    const {
-                      'everyone': 'Everyone',
-                      'contacts': 'Contacts',
-                      'nobody': 'Nobody',
-                    },
-                  ),
-                  _choice(
-                    'Profile photo',
-                    'Who can see your profile photo.',
-                    'profilePhotoVisibility',
-                    const {
-                      'everyone': 'Everyone',
-                      'contacts': 'Contacts',
-                      'nobody': 'Nobody',
-                    },
-                  ),
-                  _choice(
-                    'Status visibility',
-                    'Who can see your status.',
-                    'statusVisibility',
-                    const {
-                      'everyone': 'Everyone',
-                      'contacts': 'Contacts',
-                      'nobody': 'Nobody',
-                    },
-                  ),
-                  _toggle(
-                    'Read receipts',
-                    'Send and receive read receipts.',
-                    'readReceiptsEnabled',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Message requests',
-                    'Allow messages from people outside contacts.',
-                    'messageRequestsEnabled',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Disable link previews',
-                    'Do not fetch link previews.',
-                    'disableLinkPreviews',
-                  ),
-                  _toggle(
-                    'Security notifications',
-                    'Notify when security state changes.',
-                    'securityNotificationsEnabled',
-                    fallback: true,
-                  ),
-                  _action(
-                    'Blocked contacts',
-                    'Review people you have blocked.',
-                    Icons.block_rounded,
-                    _openBlocked,
-                  ),
-                  _action(
-                    'Hidden chats',
-                    'Review and unhide private chats.',
-                    Icons.visibility_off_outlined,
-                    _openHidden,
-                  ),
-                ]),
-                _section('Voice & video', Icons.video_call_outlined, [
-                  _toggle(
-                    'Camera',
-                    'Allow camera use for video calls.',
-                    'cameraEnabled',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Microphone',
-                    'Allow microphone use for calls and voice notes.',
-                    'microphoneEnabled',
-                    fallback: true,
-                  ),
-                  _toggle(
-                    'Speaker',
-                    'Allow speakerphone output.',
-                    'speakerEnabled',
-                    fallback: true,
-                  ),
-                ]),
-                _section(
-                  'Security & account',
-                  Icons.admin_panel_settings_outlined,
-                  [
-                    _action(
-                      'Devices',
-                      'Review sessions and remotely sign out devices.',
-                      Icons.devices_other_rounded,
-                      _openDevices,
-                    ),
-                    _action(
-                      _bool('twoFactorEnabled')
-                          ? 'Two-factor authentication: On'
-                          : 'Two-factor authentication',
-                      'Authenticator codes and recovery protection.',
-                      Icons.verified_user_outlined,
-                      _manageTwoFactor,
-                    ),
-                    _action(
-                      _bool('appLockEnabled') ? 'App lock: On' : 'App lock',
-                      'Protect the app with an additional password.',
-                      Icons.lock_outline_rounded,
-                      _manageAppLock,
-                    ),
-                    _action(
-                      'Change password',
-                      'Change your password and revoke other sessions.',
-                      Icons.password_rounded,
-                      _changePassword,
-                    ),
-                    _action(
-                      'Export account info',
-                      'Generate a portable account export and email the secure link.',
-                      Icons.download_outlined,
-                      _requestExport,
-                    ),
-                    _action(
-                      'Delete account',
-                      'Permanently delete your SyncChat account.',
-                      Icons.delete_forever_outlined,
-                      _deleteAccount,
-                      danger: true,
-                    ),
+              ? _SettingsError(message: error!, onRetry: _load)
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                  children: [
+                    if (_show('chats')) _chatSection(),
+                    if (_show('notifications')) _notificationSection(),
+                    if (_show('privacy')) _privacySection(),
+                    if (_show('voiceVideo')) _voiceVideoSection(),
+                    if (_show('security')) _securitySection(),
                   ],
                 ),
-              ],
-            ),
     );
   }
 
-  Widget _section(String title, IconData icon, List<Widget> children) {
+  Widget _chatSection() => _sectionCard(
+        'Appearance & chats',
+        Icons.palette_outlined,
+        [
+          _toggle('Dark mode', 'Use the dark SyncChat theme.', 'dark'),
+          _toggle(
+            'Enter to send',
+            'Send text when pressing Enter.',
+            'enterToSend',
+          ),
+          _toggle(
+            'Keep archived',
+            'Keep chats archived when new messages arrive.',
+            'keepArchived',
+          ),
+          _toggle(
+            'Spell check',
+            'Use spelling assistance while composing.',
+            'spellCheckEnabled',
+            fallback: true,
+          ),
+          _toggle(
+            'Replace text with emoji',
+            'Enable emoji text replacement.',
+            'replaceTextWithEmoji',
+            fallback: true,
+          ),
+          _toggle(
+            'Sort contacts by name',
+            'Use alphabetical ordering in contact lists.',
+            'sortContactByName',
+          ),
+          _choice(
+            'Media quality',
+            'Default upload and playback quality.',
+            'mediaQuality',
+            const {'standard': 'Standard', 'hd': 'HD'},
+          ),
+          _choice(
+            'Wallpaper',
+            'Conversation background preset.',
+            'chatWallpaperPreset',
+            const {
+              'whatsapp': 'Sync pattern',
+              'plain': 'Plain',
+              'sunset': 'Sunset',
+              'ocean': 'Ocean',
+              'forest': 'Forest',
+            },
+          ),
+          _subheader('Automatic downloads'),
+          _toggle(
+            'Photos',
+            'Automatically download photos.',
+            'autoDownloadPhotos',
+            fallback: true,
+          ),
+          _toggle(
+            'Audio',
+            'Automatically download voice notes and audio.',
+            'autoDownloadAudio',
+            fallback: true,
+          ),
+          _toggle(
+            'Videos',
+            'Automatically download videos.',
+            'autoDownloadVideos',
+            fallback: true,
+          ),
+          _toggle(
+            'Documents',
+            'Automatically download documents.',
+            'autoDownloadDocuments',
+          ),
+        ],
+      );
+
+  Widget _notificationSection() => _sectionCard(
+        'Notifications',
+        Icons.notifications_none_rounded,
+        [
+          _toggle(
+            'Mute all',
+            'Temporarily silence SyncChat notification categories.',
+            'mute',
+          ),
+          _toggle(
+            'Messages',
+            'Notify for direct messages.',
+            'notifyMessages',
+            fallback: true,
+          ),
+          _toggle(
+            'Groups',
+            'Notify for group messages.',
+            'notifyGroups',
+            fallback: true,
+          ),
+          _toggle(
+            'Status',
+            'Notify for status activity.',
+            'notifyStatus',
+            fallback: true,
+          ),
+          _toggle(
+            'Calls',
+            'Notify for incoming calls.',
+            'notifyCalls',
+            fallback: true,
+          ),
+          _toggle(
+            'Previews',
+            'Show message previews in notifications.',
+            'showNotificationPreviews',
+            fallback: true,
+          ),
+          _toggle(
+            'Push notifications',
+            'Allow push delivery when the app is not active.',
+            'showPushNotification',
+            fallback: true,
+          ),
+          _toggle(
+            'In-app banner',
+            'Show foreground notification banners.',
+            'showNotificationBanner',
+            fallback: true,
+          ),
+          _toggle(
+            'Popup notifications',
+            'Show the larger foreground notification popup.',
+            'showPopupNotification',
+            fallback: true,
+          ),
+          _toggle(
+            'Outgoing sound',
+            'Play sound after sending.',
+            'outgoingMessageSoundEnabled',
+            fallback: true,
+          ),
+        ],
+      );
+
+  Widget _privacySection() => _sectionCard(
+        'Privacy',
+        Icons.shield_outlined,
+        [
+          _privacyChoice(
+            'Last seen',
+            'Who can see your last seen.',
+            'lastSeenVisibility',
+          ),
+          _privacyChoice(
+            'Online status',
+            'Who can see when you are online.',
+            'onlineVisibility',
+          ),
+          _privacyChoice(
+            'Profile photo',
+            'Who can see your profile photo.',
+            'profilePhotoVisibility',
+          ),
+          _privacyChoice(
+            'Status visibility',
+            'Who can see your status.',
+            'statusVisibility',
+          ),
+          _privacyChoice(
+            'Groups',
+            'Who can add you to groups.',
+            'groupsVisibility',
+          ),
+          _toggle(
+            'Read receipts',
+            'Send and receive read receipts.',
+            'readReceiptsEnabled',
+            fallback: true,
+          ),
+          _toggle(
+            'Message requests',
+            'Allow messages from people outside contacts.',
+            'messageRequestsEnabled',
+            fallback: true,
+          ),
+          _toggle(
+            'Disable link previews',
+            'Do not fetch link previews.',
+            'disableLinkPreviews',
+          ),
+          _toggle(
+            'Security notifications',
+            'Notify when security state changes.',
+            'securityNotificationsEnabled',
+            fallback: true,
+          ),
+          _action(
+            'Blocked contacts',
+            'Review people you have blocked.',
+            Icons.block_rounded,
+            _openBlocked,
+          ),
+          _action(
+            'Hidden chats',
+            'Review and unhide private chats.',
+            Icons.visibility_off_outlined,
+            _openHidden,
+          ),
+        ],
+      );
+
+  Widget _voiceVideoSection() => _sectionCard(
+        'Voice & video',
+        Icons.video_call_outlined,
+        [
+          _toggle(
+            'Camera',
+            'Allow camera use for video calls.',
+            'cameraEnabled',
+            fallback: true,
+          ),
+          _toggle(
+            'Microphone',
+            'Allow microphone use for calls and voice notes.',
+            'microphoneEnabled',
+            fallback: true,
+          ),
+          _toggle(
+            'Speaker',
+            'Allow speakerphone output.',
+            'speakerEnabled',
+            fallback: true,
+          ),
+        ],
+      );
+
+  Widget _securitySection() => _sectionCard(
+        'Security & account',
+        Icons.admin_panel_settings_outlined,
+        [
+          _action(
+            'Devices',
+            'Review sessions and remotely sign out devices.',
+            Icons.devices_other_rounded,
+            _openDevices,
+          ),
+          _action(
+            _bool('twoFactorEnabled')
+                ? 'Two-factor authentication: On'
+                : 'Two-factor authentication',
+            'Authenticator codes and recovery protection.',
+            Icons.verified_user_outlined,
+            _manageTwoFactor,
+          ),
+          _action(
+            _bool('appLockEnabled') ? 'App lock: On' : 'App lock',
+            'Protect the app with an additional password.',
+            Icons.lock_outline_rounded,
+            _manageAppLock,
+          ),
+          _action(
+            'Change password',
+            'Change your password and revoke other sessions.',
+            Icons.password_rounded,
+            _changePassword,
+          ),
+          _action(
+            'Export account info',
+            'Generate a portable account export and email the secure link.',
+            Icons.download_outlined,
+            _requestExport,
+          ),
+          _action(
+            'Delete account',
+            'Permanently delete your SyncChat account.',
+            Icons.delete_forever_outlined,
+            _deleteAccount,
+            danger: true,
+          ),
+        ],
+      );
+
+  Widget _privacyChoice(String title, String subtitle, String key) => _choice(
+        title,
+        subtitle,
+        key,
+        const {
+          'everyone': 'Everyone',
+          'my_contacts': 'My contacts',
+          'nobody': 'Nobody',
+        },
+      );
+
+  Widget _sectionCard(String title, IconData icon, List<Widget> children) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: SyncSoftCard(
@@ -351,6 +445,22 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
       ),
     );
   }
+
+  Widget _subheader(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: context.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .7,
+            ),
+          ),
+        ),
+      );
 
   Widget _toggle(
     String title,
@@ -373,16 +483,19 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
     Map<String, String> options,
   ) {
     final current = _string(key, options.keys.first);
+    final safeCurrent = options.containsKey(current) ? current : options.keys.first;
     return ListTile(
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(subtitle),
       trailing: DropdownButton<String>(
-        value: options.containsKey(current) ? current : options.keys.first,
+        value: safeCurrent,
         underline: const SizedBox.shrink(),
         items: options.entries
             .map(
-              (entry) =>
-                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+              (entry) => DropdownMenuItem(
+                value: entry.key,
+                child: Text(entry.value),
+              ),
             )
             .toList(growable: false),
         onChanged: saving.contains(key)
@@ -418,20 +531,20 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
 
   Future<void> _openDevices() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const _DeviceSessionsScreen()),
+      MaterialPageRoute<void>(builder: (_) => const LiveDeviceSessionsScreen()),
     );
   }
 
   Future<void> _openBlocked() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const _BlockedContactsScreen()),
+      MaterialPageRoute<void>(builder: (_) => const LiveBlockedContactsScreen()),
     );
   }
 
   Future<void> _openHidden() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const _HiddenChatsScreen()));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LiveHiddenChatsScreen()),
+    );
   }
 
   Future<void> _manageTwoFactor() async {
@@ -539,7 +652,8 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
     final password = await _singleFieldDialog(
       title: 'Delete account permanently',
       label: 'Account password',
-      helper: 'This permanently removes your SyncChat account and cannot be undone.',
+      helper:
+          'This permanently removes your SyncChat account and cannot be undone.',
       obscure: true,
       danger: true,
     );
@@ -575,7 +689,10 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (helper != null) ...[Text(helper), const SizedBox(height: 12)],
+            if (helper != null) ...[
+              Text(helper),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: controller,
               obscureText: obscure,
@@ -627,9 +744,8 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: second,
-              keyboardType: numericSecond
-                  ? TextInputType.number
-                  : TextInputType.text,
+              keyboardType:
+                  numericSecond ? TextInputType.number : TextInputType.text,
               decoration: InputDecoration(labelText: secondLabel),
             ),
           ],
@@ -686,11 +802,10 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, (
-              first.text,
-              second.text,
-              third.text,
-            )),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              (first.text, second.text, third.text),
+            ),
             child: const Text('Change password'),
           ),
         ],
@@ -709,14 +824,15 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
   }
 }
 
-class _DeviceSessionsScreen extends StatefulWidget {
-  const _DeviceSessionsScreen();
+class LiveDeviceSessionsScreen extends StatefulWidget {
+  const LiveDeviceSessionsScreen({super.key});
 
   @override
-  State<_DeviceSessionsScreen> createState() => _DeviceSessionsScreenState();
+  State<LiveDeviceSessionsScreen> createState() =>
+      _LiveDeviceSessionsScreenState();
 }
 
-class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
+class _LiveDeviceSessionsScreenState extends State<LiveDeviceSessionsScreen> {
   List<Map<String, dynamic>> sessions = const [];
   bool loading = true;
   String? error;
@@ -752,7 +868,7 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
         title: const Text('Devices'),
         actions: [
           TextButton(
-            onPressed: _logoutOthers,
+            onPressed: loading ? null : _logoutOthers,
             child: const Text('Logout others'),
           ),
         ],
@@ -760,51 +876,52 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-          ? _SettingsError(message: error!, onRetry: _load)
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(12),
-                itemCount: sessions.length,
-                separatorBuilder: (_, __) => Divider(color: context.border),
-                itemBuilder: (_, index) {
-                  final session = sessions[index];
-                  final current =
-                      session['current'] == true ||
-                      session['isCurrent'] == true;
-                  final id =
-                      session['_id']?.toString() ??
-                      session['id']?.toString() ??
-                      '';
-                  final label = session['deviceLabel']?.toString().trim() ?? '';
-                  final userAgent =
-                      session['userAgent']?.toString().trim() ?? '';
-                  return ListTile(
-                    leading: Icon(
-                      current
-                          ? Icons.smartphone_rounded
-                          : Icons.devices_other_rounded,
-                    ),
-                    title: Text(
-                      label.isNotEmpty
-                          ? label
-                          : (current ? 'Current device' : 'Signed-in device'),
-                    ),
-                    subtitle: Text(
-                      userAgent.isNotEmpty ? userAgent : 'SyncChat session',
-                    ),
-                    trailing: current || id.isEmpty
-                        ? const Chip(label: Text('Current'))
-                        : IconButton(
-                            tooltip: 'Remote logout',
-                            onPressed: () => _revoke(id),
-                            icon: const Icon(Icons.logout_rounded),
-                          ),
-                  );
-                },
-              ),
-            ),
+              ? _SettingsError(message: error!, onRetry: _load)
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(12),
+                    itemCount: sessions.length,
+                    separatorBuilder: (_, __) => Divider(color: context.border),
+                    itemBuilder: (_, index) {
+                      final session = sessions[index];
+                      final current = session['current'] == true ||
+                          session['isCurrent'] == true;
+                      final id = session['_id']?.toString() ??
+                          session['id']?.toString() ??
+                          '';
+                      final label =
+                          session['deviceLabel']?.toString().trim() ?? '';
+                      final userAgent =
+                          session['userAgent']?.toString().trim() ?? '';
+                      return ListTile(
+                        leading: Icon(
+                          current
+                              ? Icons.smartphone_rounded
+                              : Icons.devices_other_rounded,
+                        ),
+                        title: Text(
+                          label.isNotEmpty
+                              ? label
+                              : current
+                                  ? 'Current device'
+                                  : 'Signed-in device',
+                        ),
+                        subtitle: Text(
+                          userAgent.isNotEmpty ? userAgent : 'SyncChat session',
+                        ),
+                        trailing: current || id.isEmpty
+                            ? const Chip(label: Text('Current'))
+                            : IconButton(
+                                tooltip: 'Remote logout',
+                                onPressed: () => _revoke(id),
+                                icon: const Icon(Icons.logout_rounded),
+                              ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 
@@ -831,16 +948,18 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
   }
 }
 
-class _BlockedContactsScreen extends StatefulWidget {
-  const _BlockedContactsScreen();
+class LiveBlockedContactsScreen extends StatefulWidget {
+  const LiveBlockedContactsScreen({super.key});
 
   @override
-  State<_BlockedContactsScreen> createState() => _BlockedContactsScreenState();
+  State<LiveBlockedContactsScreen> createState() =>
+      _LiveBlockedContactsScreenState();
 }
 
-class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
+class _LiveBlockedContactsScreenState extends State<LiveBlockedContactsScreen> {
   List<Map<String, dynamic>> contacts = const [];
   bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -849,12 +968,21 @@ class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
   }
 
   Future<void> _load() async {
-    final value = await context.services.settings.blockedContacts();
-    if (!mounted) return;
-    setState(() {
-      contacts = value;
-      loading = false;
-    });
+    try {
+      final value = await context.services.settings.blockedContacts();
+      if (!mounted) return;
+      setState(() {
+        contacts = value;
+        loading = false;
+        error = null;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = _errorText(failure);
+      });
+    }
   }
 
   @override
@@ -863,30 +991,36 @@ class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
       appBar: AppBar(title: const Text('Blocked contacts')),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : contacts.isEmpty
-          ? const Center(child: Text('No blocked contacts.'))
-          : ListView.builder(
-              itemCount: contacts.length,
-              itemBuilder: (_, index) {
-                final item = contacts[index];
-                final name =
-                    item['fullname']?.toString() ??
-                    item['username']?.toString() ??
-                    'Contact';
-                final userId = item['userId']?.toString() ?? '';
-                return ListTile(
-                  leading: SyncAvatar(name: name),
-                  title: Text(name),
-                  subtitle: item['username'] == null
-                      ? null
-                      : Text('@${item['username']}'),
-                  trailing: TextButton(
-                    onPressed: userId.isEmpty ? null : () => _unblock(userId),
-                    child: const Text('Unblock'),
-                  ),
-                );
-              },
-            ),
+          : error != null
+              ? _SettingsError(message: error!, onRetry: _load)
+              : contacts.isEmpty
+                  ? const Center(child: Text('No blocked contacts.'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: contacts.length,
+                        itemBuilder: (_, index) {
+                          final item = contacts[index];
+                          final name = item['fullname']?.toString() ??
+                              item['username']?.toString() ??
+                              'Contact';
+                          final userId = item['userId']?.toString() ?? '';
+                          return ListTile(
+                            leading: SyncAvatar(name: name),
+                            title: Text(name),
+                            subtitle: item['username'] == null
+                                ? null
+                                : Text('@${item['username']}'),
+                            trailing: TextButton(
+                              onPressed:
+                                  userId.isEmpty ? null : () => _unblock(userId),
+                              child: const Text('Unblock'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 
@@ -902,16 +1036,17 @@ class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
   }
 }
 
-class _HiddenChatsScreen extends StatefulWidget {
-  const _HiddenChatsScreen();
+class LiveHiddenChatsScreen extends StatefulWidget {
+  const LiveHiddenChatsScreen({super.key});
 
   @override
-  State<_HiddenChatsScreen> createState() => _HiddenChatsScreenState();
+  State<LiveHiddenChatsScreen> createState() => _LiveHiddenChatsScreenState();
 }
 
-class _HiddenChatsScreenState extends State<_HiddenChatsScreen> {
+class _LiveHiddenChatsScreenState extends State<LiveHiddenChatsScreen> {
   List<Map<String, dynamic>> chats = const [];
   bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -920,12 +1055,21 @@ class _HiddenChatsScreenState extends State<_HiddenChatsScreen> {
   }
 
   Future<void> _load() async {
-    final value = await context.services.settings.hiddenChats();
-    if (!mounted) return;
-    setState(() {
-      chats = value;
-      loading = false;
-    });
+    try {
+      final value = await context.services.settings.hiddenChats();
+      if (!mounted) return;
+      setState(() {
+        chats = value;
+        loading = false;
+        error = null;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = _errorText(failure);
+      });
+    }
   }
 
   @override
@@ -934,32 +1078,41 @@ class _HiddenChatsScreenState extends State<_HiddenChatsScreen> {
       appBar: AppBar(title: const Text('Hidden chats')),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : chats.isEmpty
-          ? const Center(child: Text('No hidden chats.'))
-          : ListView.builder(
-              itemCount: chats.length,
-              itemBuilder: (_, index) {
-                final inbox = chats[index];
-                final roomId = inbox['roomId']?.toString() ?? '';
-                final name = _hiddenChatName(inbox);
-                return ListTile(
-                  leading: SyncAvatar(name: name),
-                  title: Text(name),
-                  trailing: TextButton(
-                    onPressed: roomId.isEmpty ? null : () => _unhide(roomId),
-                    child: const Text('Unhide'),
-                  ),
-                  onTap: roomId.isEmpty
-                      ? null
-                      : () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                LiveChatRoomScreen(inbox: inbox, name: name),
-                          ),
-                        ),
-                );
-              },
-            ),
+          : error != null
+              ? _SettingsError(message: error!, onRetry: _load)
+              : chats.isEmpty
+                  ? const Center(child: Text('No hidden chats.'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: chats.length,
+                        itemBuilder: (_, index) {
+                          final inbox = chats[index];
+                          final roomId = inbox['roomId']?.toString() ?? '';
+                          final name = _hiddenChatName(inbox);
+                          return ListTile(
+                            leading: SyncAvatar(name: name),
+                            title: Text(name),
+                            trailing: TextButton(
+                              onPressed:
+                                  roomId.isEmpty ? null : () => _unhide(roomId),
+                              child: const Text('Unhide'),
+                            ),
+                            onTap: roomId.isEmpty
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => LiveChatRoomScreen(
+                                          inbox: inbox,
+                                          name: name,
+                                        ),
+                                      ),
+                                    ),
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 
@@ -980,8 +1133,9 @@ class _HiddenChatsScreenState extends State<_HiddenChatsScreen> {
 
 String _hiddenChatName(Map<String, dynamic> inbox) {
   final channel = inbox['channel'];
-  if (channel is Map && channel['name'] != null)
+  if (channel is Map && channel['name'] != null) {
     return channel['name'].toString();
+  }
   final group = inbox['group'];
   if (group is Map && group['name'] != null) return group['name'].toString();
   final owners = inbox['owners'];
