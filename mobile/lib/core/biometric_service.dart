@@ -56,12 +56,8 @@ class BiometricService {
     try {
       final success = await _auth.authenticate(
         localizedReason: reason,
-        authMessages: const <AuthMessages>[],
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
       );
       if (success) _lastUnlockAt = DateTime.now();
       return success;

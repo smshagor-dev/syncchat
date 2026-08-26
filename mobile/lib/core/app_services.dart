@@ -2,8 +2,10 @@ import 'account_storage_repository.dart';
 import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
+import 'cached_repositories.dart';
 import 'calling_repository.dart';
 import 'channel_repository.dart' as live_channel;
+import 'chat_cache.dart';
 import 'chat_repository.dart';
 import 'e2ee_service.dart';
 import 'feature_repositories.dart';
@@ -20,6 +22,7 @@ class AppServices {
     required this.auth,
     required this.realtime,
     required this.e2ee,
+    required this.chatCache,
     required this.chat,
     required this.calling,
     required this.nativeCallPush,
@@ -50,11 +53,13 @@ class AppServices {
       sessionStore: resolvedSessionStore,
     );
     final e2ee = E2eeService(api: api, sessionStore: resolvedSessionStore);
-    final chat = ChatRepository(
+    final chatCache = ChatCache();
+    final chat = CachedChatRepository(
       api: api,
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
+      cache: chatCache,
     );
     final calling = CallingRepository(api: api, auth: auth, realtime: realtime);
     final nativeCallPush = NativeCallPushService(
@@ -71,10 +76,11 @@ class AppServices {
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
+      chatCache: chatCache,
       chat: chat,
       calling: calling,
       nativeCallPush: nativeCallPush,
-      inbox: InboxRepository(api),
+      inbox: CachedInboxRepository(api, chatCache),
       contacts: ContactRepository(api),
       statuses: StatusRepository(api),
       communities: CommunityRepository(api),
@@ -96,6 +102,7 @@ class AppServices {
   final AuthRepository auth;
   final RealtimeClient realtime;
   final E2eeService e2ee;
+  final ChatCache chatCache;
   final ChatRepository chat;
   final CallingRepository calling;
   final NativeCallPushService nativeCallPush;

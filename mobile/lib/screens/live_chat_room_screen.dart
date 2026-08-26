@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import '../core/biometric_service.dart';
+import '../core/screen_security_service.dart';
 import '../theme.dart';
 import 'live_chat_room_core_screen.dart' as core_room;
 import 'live_entity_profile_screen.dart';
@@ -9,9 +13,8 @@ import 'live_room_context_tools.dart';
 /// Production chat entry point.
 ///
 /// The full realtime/message runtime remains in [core_room.LiveChatRoomScreen].
-/// This wrapper adds the web-parity contextual navigation layer so every room
-/// can reach Friend / Group / Channel info and rich room tools directly from
-/// the active conversation instead of forcing users through global hubs.
+/// This wrapper adds contextual navigation, biometric chat unlock, and native
+/// screen-capture protection around the active conversation.
 class LiveChatRoomScreen extends StatefulWidget {
   const LiveChatRoomScreen({
     super.key,
@@ -29,15 +32,40 @@ class LiveChatRoomScreen extends StatefulWidget {
 class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   String currentUserId = '';
   bool resolvingUser = false;
+  bool unlocking = true;
+  bool unlocked = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveUser());
+    unawaited(ScreenSecurityService.pushSecure());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_unlockChat());
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(ScreenSecurityService.popSecure());
+    super.dispose();
+  }
+
+  Future<void> _unlockChat() async {
+    if (!mounted || (unlocking && unlocked)) return;
+    setState(() => unlocking = true);
+    final success = await BiometricService.authenticate(
+      reason: 'Unlock ${widget.name} chat',
+    );
+    if (!mounted) return;
+    setState(() {
+      unlocking = false;
+      unlocked = success;
+    });
+    if (success) unawaited(_resolveUser());
   }
 
   Future<void> _resolveUser() async {
-    if (resolvingUser || currentUserId.isNotEmpty) return;
+    if (resolvingUser || currentUserId.isNotEmpty || !unlocked) return;
     setState(() => resolvingUser = true);
     try {
       final user = await context.services.chat.currentUser();
@@ -75,6 +103,57 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!unlocked) {
+      return Scaffold(
+        backgroundColor: context.page,
+        appBar: AppBar(
+          title: Text(widget.name),
+          backgroundColor: context.panel,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.fingerprint_rounded,
+                  color: SyncColors.sky,
+                  size: 58,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Chat locked',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Authenticate to view messages in ${widget.name}.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.muted),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: unlocking ? null : _unlockChat,
+                  icon: unlocking
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.fingerprint_rounded),
+                  label: Text(unlocking ? 'Checking…' : 'Unlock chat'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Stack(
       children: [
         Positioned.fill(
@@ -96,7 +175,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 IconButton(
                   tooltip: 'Room tools',
                   onPressed: _openTools,
-                  icon: const Icon(Icons.add_circle_outline_rounded, color: SyncColors.sky),
+                  icon: const Icon(
+                    Icons.add_circle_outline_rounded,
+                    color: SyncColors.sky,
+                  ),
                 ),
                 Container(width: 1, height: 24, color: context.border),
                 IconButton(
@@ -111,7 +193,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.info_outline_rounded, color: SyncColors.sky),
+                      : const Icon(
+                          Icons.info_outline_rounded,
+                          color: SyncColors.sky,
+                        ),
                 ),
               ],
             ),

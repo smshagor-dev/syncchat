@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -15,9 +16,23 @@ class DeviceIntegrationService {
 
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
+  static final StreamController<String> _notificationTapController =
+      StreamController<String>.broadcast(sync: true);
+  static final List<String> _pendingNotificationTaps = <String>[];
   static StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  static StreamSubscription<RemoteMessage>? _openedSubscription;
   static Future<void>? _initializeFuture;
   static bool _initialized = false;
+  static bool _initialMessageChecked = false;
+
+  static Stream<String> get notificationTaps =>
+      _notificationTapController.stream;
+
+  static List<String> takePendingNotificationTaps() {
+    final values = List<String>.from(_pendingNotificationTaps);
+    _pendingNotificationTaps.clear();
+    return values;
+  }
 
   static Future<void> initialize() {
     if (_initialized) return Future<void>.value();
@@ -41,12 +56,19 @@ class DeviceIntegrationService {
       );
 
       await _notifications
-          .initialize(settings: settings)
+          .initialize(
+            settings: settings,
+            onDidReceiveNotificationResponse: (response) {
+              _queueNotificationTap(response.payload);
+            },
+          )
           .timeout(const Duration(seconds: 5));
 
       if (Platform.isAndroid) {
         final androidPlugin = _notifications
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         await androidPlugin
             ?.createNotificationChannel(
               const AndroidNotificationChannel(
@@ -68,14 +90,21 @@ class DeviceIntegrationService {
     }
   }
 
-  static Future<Map<ph.Permission, ph.PermissionStatus>> requestCommunicationPermissions() {
+  static Future<Map<ph.Permission, ph.PermissionStatus>>
+  requestCommunicationPermissions() {
     return AppPermissionManager.requestInitialPermissions();
   }
 
-  static Future<Map<String, dynamic>> syncAddressBook(ContactRepository repository) async {
-    final permission = await FlutterContacts.permissions.request(PermissionType.read);
+  static Future<Map<String, dynamic>> syncAddressBook(
+    ContactRepository repository,
+  ) async {
+    final permission = await FlutterContacts.permissions.request(
+      PermissionType.read,
+    );
     if (permission != PermissionStatus.granted) {
-      throw StateError('Contacts permission is required to find people who use SyncChat.');
+      throw StateError(
+        'Contacts permission is required to find people who use SyncChat.',
+      );
     }
 
     final contacts = await FlutterContacts.getAll(
@@ -103,7 +132,9 @@ class DeviceIntegrationService {
   }) async {
     final cleanedPhone = phone.trim();
     if (cleanedPhone.isEmpty) {
-      throw StateError('Phone number is required to save a phone contact.');
+      throw StateError(
+        'Phone number is required to save a phone contact.',
+      );
     }
     final cleanedName = name.trim().isEmpty ? cleanedPhone : name.trim();
     final contact = Contact(
@@ -115,7 +146,8 @@ class DeviceIntegrationService {
 
   static Future<void> startForegroundMessaging() async {
     await initialize();
-    if (!Platform.isAndroid) return;
+    if (!await _ensureMessagingReady()) return;
+
     await _foregroundSubscription?.cancel();
     _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) async {
       final data = message.data;
@@ -132,14 +164,52 @@ class DeviceIntegrationService {
           data['message']?.toString() ??
           data['preview']?.toString() ??
           'You have new SyncChat activity.';
+      final payload = _messagePayload(data);
 
       await showNotification(
-        id: _notificationId(message.messageId ?? DateTime.now().toIso8601String()),
+        id: _notificationId(
+          message.messageId ?? DateTime.now().toIso8601String(),
+        ),
         title: title,
         body: body,
-        payload: data['roomId']?.toString() ?? data['requestId']?.toString(),
+        payload: payload,
       );
     });
+
+    await _openedSubscription?.cancel();
+    _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      _queueNotificationTap(_messagePayload(message.data));
+    });
+
+    if (!_initialMessageChecked) {
+      _initialMessageChecked = true;
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _queueNotificationTap(_messagePayload(initial.data));
+      }
+    }
+  }
+
+  static Future<bool> _ensureMessagingReady() async {
+    try {
+      if (Platform.isAndroid) {
+        return NativeCallPushService.ensureFirebaseForAndroid();
+      }
+      if (Platform.isIOS) {
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+        }
+        await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        return Firebase.apps.isNotEmpty;
+      }
+    } on Object {
+      return false;
+    }
+    return false;
   }
 
   static Future<void> requestNotificationPermission() async {
@@ -147,8 +217,17 @@ class DeviceIntegrationService {
     await ph.Permission.notification.request();
     if (Platform.isIOS) {
       await _notifications
-          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
+      if (await _ensureMessagingReady()) {
+        await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
     }
   }
 
@@ -159,16 +238,22 @@ class DeviceIntegrationService {
     String? payload,
   }) async {
     await initialize();
-    const details = NotificationDetails(
+    final groupKey = payload?.trim().isNotEmpty == true
+        ? 'syncchat_room_${payload!.trim()}'
+        : 'syncchat_messages';
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
         'syncchat_messages',
         'Messages and activity',
-        channelDescription: 'Messages, message requests, mentions, and SyncChat activity.',
+        channelDescription:
+            'Messages, message requests, mentions, and SyncChat activity.',
         importance: Importance.high,
         priority: Priority.high,
+        category: AndroidNotificationCategory.message,
+        groupKey: groupKey,
         icon: 'ic_stat_syncchat',
       ),
-      iOS: DarwinNotificationDetails(
+      iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
@@ -183,9 +268,30 @@ class DeviceIntegrationService {
     );
   }
 
+  static void _queueNotificationTap(String? payload) {
+    final value = payload?.trim() ?? '';
+    if (value.isEmpty) return;
+    if (_notificationTapController.hasListener) {
+      _notificationTapController.add(value);
+      return;
+    }
+    if (!_pendingNotificationTaps.contains(value)) {
+      _pendingNotificationTaps.add(value);
+    }
+  }
+
+  static String? _messagePayload(Map<String, dynamic> data) {
+    final roomId = data['roomId']?.toString().trim() ?? '';
+    if (roomId.isNotEmpty) return roomId;
+    final requestId = data['requestId']?.toString().trim() ?? '';
+    return requestId.isEmpty ? null : requestId;
+  }
+
   static Future<void> dispose() async {
     await _foregroundSubscription?.cancel();
+    await _openedSubscription?.cancel();
     _foregroundSubscription = null;
+    _openedSubscription = null;
   }
 
   static String _fallbackTitle(String? type) {
