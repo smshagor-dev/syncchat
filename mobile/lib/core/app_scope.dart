@@ -12,13 +12,16 @@ class AppServicesScope extends InheritedWidget {
   final AppServices services;
 
   static AppServices of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<AppServicesScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AppServicesScope>();
     assert(scope != null, 'AppServicesScope is missing above this context.');
     return scope!.services;
   }
 
   static AppServices? maybeOf(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<AppServicesScope>()?.services;
+    return context
+        .dependOnInheritedWidgetOfExactType<AppServicesScope>()
+        ?.services;
   }
 
   @override

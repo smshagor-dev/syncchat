@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
-import 'core_screens.dart';
 import 'live_calls_screen.dart';
+import 'live_collection_screens.dart';
 import 'live_home_screens.dart';
+import 'live_settings_screen.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
 
@@ -72,22 +73,14 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
 
     final Widget screen = switch (target) {
       'contacts' => const LiveContactsScreen(),
-      'archive' => const CollectionScreen(
-        title: 'Archive',
-        icon: Icons.archive_outlined,
-        description: 'Chats archived from the main inbox.',
+      'archive' => const LiveInboxCollectionScreen(
+        kind: LiveInboxCollectionKind.archive,
       ),
-      'lists' => const CollectionScreen(
-        title: 'Lists',
-        icon: Icons.format_list_bulleted_rounded,
-        description: 'Custom chat lists and grouped conversations.',
+      'lists' => const LiveInboxCollectionScreen(
+        kind: LiveInboxCollectionKind.lists,
       ),
-      'media' => const CollectionScreen(
-        title: 'Media',
-        icon: Icons.image_outlined,
-        description: 'Shared photos, videos, links and files.',
-      ),
-      'settings' => SettingsScreen(onThemeChanged: widget.onThemeChanged),
+      'media' => const LiveMediaScreen(),
+      'settings' => LiveSettingsScreen(onThemeChanged: widget.onThemeChanged),
       'profile' => const LiveProfileScreen(),
       _ => const LiveContactsScreen(),
     };

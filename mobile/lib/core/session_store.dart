@@ -10,7 +10,7 @@ abstract interface class SessionStore {
 
 class SecureSessionStore implements SessionStore {
   SecureSessionStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _tokenKey = 'syncchat.access_token';
   static const _rememberedUsernameKey = 'syncchat.remembered_username';
@@ -28,7 +28,11 @@ class SecureSessionStore implements SessionStore {
   Future<void> writeAccessToken(String token) async {
     final normalized = token.trim();
     if (normalized.isEmpty) {
-      throw ArgumentError.value(token, 'token', 'Access token cannot be empty.');
+      throw ArgumentError.value(
+        token,
+        'token',
+        'Access token cannot be empty.',
+      );
     }
     await _storage.write(key: _tokenKey, value: normalized);
   }

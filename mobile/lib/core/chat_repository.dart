@@ -11,10 +11,10 @@ class ChatRepository {
     required AuthRepository auth,
     required RealtimeClient realtime,
     required E2eeService e2ee,
-  })  : _api = api,
-        _auth = auth,
-        _realtime = realtime,
-        _e2ee = e2ee;
+  }) : _api = api,
+       _auth = auth,
+       _realtime = realtime,
+       _e2ee = e2ee;
 
   final ApiClient _api;
   final AuthRepository _auth;
@@ -43,6 +43,21 @@ class ChatRepository {
     return _e2ee.decryptMessages(_mapList(response.payload));
   }
 
+  Future<List<Map<String, dynamic>>> listMedia({String? roomId}) async {
+    final response = await _api.get(
+      '/chats/media',
+      query: {
+        if (roomId != null && roomId.trim().isNotEmpty) 'roomId': roomId.trim(),
+      },
+    );
+    return _mapList(response.payload);
+  }
+
+  Future<List<Map<String, dynamic>>> listStarred() async {
+    final response = await _api.get('/chats/starred');
+    return _mapList(response.payload);
+  }
+
   Future<void> openRoom(String roomId) async {
     if (!_realtime.isConnected) await _realtime.connect();
     if (!_realtime.isConnected) {
@@ -52,10 +67,7 @@ class ChatRepository {
       );
     }
 
-    _realtime.emit('room/open', {
-      'prevRoom': _openRoomId,
-      'newRoom': roomId,
-    });
+    _realtime.emit('room/open', {'prevRoom': _openRoomId, 'newRoom': roomId});
     _openRoomId = roomId;
   }
 
@@ -116,9 +128,7 @@ class ChatRepository {
     return resolvedClientMessageId;
   }
 
-  Future<Map<String, dynamic>> decryptMessage(
-    Map<String, dynamic> message,
-  ) =>
+  Future<Map<String, dynamic>> decryptMessage(Map<String, dynamic> message) =>
       _e2ee.decryptMessage(message);
 
   Future<Map<String, dynamic>> e2eeRoomState(String roomId) =>
@@ -127,8 +137,7 @@ class ChatRepository {
   Future<Map<String, dynamic>> setE2eeRoomEnabled(
     String roomId, {
     required bool enabled,
-  }) =>
-      _e2ee.setRoomEnabled(roomId, enabled: enabled);
+  }) => _e2ee.setRoomEnabled(roomId, enabled: enabled);
 
   Future<E2eeDeviceKeyRecord> registerE2eeDevice() =>
       _e2ee.ensureDeviceKey(forceRegister: true);
@@ -173,7 +182,10 @@ class ChatRepository {
         'file': file,
       },
     );
-    return _mapPayload(response.payload, error: 'Invalid file message response.');
+    return _mapPayload(
+      response.payload,
+      error: 'Invalid file message response.',
+    );
   }
 
   Future<void> reactToMessage({
@@ -198,7 +210,10 @@ class ChatRepository {
   }) async {
     final nextText = text.trim();
     if (nextText.isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Message cannot be empty.',
+      );
     }
     await openRoom(roomId);
     _realtime.emit('chat/edit', {
@@ -215,7 +230,9 @@ class ChatRepository {
     required List<String> chatIds,
     bool deleteForEveryone = false,
   }) async {
-    final ids = chatIds.where((id) => id.trim().isNotEmpty).toList(growable: false);
+    final ids = chatIds
+        .where((id) => id.trim().isNotEmpty)
+        .toList(growable: false);
     if (ids.isEmpty) return;
     await openRoom(roomId);
     _realtime.emit('chat/delete', {
@@ -239,7 +256,10 @@ class ChatRepository {
 
   Future<Map<String, dynamic>> pinnedMessages(String roomId) async {
     final response = await _api.get('/chats/$roomId/pins');
-    return _mapPayload(response.payload, error: 'Invalid pinned message response.');
+    return _mapPayload(
+      response.payload,
+      error: 'Invalid pinned message response.',
+    );
   }
 
   Future<Map<String, dynamic>> pinMessage({
@@ -289,7 +309,10 @@ class ChatRepository {
     _guardE2eeSchedule(inbox);
     final message = text.trim();
     if (message.isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Message cannot be empty.',
+      );
     }
     final response = await _api.post(
       '/chats/scheduled',
@@ -341,15 +364,14 @@ class ChatRepository {
     int afterSequence = 0,
   }) async {
     if (!_realtime.isConnected) return const [];
-    final result = await _realtime.emitWithAck(
-      'chat/sync-request',
-      {
-        'roomId': roomId,
-        'afterSequence': afterSequence,
-        'limit': 200,
-      },
-    );
-    if (result is! Map || result['success'] != true || result['messages'] is! List) {
+    final result = await _realtime.emitWithAck('chat/sync-request', {
+      'roomId': roomId,
+      'afterSequence': afterSequence,
+      'limit': 200,
+    });
+    if (result is! Map ||
+        result['success'] != true ||
+        result['messages'] is! List) {
       return const [];
     }
     final messages = (result['messages'] as List)
@@ -375,14 +397,14 @@ class ChatRepository {
       _realtime.off(event, handler);
 
   bool _deviceE2eeEnabled(Map<String, dynamic> inbox) =>
-      inbox['roomType']?.toString() == 'private' && inbox['e2eeEnabled'] == true;
+      inbox['roomType']?.toString() == 'private' &&
+      inbox['e2eeEnabled'] == true;
 
   void _guardE2eeMedia(Map<String, dynamic> inbox) {
     if (_deviceE2eeEnabled(inbox)) {
       throw const ApiException(
         statusCode: 409,
-        message:
-            'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
+        message: 'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
         payload: {'code': 'E2EE_MEDIA_NOT_SUPPORTED'},
       );
     }
@@ -392,8 +414,7 @@ class ChatRepository {
     if (_deviceE2eeEnabled(inbox)) {
       throw const ApiException(
         statusCode: 409,
-        message:
-            'Scheduled send is disabled while device E2EE is enabled because the server cannot encrypt a message later without device private keys.',
+        message: 'Scheduled send is disabled while device E2EE is enabled because the server cannot encrypt a message later without device private keys.',
         payload: {'code': 'E2EE_SCHEDULE_NOT_SUPPORTED'},
       );
     }
@@ -409,23 +430,28 @@ class ChatRepository {
 
   List<String> _ownersId(Map<String, dynamic> inbox) =>
       inbox['ownersId'] is List
-          ? List<dynamic>.from(inbox['ownersId'] as List)
-              .map((item) => item.toString())
-              .where((item) => item.isNotEmpty)
-              .toList(growable: false)
-          : const <String>[];
+      ? List<dynamic>.from(inbox['ownersId'] as List)
+            .map((item) => item.toString())
+            .where((item) => item.isNotEmpty)
+            .toList(growable: false)
+      : const <String>[];
 
   Future<String> _currentUserId() async {
     final user = await currentUser();
     final userId = user['_id']?.toString().trim() ?? '';
     if (userId.isEmpty) {
-      throw const ApiException(statusCode: 401, message: 'Current user ID is missing.');
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Current user ID is missing.',
+      );
     }
     return userId;
   }
 
   String _resolveClientMessageId(String? requested) =>
-      (requested?.trim().isNotEmpty ?? false) ? requested!.trim() : _clientMessageId();
+      (requested?.trim().isNotEmpty ?? false)
+      ? requested!.trim()
+      : _clientMessageId();
 
   List<Map<String, dynamic>> _mapList(dynamic payload) {
     if (payload is! List) return const [];

@@ -52,9 +52,9 @@ class ApiClient {
     required SyncChatConfig config,
     required SessionStore sessionStore,
     http.Client? httpClient,
-  })  : _config = config,
-        _sessionStore = sessionStore,
-        _httpClient = httpClient ?? http.Client();
+  }) : _config = config,
+       _sessionStore = sessionStore,
+       _httpClient = httpClient ?? http.Client();
 
   final SyncChatConfig _config;
   final SessionStore _sessionStore;
@@ -65,14 +65,13 @@ class ApiClient {
     Map<String, dynamic>? query,
     bool authenticated = true,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        'GET',
-        path,
-        query: query,
-        authenticated: authenticated,
-        extraHeaders: headers,
-      );
+  }) => _send(
+    'GET',
+    path,
+    query: query,
+    authenticated: authenticated,
+    extraHeaders: headers,
+  );
 
   Future<ApiEnvelope> post(
     String path, {
@@ -80,15 +79,14 @@ class ApiClient {
     Map<String, dynamic>? query,
     bool authenticated = true,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        'POST',
-        path,
-        body: body,
-        query: query,
-        authenticated: authenticated,
-        extraHeaders: headers,
-      );
+  }) => _send(
+    'POST',
+    path,
+    body: body,
+    query: query,
+    authenticated: authenticated,
+    extraHeaders: headers,
+  );
 
   Future<ApiEnvelope> put(
     String path, {
@@ -96,15 +94,14 @@ class ApiClient {
     Map<String, dynamic>? query,
     bool authenticated = true,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        'PUT',
-        path,
-        body: body,
-        query: query,
-        authenticated: authenticated,
-        extraHeaders: headers,
-      );
+  }) => _send(
+    'PUT',
+    path,
+    body: body,
+    query: query,
+    authenticated: authenticated,
+    extraHeaders: headers,
+  );
 
   Future<ApiEnvelope> patch(
     String path, {
@@ -112,15 +109,14 @@ class ApiClient {
     Map<String, dynamic>? query,
     bool authenticated = true,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        'PATCH',
-        path,
-        body: body,
-        query: query,
-        authenticated: authenticated,
-        extraHeaders: headers,
-      );
+  }) => _send(
+    'PATCH',
+    path,
+    body: body,
+    query: query,
+    authenticated: authenticated,
+    extraHeaders: headers,
+  );
 
   Future<ApiEnvelope> delete(
     String path, {
@@ -128,15 +124,14 @@ class ApiClient {
     Map<String, dynamic>? query,
     bool authenticated = true,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        'DELETE',
-        path,
-        body: body,
-        query: query,
-        authenticated: authenticated,
-        extraHeaders: headers,
-      );
+  }) => _send(
+    'DELETE',
+    path,
+    body: body,
+    query: query,
+    authenticated: authenticated,
+    extraHeaders: headers,
+  );
 
   Future<ApiEnvelope> multipart(
     String path, {

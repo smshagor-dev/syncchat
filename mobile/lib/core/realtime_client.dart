@@ -16,13 +16,14 @@ class RealtimeClient {
   RealtimeClient({
     required SyncChatConfig config,
     required SessionStore sessionStore,
-  })  : _config = config,
-        _sessionStore = sessionStore;
+  }) : _config = config,
+       _sessionStore = sessionStore;
 
   final SyncChatConfig _config;
   final SessionStore _sessionStore;
-  final _stateController =
-      StreamController<RealtimeConnectionState>.broadcast(sync: true);
+  final _stateController = StreamController<RealtimeConnectionState>.broadcast(
+    sync: true,
+  );
 
   io.Socket? _socket;
   RealtimeConnectionState _state = RealtimeConnectionState.disconnected;

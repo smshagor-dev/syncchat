@@ -18,8 +18,7 @@ class LiveInboxCollectionScreen extends StatefulWidget {
       _LiveInboxCollectionScreenState();
 }
 
-class _LiveInboxCollectionScreenState
-    extends State<LiveInboxCollectionScreen> {
+class _LiveInboxCollectionScreenState extends State<LiveInboxCollectionScreen> {
   final search = TextEditingController();
   List<Map<String, dynamic>> inboxes = const [];
   Map<String, dynamic>? currentUser;
@@ -41,8 +40,9 @@ class _LiveInboxCollectionScreenState
   String get title =>
       widget.kind == LiveInboxCollectionKind.archive ? 'Archive' : 'Lists';
 
-  String get preferenceKey =>
-      widget.kind == LiveInboxCollectionKind.archive ? 'archivedBy' : 'listedBy';
+  String get preferenceKey => widget.kind == LiveInboxCollectionKind.archive
+      ? 'archivedBy'
+      : 'listedBy';
 
   String get preferenceAction =>
       widget.kind == LiveInboxCollectionKind.archive ? 'archive' : 'list';
@@ -80,12 +80,14 @@ class _LiveInboxCollectionScreenState
   List<Map<String, dynamic>> get visible {
     final userId = currentUser?['_id']?.toString() ?? '';
     final query = search.text.trim().toLowerCase();
-    return inboxes.where((inbox) {
-      if (!_containsUser(inbox[preferenceKey], userId)) return false;
-      if (query.isEmpty) return true;
-      return _name(inbox).toLowerCase().contains(query) ||
-          _preview(inbox).toLowerCase().contains(query);
-    }).toList(growable: false)
+    return inboxes
+        .where((inbox) {
+          if (!_containsUser(inbox[preferenceKey], userId)) return false;
+          if (query.isEmpty) return true;
+          return _name(inbox).toLowerCase().contains(query) ||
+              _preview(inbox).toLowerCase().contains(query);
+        })
+        .toList(growable: false)
       ..sort((a, b) => _contentTime(b).compareTo(_contentTime(a)));
   }
 
@@ -93,16 +95,15 @@ class _LiveInboxCollectionScreenState
     final roomId = inbox['roomId']?.toString() ?? '';
     if (roomId.isEmpty) return;
     try {
-      await context.services.inbox.updatePreferences(
-        roomId,
-        {'action': preferenceAction, 'value': false},
-      );
+      await context.services.inbox.updatePreferences(roomId, {
+        'action': preferenceAction,
+        'value': false,
+      });
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorText(failure))),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_errorText(failure))));
     }
   }
 
@@ -179,7 +180,10 @@ class _LiveInboxCollectionScreenState
           final name = _name(inbox);
           return ListTile(
             leading: SyncAvatar(name: name),
-            title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
             subtitle: Text(
               _preview(inbox),
               maxLines: 1,
@@ -291,16 +295,20 @@ class _LiveMediaScreenState extends State<LiveMediaScreen> {
 
   List<Map<String, dynamic>> get visible {
     final query = search.text.trim().toLowerCase();
-    return media.where((item) {
-      final file = _file(item);
-      final type = file['type']?.toString().toLowerCase() ?? 'document';
-      if (filter != 'all' && type != filter) return false;
-      if (query.isEmpty) return true;
-      final original = file['originalname']?.toString().toLowerCase() ?? '';
-      final text = item['text']?.toString().toLowerCase() ?? '';
-      final room = _roomTitle(item).toLowerCase();
-      return original.contains(query) || text.contains(query) || room.contains(query);
-    }).toList(growable: false);
+    return media
+        .where((item) {
+          final file = _file(item);
+          final type = file['type']?.toString().toLowerCase() ?? 'document';
+          if (filter != 'all' && type != filter) return false;
+          if (query.isEmpty) return true;
+          final original = file['originalname']?.toString().toLowerCase() ?? '';
+          final text = item['text']?.toString().toLowerCase() ?? '';
+          final room = _roomTitle(item).toLowerCase();
+          return original.contains(query) ||
+              text.contains(query) ||
+              room.contains(query);
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -331,24 +339,25 @@ class _LiveMediaScreenState extends State<LiveMediaScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: const [
-                ('all', 'All'),
-                ('image', 'Photos'),
-                ('video', 'Videos'),
-                ('audio', 'Audio'),
-                ('document', 'Files'),
-              ].map((item) {
-                final selected = filter == item.$1;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(item.$2),
-                    selected: selected,
-                    showCheckmark: false,
-                    onSelected: (_) => setState(() => filter = item.$1),
-                  ),
-                );
-              }).toList(),
+              children:
+                  const [
+                    ('all', 'All'),
+                    ('image', 'Photos'),
+                    ('video', 'Videos'),
+                    ('audio', 'Audio'),
+                    ('document', 'Files'),
+                  ].map((item) {
+                    final selected = filter == item.$1;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(item.$2),
+                        selected: selected,
+                        showCheckmark: false,
+                        onSelected: (_) => setState(() => filter = item.$1),
+                      ),
+                    );
+                  }).toList(),
             ),
           ),
           const SizedBox(height: 6),
@@ -362,7 +371,8 @@ class _LiveMediaScreenState extends State<LiveMediaScreen> {
     if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null) return _ErrorState(message: error!, onRetry: _load);
     final items = visible;
-    if (items.isEmpty) return const Center(child: Text('No shared media found.'));
+    if (items.isEmpty)
+      return const Center(child: Text('No shared media found.'));
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
@@ -393,19 +403,16 @@ class _LiveMediaScreenState extends State<LiveMediaScreen> {
         inbox = await context.services.inbox.findByRoom(roomId);
       } on Object catch (failure) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_errorText(failure))),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_errorText(failure))));
         return;
       }
     }
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => LiveChatRoomScreen(
-          inbox: inbox!,
-          name: _roomTitle(item),
-        ),
+        builder: (_) =>
+            LiveChatRoomScreen(inbox: inbox!, name: _roomTitle(item)),
       ),
     );
   }
@@ -484,25 +491,25 @@ class _MediaTile extends StatelessWidget {
 }
 
 Widget _mediaIcon(String type) => ColoredBox(
-      color: const Color(0x160EA5E9),
-      child: Icon(
-        switch (type) {
-          'video' => Icons.play_circle_outline_rounded,
-          'audio' => Icons.graphic_eq_rounded,
-          'image' => Icons.image_outlined,
-          _ => Icons.insert_drive_file_outlined,
-        },
-        color: SyncColors.sky,
-        size: 30,
-      ),
-    );
+  color: const Color(0x160EA5E9),
+  child: Icon(
+    switch (type) {
+      'video' => Icons.play_circle_outline_rounded,
+      'audio' => Icons.graphic_eq_rounded,
+      'image' => Icons.image_outlined,
+      _ => Icons.insert_drive_file_outlined,
+    },
+    color: SyncColors.sky,
+    size: 30,
+  ),
+);
 
 String _mediaLabel(String type) => switch (type) {
-      'video' => 'Video',
-      'audio' => 'Audio',
-      'image' => 'Photo',
-      _ => 'Document',
-    };
+  'video' => 'Video',
+  'audio' => 'Audio',
+  'image' => 'Photo',
+  _ => 'Document',
+};
 
 Map<String, dynamic> _file(Map<String, dynamic> item) => item['file'] is Map
     ? Map<String, dynamic>.from(item['file'] as Map)
@@ -524,7 +531,8 @@ String _roomTitle(Map<String, dynamic> item) {
     }
   }
   final channel = item['channel'];
-  if (channel is Map && channel['name'] != null) return channel['name'].toString();
+  if (channel is Map && channel['name'] != null)
+    return channel['name'].toString();
   final profile = item['profile'];
   if (profile is Map) {
     final name = profile['fullname']?.toString().trim() ?? '';
@@ -535,8 +543,8 @@ String _roomTitle(Map<String, dynamic> item) {
   return 'Conversation';
 }
 
-bool _containsUser(dynamic value, String userId) => value is List &&
-    value.map((item) => item.toString()).contains(userId);
+bool _containsUser(dynamic value, String userId) =>
+    value is List && value.map((item) => item.toString()).contains(userId);
 
 String _preview(Map<String, dynamic> inbox) {
   final content = inbox['content'];
@@ -573,7 +581,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined, size: 48, color: SyncColors.sky),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: SyncColors.sky,
+            ),
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),

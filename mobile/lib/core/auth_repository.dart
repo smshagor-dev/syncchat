@@ -17,18 +17,16 @@ class AuthResult {
   factory AuthResult.authenticated({
     required String token,
     required String message,
-  }) =>
-      AuthResult._(token: token, message: message);
+  }) => AuthResult._(token: token, message: message);
 
   factory AuthResult.twoFactor({
     required String tempToken,
     required String message,
-  }) =>
-      AuthResult._(
-        tempToken: tempToken,
-        message: message,
-        requiresTwoFactor: true,
-      );
+  }) => AuthResult._(
+    tempToken: tempToken,
+    message: message,
+    requiresTwoFactor: true,
+  );
 }
 
 class PasswordResetChallenge {
@@ -42,11 +40,9 @@ class PasswordResetChallenge {
 }
 
 class AuthRepository {
-  AuthRepository({
-    required ApiClient api,
-    required SessionStore sessionStore,
-  })  : _api = api,
-        _sessionStore = sessionStore;
+  AuthRepository({required ApiClient api, required SessionStore sessionStore})
+    : _api = api,
+      _sessionStore = sessionStore;
 
   final ApiClient _api;
   final SessionStore _sessionStore;
@@ -82,7 +78,8 @@ class AuthRepository {
         if (tempToken.isEmpty) {
           throw const ApiException(
             statusCode: 500,
-            message: 'Two-factor login did not return a secure challenge token.',
+            message:
+                'Two-factor login did not return a secure challenge token.',
           );
         }
         return AuthResult.twoFactor(
@@ -119,10 +116,7 @@ class AuthRepository {
     );
 
     final token = _extractToken(response.payload);
-    await _completeLogin(
-      token: token,
-      rememberedUsername: rememberedUsername,
-    );
+    await _completeLogin(token: token, rememberedUsername: rememberedUsername);
     return AuthResult.authenticated(
       token: token,
       message: response.message ?? 'Signed in.',
@@ -228,6 +222,122 @@ class AuthRepository {
       body: {'otp': otp.trim()},
     );
     return response.message ?? 'Account verified.';
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String confirmNewPassword,
+  }) async {
+    await _api.patch(
+      '/users/change-pass',
+      body: {
+        'oldPass': oldPassword,
+        'newPass': newPassword,
+        'confirmNewPass': confirmNewPassword,
+      },
+    );
+  }
+
+  Future<void> deleteAccount(String password) async {
+    await _api.delete('/users', body: {'password': password});
+  }
+
+  Future<Map<String, dynamic>> deviceLinkInfo({
+    String? token,
+    String? shortCode,
+  }) async {
+    final response = await _api.post(
+      '/users/device-link/info',
+      authenticated: false,
+      body: {
+        if (token?.trim().isNotEmpty == true) 'token': token!.trim(),
+        if (shortCode?.trim().isNotEmpty == true)
+          'shortCode': shortCode!.trim(),
+      },
+    );
+    final payload = response.payload;
+    if (payload is Map) return Map<String, dynamic>.from(payload);
+    throw const ApiException(
+      statusCode: 500,
+      message: 'Invalid device-link response.',
+    );
+  }
+
+  Future<AuthResult> completeDeviceLink({
+    required String token,
+    required String emailCode,
+    required String supportCode,
+  }) async {
+    final response = await _api.post(
+      '/users/device-link/complete',
+      authenticated: false,
+      body: {
+        'token': token.trim(),
+        'emailCode': emailCode.trim(),
+        'supportCode': supportCode.trim(),
+      },
+    );
+    final payload = response.payload;
+    if (payload is Map && payload['requiresTwoFactor'] == true) {
+      final tempToken = payload['tempToken']?.toString().trim() ?? '';
+      if (tempToken.isEmpty) {
+        throw const ApiException(
+          statusCode: 500,
+          message: 'Device link did not return a secure challenge token.',
+        );
+      }
+      return AuthResult.twoFactor(
+        tempToken: tempToken,
+        message: response.message ?? 'Two-factor verification required.',
+      );
+    }
+    final tokenValue = _extractToken(payload);
+    await _completeLogin(token: tokenValue);
+    return AuthResult.authenticated(
+      token: tokenValue,
+      message: response.message ?? 'Device linked.',
+    );
+  }
+
+  Future<Map<String, dynamic>> socialConfig() async {
+    final response = await _api.get(
+      '/users/social-config',
+      authenticated: false,
+    );
+    final payload = response.payload;
+    return payload is Map ? Map<String, dynamic>.from(payload) : const {};
+  }
+
+  Future<AuthResult> socialAuth({
+    required String provider,
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await _api.post(
+      '/users/social-auth',
+      authenticated: false,
+      body: {'provider': provider, 'payload': payload},
+    );
+    final value = response.payload;
+    if (value is Map && value['requiresTwoFactor'] == true) {
+      final tempToken = value['tempToken']?.toString().trim() ?? '';
+      if (tempToken.isEmpty) {
+        throw const ApiException(
+          statusCode: 500,
+          message: 'Social login did not return a secure challenge token.',
+        );
+      }
+      return AuthResult.twoFactor(
+        tempToken: tempToken,
+        message: response.message ?? 'Two-factor verification required.',
+      );
+    }
+    final tokenValue = _extractToken(value);
+    await _completeLogin(token: tokenValue);
+    return AuthResult.authenticated(
+      token: tokenValue,
+      message: response.message ?? 'Signed in.',
+    );
   }
 
   Future<bool> hasSession() async =>
