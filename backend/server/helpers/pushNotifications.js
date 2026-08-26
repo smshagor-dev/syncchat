@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const PushSubscriptionModel = require('../db/models/pushSubscription');
 const SettingModel = require('../db/models/setting');
 const { toPlainMany } = require('../db/utils');
+const { sendNativeMessagePush } = require('./nativeMessagePush');
 const logger = require('./logger');
 
 const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || '').trim();
@@ -49,6 +50,18 @@ const buildSubscriptionPayload = (subscriptionRow) => ({
 
 const uniq = (values) => [...new Set(values)];
 
+const safeNativePush = async (args) => {
+  try {
+    return await sendNativeMessagePush(args);
+  } catch (error0) {
+    logger.warn('NATIVE_MESSAGE_PUSH_FANOUT_ERROR', {
+      category: args.category || 'message',
+      message: error0?.message || 'Native push fan-out failed',
+    });
+    return { sent: 0, attempted: 0, skipped: 0, failed: true };
+  }
+};
+
 const sendPushToUsers = async ({
   userIds,
   title,
@@ -60,8 +73,29 @@ const sendPushToUsers = async ({
 }) => {
   const targets = uniq((userIds || []).filter(Boolean));
   if (targets.length === 0) return { sent: 0, skipped: 0 };
+
+  // Native mobile delivery is independent from VAPID/Web Push. In particular,
+  // mobile users must continue receiving message alerts when browser push is
+  // not configured on the deployment.
+  const nativePromise = safeNativePush({
+    userIds: targets,
+    title,
+    preview,
+    fallback,
+    category,
+    data,
+  });
+
   if (!ensureVapidConfigured()) {
-    return { sent: 0, skipped: targets.length, reason: 'vapid_missing' };
+    const native = await nativePromise;
+    return {
+      sent: native.sent || 0,
+      attempted: native.attempted || 0,
+      skipped: native.skipped || 0,
+      reason: 'vapid_missing',
+      web: { sent: 0, attempted: 0, skipped: targets.length },
+      native,
+    };
   }
 
   const settingsRaw = await SettingModel.findAll({
@@ -83,53 +117,70 @@ const sendPushToUsers = async ({
   const eligible = targets.filter((userId) =>
     shouldNotifyCategory(settingMap.get(userId), category)
   );
-  if (eligible.length === 0) {
-    return { sent: 0, skipped: targets.length };
+
+  let web = { sent: 0, attempted: 0, skipped: targets.length };
+  if (eligible.length > 0) {
+    const subscriptions = await PushSubscriptionModel.findAll({
+      where: { userId: { [Op.in]: eligible } },
+    });
+
+    if (subscriptions.length > 0) {
+      const results = await Promise.allSettled(
+        subscriptions.map(async (sub) => {
+          const setting = settingMap.get(sub.userId);
+          const body = resolveBody(setting, preview, fallback);
+          const payload = JSON.stringify({
+            title: title || 'SyncChat',
+            body,
+            url,
+            category,
+            data,
+          });
+
+          try {
+            await webpush.sendNotification(buildSubscriptionPayload(sub), payload);
+            return { ok: true };
+          } catch (error0) {
+            const status = error0?.statusCode || error0?.status;
+            if (status === 404 || status === 410) {
+              await sub.destroy().catch(() => {});
+              return { ok: false, removed: true };
+            }
+            logger.warn('PUSH_SEND_ERROR', {
+              userId: sub.userId,
+              status,
+              message: error0?.message || 'Push send failed',
+            });
+            return { ok: false, error: error0?.message || 'Push send failed' };
+          }
+        })
+      );
+
+      const sent = results.filter(
+        (result) => result.status === 'fulfilled' && result.value?.ok
+      ).length;
+      web = {
+        sent,
+        attempted: subscriptions.length,
+        skipped: Math.max(0, targets.length - eligible.length),
+      };
+    } else {
+      web = {
+        sent: 0,
+        attempted: 0,
+        skipped: targets.length,
+      };
+    }
   }
 
-  const subscriptions = await PushSubscriptionModel.findAll({
-    where: { userId: { [Op.in]: eligible } },
-  });
-
-  if (!subscriptions.length) {
-    return { sent: 0, skipped: eligible.length };
-  }
-
-  const results = await Promise.allSettled(
-    subscriptions.map(async (sub) => {
-      const setting = settingMap.get(sub.userId);
-      const body = resolveBody(setting, preview, fallback);
-      const payload = JSON.stringify({
-        title: title || 'SyncChat',
-        body,
-        url,
-        category,
-        data,
-      });
-
-      try {
-        await webpush.sendNotification(buildSubscriptionPayload(sub), payload);
-        return { ok: true };
-      } catch (error0) {
-        const status = error0?.statusCode || error0?.status;
-        if (status === 404 || status === 410) {
-          await sub.destroy().catch(() => {});
-          return { ok: false, removed: true };
-        }
-        logger.warn('PUSH_SEND_ERROR', {
-          userId: sub.userId,
-          status,
-          message: error0?.message || 'Push send failed',
-        });
-        return { ok: false, error: error0?.message || 'Push send failed' };
-      }
-    })
-  );
-
-  const sent = results.filter(
-    (result) => result.status === 'fulfilled' && result.value?.ok
-  ).length;
-  return { sent, attempted: subscriptions.length };
+  const native = await nativePromise;
+  return {
+    sent: (web.sent || 0) + (native.sent || 0),
+    attempted: (web.attempted || 0) + (native.attempted || 0),
+    skipped: (web.skipped || 0) + (native.skipped || 0),
+    web,
+    native,
+  };
 };
 
 module.exports = {
