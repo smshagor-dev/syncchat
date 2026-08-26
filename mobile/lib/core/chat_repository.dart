@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'api_client.dart';
 import 'auth_repository.dart';
+import 'e2ee_service.dart';
 import 'realtime_client.dart';
 
 class ChatRepository {
@@ -9,13 +10,16 @@ class ChatRepository {
     required ApiClient api,
     required AuthRepository auth,
     required RealtimeClient realtime,
+    required E2eeService e2ee,
   })  : _api = api,
         _auth = auth,
-        _realtime = realtime;
+        _realtime = realtime,
+        _e2ee = e2ee;
 
   final ApiClient _api;
   final AuthRepository _auth;
   final RealtimeClient _realtime;
+  final E2eeService _e2ee;
   final Random _random = Random.secure();
 
   Map<String, dynamic>? _currentUser;
@@ -36,7 +40,7 @@ class ChatRepository {
       '/chats/$roomId',
       query: {'skip': skip, 'limit': limit},
     );
-    return _mapList(response.payload);
+    return _e2ee.decryptMessages(_mapList(response.payload));
   }
 
   Future<void> openRoom(String roomId) async {
@@ -72,9 +76,27 @@ class ChatRepository {
         message: 'Message cannot be empty.',
       );
     }
-    _guardDeviceE2ee(inbox);
 
     final roomId = _roomId(inbox);
+    final roomType = inbox['roomType']?.toString() ?? 'private';
+    final owners = _ownersId(inbox);
+    Map<String, dynamic>? e2eeEnvelope;
+    var transportText = message;
+    if (_deviceE2eeEnabled(inbox)) {
+      if (roomType != 'private') {
+        throw const ApiException(
+          statusCode: 400,
+          message: 'Device E2EE is currently available for private chats only.',
+        );
+      }
+      e2eeEnvelope = await _e2ee.encryptText(
+        text: message,
+        roomId: roomId,
+        userIds: owners,
+      );
+      transportText = 'Encrypted message';
+    }
+
     await openRoom(roomId);
     final userId = await _currentUserId();
     final resolvedClientMessageId = _resolveClientMessageId(clientMessageId);
@@ -82,16 +104,34 @@ class ChatRepository {
     _realtime.emit('chat/insert', {
       'clientMessageId': resolvedClientMessageId,
       'roomId': roomId,
-      'roomType': inbox['roomType']?.toString() ?? 'private',
-      'ownersId': _ownersId(inbox),
+      'roomType': roomType,
+      'ownersId': owners,
       'userId': userId,
-      'text': message,
+      'text': transportText,
       'replyTo': replyTo,
       'topicId': topicId,
       'viewOnce': viewOnce,
+      if (e2eeEnvelope != null) 'e2eeEnvelope': e2eeEnvelope,
     });
     return resolvedClientMessageId;
   }
+
+  Future<Map<String, dynamic>> decryptMessage(
+    Map<String, dynamic> message,
+  ) =>
+      _e2ee.decryptMessage(message);
+
+  Future<Map<String, dynamic>> e2eeRoomState(String roomId) =>
+      _e2ee.roomState(roomId);
+
+  Future<Map<String, dynamic>> setE2eeRoomEnabled(
+    String roomId, {
+    required bool enabled,
+  }) =>
+      _e2ee.setRoomEnabled(roomId, enabled: enabled);
+
+  Future<E2eeDeviceKeyRecord> registerE2eeDevice() =>
+      _e2ee.ensureDeviceKey(forceRegister: true);
 
   Future<Map<String, dynamic>> uploadAttachment({
     required String filePath,
@@ -115,7 +155,7 @@ class ChatRepository {
     String? topicId,
     bool viewOnce = false,
   }) async {
-    _guardDeviceE2ee(inbox);
+    _guardE2eeMedia(inbox);
     final roomId = _roomId(inbox);
     final resolvedClientMessageId = _resolveClientMessageId(clientMessageId);
     final response = await _api.post(
@@ -246,6 +286,7 @@ class ChatRepository {
     String recurringType = 'none',
     String? targetUserId,
   }) async {
+    _guardE2eeSchedule(inbox);
     final message = text.trim();
     if (message.isEmpty) {
       throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
@@ -311,10 +352,11 @@ class ChatRepository {
     if (result is! Map || result['success'] != true || result['messages'] is! List) {
       return const [];
     }
-    return (result['messages'] as List)
+    final messages = (result['messages'] as List)
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
+    return _e2ee.decryptMessages(messages);
   }
 
   Future<void> typing(Map<String, dynamic> inbox) async {
@@ -332,11 +374,27 @@ class ChatRepository {
   void off(String event, [void Function(dynamic data)? handler]) =>
       _realtime.off(event, handler);
 
-  void _guardDeviceE2ee(Map<String, dynamic> inbox) {
-    if (inbox['e2eeEnabled'] == true) {
+  bool _deviceE2eeEnabled(Map<String, dynamic> inbox) =>
+      inbox['roomType']?.toString() == 'private' && inbox['e2eeEnabled'] == true;
+
+  void _guardE2eeMedia(Map<String, dynamic> inbox) {
+    if (_deviceE2eeEnabled(inbox)) {
       throw const ApiException(
         statusCode: 409,
-        message: 'This room uses device E2EE. Mobile key exchange must be enabled before sending.',
+        message:
+            'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
+        payload: {'code': 'E2EE_MEDIA_NOT_SUPPORTED'},
+      );
+    }
+  }
+
+  void _guardE2eeSchedule(Map<String, dynamic> inbox) {
+    if (_deviceE2eeEnabled(inbox)) {
+      throw const ApiException(
+        statusCode: 409,
+        message:
+            'Scheduled send is disabled while device E2EE is enabled because the server cannot encrypt a message later without device private keys.',
+        payload: {'code': 'E2EE_SCHEDULE_NOT_SUPPORTED'},
       );
     }
   }
