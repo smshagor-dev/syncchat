@@ -4,7 +4,10 @@ import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
 import 'live_backup_recovery_screen.dart';
+import 'live_channel_insights_screen.dart';
+import 'live_resumable_upload_screen.dart';
 import 'live_settings_screen.dart';
+import 'live_social_profiles_screen.dart';
 
 class LiveSettingsHubScreen extends StatelessWidget {
   const LiveSettingsHubScreen({
@@ -43,6 +46,27 @@ class LiveSettingsHubScreen extends StatelessWidget {
               Icons.backup_outlined,
               'Backup & restore',
               () => _backupRecovery(context),
+            ),
+          ]),
+          _section(context, 'Profile', [
+            _item(
+              Icons.share_outlined,
+              'Social profiles',
+              () => _push(context, const LiveSocialProfilesScreen()),
+            ),
+          ]),
+          _section(context, 'Channels', [
+            _item(
+              Icons.insights_outlined,
+              'Analytics & reviews',
+              () => _push(context, const LiveChannelInsightsScreen()),
+            ),
+          ]),
+          _section(context, 'Uploads', [
+            _item(
+              Icons.cloud_upload_outlined,
+              'Large file upload',
+              () => _push(context, const LiveResumableUploadScreen()),
             ),
           ]),
           _section(context, 'Privacy', [
@@ -144,6 +168,10 @@ class LiveSettingsHubScreen extends StatelessWidget {
       onChanged: onChanged,
     ),
   );
+
+  void _push(BuildContext context, Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
 
   void _details(BuildContext context) {
     Navigator.of(context).push(

@@ -9,20 +9,22 @@ class LiveChannelInsightsScreen extends StatefulWidget {
   const LiveChannelInsightsScreen({super.key});
 
   @override
-  State<LiveChannelInsightsScreen> createState() => _LiveChannelInsightsScreenState();
+  State<LiveChannelInsightsScreen> createState() =>
+      _LiveChannelInsightsScreenState();
 }
 
-class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
+class _LiveChannelInsightsScreenState
+    extends State<LiveChannelInsightsScreen> {
+  final reviewText = TextEditingController();
+
   List<Map<String, dynamic>> channels = const [];
   Map<String, dynamic>? analytics;
   Map<String, dynamic>? reviews;
   String? selectedChannelId;
+  String? error;
   bool loading = true;
   bool loadingInsights = false;
   bool savingReview = false;
-  String? error;
-
-  final reviewText = TextEditingController();
   int rating = 5;
 
   @override
@@ -42,24 +44,27 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
       loading = true;
       error = null;
     });
+
     try {
       final rows = await context.services.channels.list();
-      final subscribed = rows.where((item) {
-        if (item['subscribed'] == true) return true;
-        final participants = item['participantsId'];
-        return participants is List && participants.isNotEmpty;
-      }).toList(growable: false);
+      final subscribed = rows
+          .where((item) => item['subscribed'] == true)
+          .toList(growable: false);
+      final selectedStillExists = subscribed.any(
+        (item) => item['_id']?.toString() == selectedChannelId,
+      );
+      final nextSelected = selectedStillExists
+          ? selectedChannelId
+          : (subscribed.isEmpty ? null : subscribed.first['_id']?.toString());
+
       if (!mounted) return;
       setState(() {
         channels = subscribed;
-        selectedChannelId = subscribed.any(
-          (item) => item['_id']?.toString() == selectedChannelId,
-        )
-            ? selectedChannelId
-            : (subscribed.isEmpty ? null : subscribed.first['_id']?.toString());
+        selectedChannelId = nextSelected;
         loading = false;
       });
-      if (selectedChannelId != null) await _loadInsights();
+
+      if (nextSelected != null) await _loadInsights();
     } on Object catch (failure) {
       if (!mounted) return;
       setState(() {
@@ -72,10 +77,12 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
   Future<void> _loadInsights() async {
     final channelId = selectedChannelId;
     if (channelId == null || channelId.isEmpty) return;
+
     setState(() {
       loadingInsights = true;
       error = null;
     });
+
     try {
       final responses = await Future.wait([
         context.services.api.get('/channels/$channelId/analytics'),
@@ -84,6 +91,7 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
       final nextAnalytics = _map(responses[0].payload);
       final nextReviews = _map(responses[1].payload);
       final mine = nextReviews['myReview'];
+
       if (!mounted) return;
       setState(() {
         analytics = nextAnalytics;
@@ -104,10 +112,12 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
   Future<void> _submitReview() async {
     final channelId = selectedChannelId;
     if (channelId == null || channelId.isEmpty || savingReview) return;
+
     setState(() {
       savingReview = true;
       error = null;
     });
+
     try {
       await context.services.api.post(
         '/channels/$channelId/reviews',
@@ -117,10 +127,10 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
         },
       );
       if (!mounted) return;
+      setState(() => savingReview = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Channel review saved.')),
       );
-      setState(() => savingReview = false);
       await _loadInsights();
     } on Object catch (failure) {
       if (!mounted) return;
@@ -180,45 +190,43 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
     );
   }
 
-  Widget _channelPicker() {
-    return Card(
-      color: context.panel,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(17),
-        side: BorderSide(color: context.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        child: DropdownButtonFormField<String>(
-          initialValue: selectedChannelId,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Channel',
-            prefixIcon: Icon(Icons.podcasts_rounded),
-            border: InputBorder.none,
-          ),
-          items: channels.map((channel) {
-            final id = channel['_id']?.toString() ?? '';
-            final name = channel['name']?.toString().trim();
-            return DropdownMenuItem(
-              value: id,
-              child: Text(
-                name?.isNotEmpty == true ? name! : 'Channel',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }).toList(growable: false),
-          onChanged: (value) async {
-            if (value == null || value == selectedChannelId) return;
-            setState(() => selectedChannelId = value);
-            await _loadInsights();
-          },
+  Widget _channelPicker() => Card(
+        color: context.panel,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(17),
+          side: BorderSide(color: context.border),
         ),
-      ),
-    );
-  }
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+          child: DropdownButtonFormField<String>(
+            initialValue: selectedChannelId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Channel',
+              prefixIcon: Icon(Icons.podcasts_rounded),
+              border: InputBorder.none,
+            ),
+            items: channels
+                .map(
+                  (channel) => DropdownMenuItem(
+                    value: channel['_id']?.toString(),
+                    child: Text(
+                      _channelName(channel),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (value) async {
+              if (value == null || value == selectedChannelId) return;
+              setState(() => selectedChannelId = value);
+              await _loadInsights();
+            },
+          ),
+        ),
+      );
 
   Widget _analyticsSection() {
     final data = analytics ?? const <String, dynamic>{};
@@ -240,16 +248,40 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
           crossAxisSpacing: 9,
           childAspectRatio: 1.65,
           children: [
-            _metric('Subscribers', _num(growth['currentSubscribers']), Icons.group_outlined),
-            _metric('Net growth', _signed(growth['netLast30Days']), Icons.trending_up_rounded),
-            _metric('View rate', '${_decimal(reach['viewRate'])}%', Icons.visibility_outlined),
-            _metric('Delivery rate', '${_decimal(reach['deliveryRate'])}%', Icons.done_all_rounded),
-            _metric('Reactions', _num(reactions['totalReactions']), Icons.favorite_border_rounded),
-            _metric('Muted now', _num(trend['currentMutedSubscribers']), Icons.notifications_off_outlined),
+            _metric(
+              'Subscribers',
+              _integer(growth['currentSubscribers']),
+              Icons.group_outlined,
+            ),
+            _metric(
+              'Net growth',
+              _signed(growth['netLast30Days']),
+              Icons.trending_up_rounded,
+            ),
+            _metric(
+              'View rate',
+              '${_decimal(reach['viewRate'])}%',
+              Icons.visibility_outlined,
+            ),
+            _metric(
+              'Delivery rate',
+              '${_decimal(reach['deliveryRate'])}%',
+              Icons.done_all_rounded,
+            ),
+            _metric(
+              'Reactions',
+              _integer(reactions['totalReactions']),
+              Icons.favorite_border_rounded,
+            ),
+            _metric(
+              'Muted now',
+              _integer(trend['currentMutedSubscribers']),
+              Icons.notifications_off_outlined,
+            ),
           ],
         ),
         const SizedBox(height: 12),
-        _dailyTrendCard(growth),
+        _movementCard(growth),
         const SizedBox(height: 10),
         _reactionCard(reactions),
       ],
@@ -269,20 +301,34 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
           children: [
             Icon(icon, color: SyncColors.sky, size: 20),
             const Spacer(),
-            Text(value, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-            Text(label, style: TextStyle(color: context.muted, fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: context.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       );
 
-  Widget _dailyTrendCard(Map<String, dynamic> growth) {
+  Widget _movementCard(Map<String, dynamic> growth) {
     final daily = _list(growth['daily']);
-    final maxValue = daily.fold<int>(1, (max, row) {
-      final join = (row['join'] as num?)?.toInt() ?? 0;
-      final leave = (row['leave'] as num?)?.toInt() ?? 0;
-      return [max, join, leave].reduce((a, b) => a > b ? a : b);
-    });
     final recent = daily.length > 14 ? daily.sublist(daily.length - 14) : daily;
+    var maxValue = 1;
+    for (final row in recent) {
+      final joined = (row['join'] as num?)?.toInt() ?? 0;
+      final left = (row['leave'] as num?)?.toInt() ?? 0;
+      maxValue = mathMax(maxValue, mathMax(joined, left));
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -294,64 +340,87 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Subscriber movement', style: TextStyle(fontWeight: FontWeight.w900)),
+          const Text(
+            'Subscriber movement',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 4),
-          Text('Last ${recent.length} days · joins vs leaves', style: TextStyle(color: context.muted, fontSize: 11)),
+          Text(
+            'Last ${recent.length} days · joins vs leaves',
+            style: TextStyle(color: context.muted, fontSize: 11),
+          ),
           const SizedBox(height: 14),
           SizedBox(
             height: 92,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: recent.map((row) {
-                final join = (row['join'] as num?)?.toInt() ?? 0;
-                final leave = (row['leave'] as num?)?.toInt() ?? 0;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: Container(
-                              width: 5,
-                              height: 70 * join / maxValue,
-                              decoration: BoxDecoration(
-                                color: SyncColors.success,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Container(
-                          width: 5,
-                          height: 70 * leave / maxValue,
-                          decoration: BoxDecoration(
-                            color: SyncColors.danger,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ],
+              children: recent
+                  .map(
+                    (row) => Expanded(
+                      child: _movementBar(
+                        joined: (row['join'] as num?)?.toInt() ?? 0,
+                        left: (row['leave'] as num?)?.toInt() ?? 0,
+                        maxValue: maxValue,
+                      ),
                     ),
-                  ),
-                );
-              }).toList(growable: false),
+                  )
+                  .toList(growable: false),
             ),
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
             children: [
-              _legend(SyncColors.success, 'Joined ${_num(growth['joinedLast30Days'])}'),
-              const SizedBox(width: 16),
-              _legend(SyncColors.danger, 'Left ${_num(growth['leftLast30Days'])}'),
+              _legend(
+                SyncColors.success,
+                'Joined ${_integer(growth['joinedLast30Days'])}',
+              ),
+              _legend(
+                SyncColors.danger,
+                'Left ${_integer(growth['leftLast30Days'])}',
+              ),
             ],
           ),
         ],
       ),
     );
   }
+
+  Widget _movementBar({
+    required int joined,
+    required int left,
+    required int maxValue,
+  }) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 1.5),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: 5,
+                  height: 70 * joined / maxValue,
+                  decoration: BoxDecoration(
+                    color: SyncColors.success,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              width: 5,
+              height: 70 * left / maxValue,
+              decoration: BoxDecoration(
+                color: SyncColors.danger,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _reactionCard(Map<String, dynamic> reactions) {
     final top = _list(reactions['topReactions']);
@@ -365,10 +434,13 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Reaction quality', style: TextStyle(fontWeight: FontWeight.w900)),
+          const Text(
+            'Reaction quality',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 6),
           Text(
-            '${_num(reactions['uniqueReactors'])} unique reactors · ${_decimal(reactions['averagePerPost'])} avg/post',
+            '${_integer(reactions['uniqueReactors'])} unique reactors · ${_decimal(reactions['averagePerPost'])} avg/post',
             style: TextStyle(color: context.muted, fontSize: 12),
           ),
           if (top.isNotEmpty) ...[
@@ -376,12 +448,16 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: top.map((item) {
-                return Chip(
-                  label: Text('${item['emoji'] ?? '•'} ${_num(item['count'])}'),
-                  side: BorderSide(color: context.border),
-                );
-              }).toList(growable: false),
+              children: top
+                  .map(
+                    (item) => Chip(
+                      label: Text(
+                        '${item['emoji'] ?? '•'} ${_integer(item['count'])}',
+                      ),
+                      side: BorderSide(color: context.border),
+                    ),
+                  )
+                  .toList(growable: false),
             ),
           ],
         ],
@@ -394,7 +470,10 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _heading(mine is Map ? 'Your review' : 'Review this channel', Icons.rate_review_outlined),
+        _heading(
+          mine is Map ? 'Your review' : 'Review this channel',
+          Icons.rate_review_outlined,
+        ),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(14),
@@ -404,16 +483,19 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
             border: Border.all(color: context.border),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: List.generate(5, (index) {
                   final value = index + 1;
                   return IconButton(
                     tooltip: '$value star${value == 1 ? '' : 's'}',
-                    onPressed: savingReview ? null : () => setState(() => rating = value),
+                    onPressed: savingReview
+                        ? null
+                        : () => setState(() => rating = value),
                     icon: Icon(
-                      value <= rating ? Icons.star_rounded : Icons.star_border_rounded,
+                      value <= rating
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
                       color: Colors.amber,
                       size: 30,
                     ),
@@ -438,9 +520,15 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
                 child: FilledButton.icon(
                   onPressed: savingReview ? null : _submitReview,
                   icon: savingReview
-                      ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.check_rounded),
-                  label: Text(mine is Map ? 'Update review' : 'Submit review'),
+                  label: Text(
+                    mine is Map ? 'Update review' : 'Submit review',
+                  ),
                 ),
               ),
             ],
@@ -453,17 +541,20 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
   Widget _reviewsSection() {
     final data = reviews ?? const <String, dynamic>{};
     final items = _list(data['reviews']);
-    final avg = _decimal(data['ratingAvg']);
-    final count = _num(data['ratingCount']);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Expanded(child: _heading('Subscriber reviews', Icons.forum_outlined)),
+            Expanded(
+              child: _heading('Subscriber reviews', Icons.forum_outlined),
+            ),
             const Icon(Icons.star_rounded, size: 18, color: Colors.amber),
             const SizedBox(width: 3),
-            Text('$avg · $count', style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text(
+              '${_decimal(data['ratingAvg'])} · ${_integer(data['ratingCount'])}',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -476,7 +567,11 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
               borderRadius: BorderRadius.circular(17),
               border: Border.all(color: context.border),
             ),
-            child: Text('No reviews yet.', textAlign: TextAlign.center, style: TextStyle(color: context.muted)),
+            child: Text(
+              'No reviews yet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.muted),
+            ),
           )
         else
           ...items.map(_reviewCard),
@@ -486,10 +581,10 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
 
   Widget _reviewCard(Map<String, dynamic> item) {
     final profile = _map(item['profile']);
-    final name = profile['fullname']?.toString().trim();
-    final username = profile['username']?.toString().trim();
+    final displayName = _reviewerName(profile);
     final stars = (item['rating'] as num?)?.toInt() ?? 0;
     final text = item['review']?.toString().trim() ?? '';
+
     return Card(
       color: context.panel,
       elevation: 0,
@@ -503,23 +598,28 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SyncAvatar(name: name?.isNotEmpty == true ? name! : (username ?? 'Member'), radius: 20),
+            SyncAvatar(name: displayName, radius: 20),
             const SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name?.isNotEmpty == true ? name! : (username?.isNotEmpty == true ? '@$username' : 'Subscriber'),
+                    displayName,
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 3),
                   Row(
-                    children: List.generate(5, (index) => Icon(
-                      index < stars ? Icons.star_rounded : Icons.star_border_rounded,
-                      size: 16,
-                      color: Colors.amber,
-                    )),
+                    children: List.generate(
+                      5,
+                      (index) => Icon(
+                        index < stars
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        size: 16,
+                        color: Colors.amber,
+                      ),
+                    ),
                   ),
                   if (text.isNotEmpty) ...[
                     const SizedBox(height: 7),
@@ -538,16 +638,30 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
         children: [
           Icon(icon, color: SyncColors.sky, size: 20),
           const SizedBox(width: 7),
-          Text(text, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
         ],
       );
 
   Widget _legend(Color color, String text) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
           const SizedBox(width: 5),
-          Text(text, style: TextStyle(color: context.muted, fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(
+            text,
+            style: TextStyle(
+              color: context.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       );
 
@@ -558,17 +672,40 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
           color: SyncColors.danger.withValues(alpha: .08),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Text(message, style: const TextStyle(color: SyncColors.danger, fontWeight: FontWeight.w700)),
+        child: Text(
+          message,
+          style: const TextStyle(
+            color: SyncColors.danger,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       );
 
-  Map<String, dynamic> _map(dynamic value) =>
-      value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+  String _channelName(Map<String, dynamic> channel) {
+    final value = channel['name']?.toString().trim() ?? '';
+    return value.isEmpty ? 'Channel' : value;
+  }
+
+  String _reviewerName(Map<String, dynamic> profile) {
+    final fullname = profile['fullname']?.toString().trim() ?? '';
+    if (fullname.isNotEmpty) return fullname;
+    final username = profile['username']?.toString().trim() ?? '';
+    return username.isEmpty ? 'Subscriber' : '@$username';
+  }
+
+  Map<String, dynamic> _map(dynamic value) => value is Map
+      ? Map<String, dynamic>.from(value)
+      : <String, dynamic>{};
 
   List<Map<String, dynamic>> _list(dynamic value) => value is List
-      ? value.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(growable: false)
+      ? value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false)
       : const [];
 
-  String _num(dynamic value) => ((value as num?)?.toInt() ?? 0).toString();
+  String _integer(dynamic value) => ((value as num?)?.toInt() ?? 0).toString();
+
   String _signed(dynamic value) {
     final number = (value as num?)?.toInt() ?? 0;
     return number > 0 ? '+$number' : '$number';
@@ -576,12 +713,16 @@ class _LiveChannelInsightsScreenState extends State<LiveChannelInsightsScreen> {
 
   String _decimal(dynamic value) {
     final number = (value as num?)?.toDouble() ?? 0;
-    return number == number.roundToDouble() ? number.toStringAsFixed(0) : number.toStringAsFixed(1);
+    return number == number.roundToDouble()
+        ? number.toStringAsFixed(0)
+        : number.toStringAsFixed(1);
   }
 
-  String _message(Object error) => error is ApiException
-      ? error.message
-      : error.toString().replaceFirst('Exception: ', '');
+  String _message(Object failure) => failure is ApiException
+      ? failure.message
+      : failure.toString().replaceFirst('Exception: ', '');
+
+  int mathMax(int a, int b) => a > b ? a : b;
 }
 
 class _EmptyInsights extends StatelessWidget {
@@ -593,9 +734,16 @@ class _EmptyInsights extends StatelessWidget {
       padding: const EdgeInsets.only(top: 100),
       child: Column(
         children: [
-          const Icon(Icons.insights_outlined, size: 54, color: SyncColors.sky),
+          const Icon(
+            Icons.insights_outlined,
+            size: 54,
+            color: SyncColors.sky,
+          ),
           const SizedBox(height: 14),
-          const Text('No subscribed channels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const Text(
+            'No subscribed channels',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 6),
           Text(
             'Subscribe to a channel first to view analytics and reviews.',
