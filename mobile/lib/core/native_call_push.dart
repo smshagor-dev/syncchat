@@ -74,8 +74,8 @@ class NativeCallPushService {
       StreamController<Map<String, dynamic>>.broadcast();
 
   StreamSubscription<CallEvent?>? _callkitSubscription;
-  StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
+  final Set<String> _locallyEndingCalls = <String>{};
   bool _started = false;
   bool _disposed = false;
 
@@ -113,7 +113,9 @@ class NativeCallPushService {
     if ((await _sessionStore.readAccessToken())?.isNotEmpty != true) return;
     _started = true;
 
-    _callkitSubscription = FlutterCallkitIncoming.onEvent.listen(_onCallkitEvent);
+    _callkitSubscription = FlutterCallkitIncoming.onEvent.listen(
+      _onCallkitEvent,
+    );
 
     if (Platform.isAndroid && await ensureFirebaseForAndroid()) {
       await FirebaseMessaging.instance.requestPermission();
@@ -127,22 +129,15 @@ class NativeCallPushService {
       if (!await FlutterCallkitIncoming.canUseFullScreenIntent()) {
         await FlutterCallkitIncoming.requestFullIntentPermission();
       }
-      _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen(
-        (message) async {
-          final payload = Map<String, dynamic>.from(message.data);
-          if (payload['type']?.toString() == 'incoming_call') {
-            await showIncomingCall(payload);
-          }
-        },
-      );
-      _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh.listen(
-        (token) => _registerToken(
-          token: token,
-          platform: 'android',
-          provider: 'fcm',
-          tokenType: 'standard',
-        ),
-      );
+      _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
+          .listen(
+            (token) => _registerToken(
+              token: token,
+              platform: 'android',
+              provider: 'fcm',
+              tokenType: 'standard',
+            ),
+          );
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.trim().isNotEmpty) {
         await _registerToken(
@@ -175,7 +170,10 @@ class NativeCallPushService {
       return;
     }
     if (event is CallEventActionCallEnded) {
-      await _end(payloadFromParams(event.callKitParams));
+      final payload = payloadFromParams(event.callKitParams);
+      final id = payload['callId']?.toString() ?? '';
+      if (id.isNotEmpty && _locallyEndingCalls.remove(id)) return;
+      await _end(payload);
       return;
     }
     if (event is CallEventActionDidUpdateDevicePushTokenVoip) {
@@ -208,7 +206,8 @@ class NativeCallPushService {
 
   Future<void> _registerCurrentVoipToken() async {
     if (!Platform.isIOS) return;
-    final token = (await FlutterCallkitIncoming.getDevicePushTokenVoIP())?.trim();
+    final token = (await FlutterCallkitIncoming.getDevicePushTokenVoIP())
+        ?.trim();
     if (token == null || token.isEmpty) return;
     await _registerToken(
       token: token,
@@ -251,9 +250,10 @@ class NativeCallPushService {
     final existing = (await _storage.read(key: _nativePushDeviceIdKey))?.trim();
     if (existing != null && existing.isNotEmpty) return existing;
     final random = Random.secure();
-    final id = List<int>.generate(20, (_) => random.nextInt(256))
-        .map((value) => value.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final id = List<int>.generate(
+      20,
+      (_) => random.nextInt(256),
+    ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
     await _storage.write(key: _nativePushDeviceIdKey, value: id);
     return id;
   }
@@ -305,8 +305,15 @@ class NativeCallPushService {
   }
 
   Future<void> endNativeUi(String callId) async {
-    if (callId.trim().isEmpty) return;
-    await FlutterCallkitIncoming.endCall(callId);
+    final id = callId.trim();
+    if (id.isEmpty) return;
+    _locallyEndingCalls.add(id);
+    try {
+      await FlutterCallkitIncoming.endCall(id);
+    } on Object {
+      _locallyEndingCalls.remove(id);
+      rethrow;
+    }
   }
 
   static Map<String, dynamic> payloadFromParams(CallKitParams params) {
@@ -314,14 +321,19 @@ class NativeCallPushService {
     payload['callId'] = payload['callId']?.toString().isNotEmpty == true
         ? payload['callId'].toString()
         : params.id;
-    payload.putIfAbsent('mediaType', () => params.type == 1 ? 'video' : 'audio');
+    payload.putIfAbsent(
+      'mediaType',
+      () => params.type == 1 ? 'video' : 'audio',
+    );
     payload.putIfAbsent('fromName', () => params.nameCaller ?? '');
     payload.putIfAbsent('fromUsername', () => params.handle ?? '');
     return payload;
   }
 
   static Future<void> showIncomingCall(Map<String, dynamic> raw) async {
-    final payload = raw.map((key, value) => MapEntry(key, value?.toString() ?? ''));
+    final payload = raw.map(
+      (key, value) => MapEntry(key, value?.toString() ?? ''),
+    );
     final callId = payload['callId']?.trim() ?? '';
     final roomId = payload['roomId']?.trim() ?? '';
     if (callId.isEmpty || roomId.isEmpty) return;
@@ -342,7 +354,7 @@ class NativeCallPushService {
         appName: 'SyncChat',
         handle: fromUsername.isNotEmpty ? '@$fromUsername' : caller,
         type: video ? 1 : 0,
-        duration: timeout.clamp(10, 120) * 1000,
+        duration: timeout.clamp(10, 120).toInt() * 1000,
         extra: payload,
         android: const AndroidParams(
           isCustomNotification: true,
@@ -380,7 +392,6 @@ class NativeCallPushService {
     if (_disposed) return;
     _disposed = true;
     await _callkitSubscription?.cancel();
-    await _foregroundMessageSubscription?.cancel();
     await _tokenRefreshSubscription?.cancel();
     await _acceptedCalls.close();
   }
