@@ -5,6 +5,7 @@ import 'calling_repository.dart';
 import 'chat_repository.dart';
 import 'e2ee_service.dart';
 import 'feature_repositories.dart';
+import 'native_call_push.dart';
 import 'realtime_client.dart';
 import 'session_store.dart';
 
@@ -18,6 +19,7 @@ class AppServices {
     required this.e2ee,
     required this.chat,
     required this.calling,
+    required this.nativeCallPush,
     required this.inbox,
     required this.contacts,
     required this.statuses,
@@ -50,6 +52,12 @@ class AppServices {
       e2ee: e2ee,
     );
     final calling = CallingRepository(api: api, auth: auth, realtime: realtime);
+    final nativeCallPush = NativeCallPushService(
+      api: api,
+      calling: calling,
+      sessionStore: resolvedSessionStore,
+      config: resolvedConfig,
+    );
 
     return AppServices(
       config: resolvedConfig,
@@ -60,6 +68,7 @@ class AppServices {
       e2ee: e2ee,
       chat: chat,
       calling: calling,
+      nativeCallPush: nativeCallPush,
       inbox: InboxRepository(api),
       contacts: ContactRepository(api),
       statuses: StatusRepository(api),
@@ -78,6 +87,7 @@ class AppServices {
   final E2eeService e2ee;
   final ChatRepository chat;
   final CallingRepository calling;
+  final NativeCallPushService nativeCallPush;
   final InboxRepository inbox;
   final ContactRepository contacts;
   final StatusRepository statuses;
@@ -87,7 +97,8 @@ class AppServices {
   final SettingsRepository settings;
 
   Future<void> dispose() async {
-    api.close();
+    await nativeCallPush.dispose();
     await realtime.dispose();
+    api.close();
   }
 }
