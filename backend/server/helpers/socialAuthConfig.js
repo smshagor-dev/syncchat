@@ -12,6 +12,9 @@ const DEFAULT_SOCIAL_AUTH_CONFIG = Object.freeze({
     appId: '',
     appSecret: '',
   },
+  // Telegram is retained only for legacy server-side compatibility. It is not
+  // exposed to web/mobile configuration surfaces and cannot be configured from
+  // the browser anymore.
   telegram: {
     enabled: false,
     botUsername: '',
@@ -169,11 +172,6 @@ const getSocialAuthConfigForAdmin = async () => {
       appId: config.facebook.appId,
       appSecretSet: Boolean(config.facebook.appSecret),
     },
-    telegram: {
-      enabled: config.telegram.enabled,
-      botUsername: config.telegram.botUsername,
-      botTokenSet: Boolean(config.telegram.botToken),
-    },
   };
 };
 
@@ -182,7 +180,6 @@ const getPublicSocialAuthConfig = async () => {
   return {
     googleClientId: config.google.enabled ? config.google.clientId : '',
     facebookAppId: config.facebook.enabled ? config.facebook.appId : '',
-    telegramBotUsername: config.telegram.enabled ? config.telegram.botUsername : '',
   };
 };
 
@@ -190,7 +187,6 @@ const saveSocialAuthConfig = async (raw = {}) => {
   const current = await getSocialAuthConfig();
   const googleInput = raw.google && typeof raw.google === 'object' ? raw.google : {};
   const facebookInput = raw.facebook && typeof raw.facebook === 'object' ? raw.facebook : {};
-  const telegramInput = raw.telegram && typeof raw.telegram === 'object' ? raw.telegram : {};
 
   const hasGoogleSecret =
     Object.prototype.hasOwnProperty.call(googleInput, 'clientSecret') &&
@@ -198,9 +194,6 @@ const saveSocialAuthConfig = async (raw = {}) => {
   const hasFacebookSecret =
     Object.prototype.hasOwnProperty.call(facebookInput, 'appSecret') &&
     String(facebookInput.appSecret || '').trim().length > 0;
-  const hasTelegramToken =
-    Object.prototype.hasOwnProperty.call(telegramInput, 'botToken') &&
-    String(telegramInput.botToken || '').trim().length > 0;
 
   const next = normalizeSocialAuthConfig({
     google: {
@@ -217,13 +210,9 @@ const saveSocialAuthConfig = async (raw = {}) => {
         ? String(facebookInput.appSecret)
         : current.facebook.appSecret,
     },
-    telegram: {
-      ...current.telegram,
-      ...telegramInput,
-      botToken: hasTelegramToken
-        ? String(telegramInput.botToken)
-        : current.telegram.botToken,
-    },
+    // Browser/admin updates must never re-enable or mutate Telegram. Existing
+    // legacy values remain untouched server-side for compatibility/migration.
+    telegram: current.telegram,
   });
 
   validateSocialAuthConfig(next);
