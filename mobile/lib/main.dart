@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'core/api_client.dart';
@@ -10,11 +12,34 @@ import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await NativeCallPushService.bootstrapBeforeRunApp();
-  await DeviceIntegrationService.initialize();
+
+  // Always render Flutter's first frame before touching optional native
+  // integrations. A slow OEM Firebase/CallKit/notification plugin must never
+  // be able to keep Android's system splash screen on-screen indefinitely.
   runApp(const SyncChatMobileApp());
+  unawaited(_bootstrapNativeServices());
+}
+
+Future<void> _bootstrapNativeServices() async {
+  try {
+    await NativeCallPushService.bootstrapBeforeRunApp().timeout(
+      const Duration(seconds: 8),
+    );
+  } on Object catch (error, stackTrace) {
+    debugPrint('SyncChat native push bootstrap skipped: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
+  try {
+    await DeviceIntegrationService.initialize().timeout(
+      const Duration(seconds: 8),
+    );
+  } on Object catch (error, stackTrace) {
+    debugPrint('SyncChat notification bootstrap skipped: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
 
 class SyncChatMobileApp extends StatefulWidget {
@@ -64,9 +89,9 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     return AuthScreen(
       authRepository: _services.auth,
       onAuthenticated: (context) async {
-        await _services.realtime.connect();
-        await _services.nativeCallPush.startAuthenticated();
-        await DeviceIntegrationService.startForegroundMessaging();
+        // Authentication success must not wait on sockets, FCM token
+        // registration, OEM permission APIs, or notification channels.
+        unawaited(_startAuthenticatedIntegrations());
         if (!context.mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute<void>(builder: (_) => _authenticatedHome()),
@@ -76,11 +101,37 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     );
   }
 
+  Future<void> _startAuthenticatedIntegrations() async {
+    try {
+      await _services.realtime.connect().timeout(const Duration(seconds: 5));
+    } on Object catch (error) {
+      debugPrint('SyncChat realtime startup deferred: $error');
+    }
+
+    try {
+      await _services.nativeCallPush
+          .startAuthenticated()
+          .timeout(const Duration(seconds: 8));
+    } on Object catch (error) {
+      debugPrint('SyncChat native push startup deferred: $error');
+    }
+
+    try {
+      await DeviceIntegrationService.startForegroundMessaging().timeout(
+        const Duration(seconds: 5),
+      );
+    } on Object catch (error) {
+      debugPrint('SyncChat foreground messaging startup deferred: $error');
+    }
+  }
+
   Future<void> _logout(BuildContext context) async {
     try {
-      await _services.nativeCallPush.unregisterCurrentDevice();
+      await _services.nativeCallPush
+          .unregisterCurrentDevice()
+          .timeout(const Duration(seconds: 5));
     } on Object {
-      // Local logout must still succeed when the network is unavailable.
+      // Local logout must still succeed when the network/native layer is down.
     }
     _services.realtime.disconnect();
     await _services.auth.logoutLocal();
@@ -93,12 +144,15 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   }
 
   Future<bool> _restoreSession() async {
-    if (!await _services.auth.hasSession()) return false;
+    final hasSession = await _services.auth.hasSession().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => false,
+    );
+    if (!hasSession) return false;
+
     try {
-      await _services.auth.currentUser();
-      await _services.realtime.connect();
-      await _services.nativeCallPush.startAuthenticated();
-      await DeviceIntegrationService.startForegroundMessaging();
+      await _services.auth.currentUser().timeout(const Duration(seconds: 8));
+      unawaited(_startAuthenticatedIntegrations());
       return true;
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -142,17 +196,22 @@ class _BootScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: SyncColors.slate950,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.forum_rounded, color: SyncColors.sky, size: 52),
-            SizedBox(height: 16),
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text(
+            Image.asset(
+              'assets/syncchat_logo.png',
+              width: 72,
+              height: 72,
+              filterQuality: FilterQuality.high,
+            ),
+            const SizedBox(height: 16),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            const Text(
               'SyncChat',
               style: TextStyle(
                 color: Colors.white,
