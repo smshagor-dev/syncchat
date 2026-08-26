@@ -12,6 +12,15 @@ enum RealtimeConnectionState {
   authenticationFailed,
 }
 
+class SocketAckException implements Exception {
+  const SocketAckException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class RealtimeClient {
   RealtimeClient({
     required SyncChatConfig config,
@@ -96,7 +105,7 @@ class RealtimeClient {
   void emit(String event, [dynamic payload]) {
     final socket = _socket;
     if (socket == null || !socket.connected) {
-      throw StateError('Socket is not connected.');
+      throw const SocketAckException('Socket is not connected.');
     }
     socket.emit(event, payload);
   }
@@ -108,7 +117,7 @@ class RealtimeClient {
   }) async {
     final socket = _socket;
     if (socket == null || !socket.connected) {
-      throw StateError('Socket is not connected.');
+      throw const SocketAckException('Socket is not connected.');
     }
 
     final completer = Completer<dynamic>();
