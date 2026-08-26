@@ -1,3 +1,4 @@
+# Release trigger: mobile-v0.1.0-demo.5
 name: SyncChat Mobile Demo Release
 
 on:
