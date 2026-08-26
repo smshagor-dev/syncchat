@@ -5,10 +5,14 @@ const ctrl = require('../controllers/user');
 const accountSecurity = require('../controllers/accountSecurity');
 const authRecovery = require('../controllers/authRecovery');
 const socialAuth = require('../controllers/socialAuthSecure');
+const sessionPersistence = require('../controllers/sessionPersistence');
 
 router.post('/users/register', authRecovery.register);
 router.post('/users/login', ctrl.login);
 router.post('/users/login/2fa-verify', ctrl.verifyLoginTwoFactor);
+router.post('/users/session/refresh', sessionPersistence.refresh);
+router.post('/users/session/persist', authenticate, sessionPersistence.persist);
+router.post('/users/session/logout', authenticate, sessionPersistence.logout);
 router.post('/users/device-link/info', ctrl.deviceLinkInfo);
 router.post('/users/device-link/complete', ctrl.completeDeviceLink);
 router.get('/users/social-config', socialAuth.socialConfig);
