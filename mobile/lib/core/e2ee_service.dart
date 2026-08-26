@@ -35,37 +35,38 @@ class E2eeDeviceKeyRecord {
   final DateTime? registeredAt;
 
   Map<String, dynamic> get publicJwk => {
-        'key_ops': const <String>[],
-        'ext': true,
-        'kty': 'EC',
-        'x': x,
-        'y': y,
-        'crv': 'P-256',
-      };
+    'key_ops': const <String>[],
+    'ext': true,
+    'kty': 'EC',
+    'x': x,
+    'y': y,
+    'crv': 'P-256',
+  };
 
-  E2eeDeviceKeyRecord copyWith({DateTime? registeredAt}) =>
-      E2eeDeviceKeyRecord(
-        userId: userId,
-        sessionId: sessionId,
-        privateD: privateD,
-        x: x,
-        y: y,
-        fingerprint: fingerprint,
-        registeredAt: registeredAt ?? this.registeredAt,
-      );
+  E2eeDeviceKeyRecord copyWith({DateTime? registeredAt}) => E2eeDeviceKeyRecord(
+    userId: userId,
+    sessionId: sessionId,
+    privateD: privateD,
+    x: x,
+    y: y,
+    fingerprint: fingerprint,
+    registeredAt: registeredAt ?? this.registeredAt,
+  );
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'sessionId': sessionId,
-        'privateD': privateD,
-        'x': x,
-        'y': y,
-        'fingerprint': fingerprint,
-        'registeredAt': registeredAt?.toUtc().toIso8601String(),
-      };
+    'userId': userId,
+    'sessionId': sessionId,
+    'privateD': privateD,
+    'x': x,
+    'y': y,
+    'fingerprint': fingerprint,
+    'registeredAt': registeredAt?.toUtc().toIso8601String(),
+  };
 
   static E2eeDeviceKeyRecord fromJson(Map<String, dynamic> json) {
-    final registeredAt = DateTime.tryParse(json['registeredAt']?.toString() ?? '');
+    final registeredAt = DateTime.tryParse(
+      json['registeredAt']?.toString() ?? '',
+    );
     return E2eeDeviceKeyRecord(
       userId: json['userId']?.toString() ?? '',
       sessionId: json['sessionId']?.toString() ?? '',
@@ -86,7 +87,7 @@ abstract interface class E2eeKeyStore {
 
 class SecureE2eeKeyStore implements E2eeKeyStore {
   SecureE2eeKeyStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _prefix = 'syncchat.e2ee.p256.';
   final FlutterSecureStorage _storage;
@@ -98,9 +99,7 @@ class SecureE2eeKeyStore implements E2eeKeyStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      return E2eeDeviceKeyRecord.fromJson(
-        Map<String, dynamic>.from(decoded),
-      );
+      return E2eeDeviceKeyRecord.fromJson(Map<String, dynamic>.from(decoded));
     } on FormatException {
       return null;
     }
@@ -108,9 +107,9 @@ class SecureE2eeKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> write(E2eeDeviceKeyRecord record) => _storage.write(
-        key: '$_prefix${record.sessionId}',
-        value: jsonEncode(record.toJson()),
-      );
+    key: '$_prefix${record.sessionId}',
+    value: jsonEncode(record.toJson()),
+  );
 
   @override
   Future<void> delete(String sessionId) =>
@@ -126,7 +125,8 @@ class MemoryE2eeKeyStore implements E2eeKeyStore {
   }
 
   @override
-  Future<E2eeDeviceKeyRecord?> read(String sessionId) async => records[sessionId];
+  Future<E2eeDeviceKeyRecord?> read(String sessionId) async =>
+      records[sessionId];
 
   @override
   Future<void> write(E2eeDeviceKeyRecord record) async {
@@ -197,7 +197,10 @@ class E2eeCrypto {
   }) {
     final plaintext = text;
     if (plaintext.isEmpty) {
-      throw const ApiException(statusCode: 400, message: 'Message cannot be empty.');
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Message cannot be empty.',
+      );
     }
 
     final contentKey = _randomBytes(32);
@@ -239,9 +242,9 @@ class E2eeCrypto {
         'sessionId': sessionId,
         'fingerprint': peer['fingerprint']?.toString() ?? '',
         'ephemeralPublicJwk': _publicJwk(ephemeral.publicKey),
-        'salt': _base64Url(salt),
-        'wrapIv': _base64Url(wrapIv),
-        'wrappedKey': _base64Url(wrappedKey),
+        'salt': _base64(salt),
+        'wrapIv': _base64(wrapIv),
+        'wrappedKey': _base64(wrappedKey),
       });
     }
 
@@ -256,8 +259,8 @@ class E2eeCrypto {
       'version': version,
       'algorithm': algorithm,
       'roomId': roomId,
-      'messageIv': _base64Url(messageIv),
-      'ciphertext': _base64Url(ciphertext),
+      'messageIv': _base64(messageIv),
+      'ciphertext': _base64(ciphertext),
       'devices': devices,
     };
   }
@@ -285,13 +288,12 @@ class E2eeCrypto {
 
     final ephemeralJwk = target['ephemeralPublicJwk'];
     if (ephemeralJwk is! Map) return null;
-    final ephemeralPublic = _publicKey(
-      Map<String, dynamic>.from(ephemeralJwk),
-    );
+    final ephemeralPublic = _publicKey(Map<String, dynamic>.from(ephemeralJwk));
     final shared = _sharedSecret(_privateKey(current), ephemeralPublic);
-    final salt = _base64UrlDecode(target['salt']?.toString() ?? '');
-    final wrapIv = _base64UrlDecode(target['wrapIv']?.toString() ?? '');
-    final info = 'syncchat-e2ee-v1:$roomId:${current.userId}:${current.sessionId}';
+    final salt = _base64Decode(target['salt']?.toString() ?? '');
+    final wrapIv = _base64Decode(target['wrapIv']?.toString() ?? '');
+    final info =
+        'syncchat-e2ee-v1:$roomId:${current.userId}:${current.sessionId}';
     final wrapKey = _hkdf(
       shared,
       salt: salt,
@@ -301,26 +303,22 @@ class E2eeCrypto {
       encrypting: false,
       key: wrapKey,
       nonce: wrapIv,
-      input: _base64UrlDecode(target['wrappedKey']?.toString() ?? ''),
+      input: _base64Decode(target['wrappedKey']?.toString() ?? ''),
     );
     final plaintext = _gcm(
       encrypting: false,
       key: rawContentKey,
-      nonce: _base64UrlDecode(envelope['messageIv']?.toString() ?? ''),
-      input: _base64UrlDecode(envelope['ciphertext']?.toString() ?? ''),
+      nonce: _base64Decode(envelope['messageIv']?.toString() ?? ''),
+      input: _base64Decode(envelope['ciphertext']?.toString() ?? ''),
     );
     return utf8.decode(plaintext);
   }
 
   AsymmetricKeyPair<ECPublicKey, ECPrivateKey> _generatePair() {
-    final secureRandom = FortunaRandom()
-      ..seed(KeyParameter(_randomBytes(32)));
+    final secureRandom = FortunaRandom()..seed(KeyParameter(_randomBytes(32)));
     final generator = ECKeyGenerator()
       ..init(
-        ParametersWithRandom(
-          ECKeyGeneratorParameters(_domain),
-          secureRandom,
-        ),
+        ParametersWithRandom(ECKeyGeneratorParameters(_domain), secureRandom),
       );
     return generator.generateKeyPair();
   }
@@ -398,19 +396,14 @@ class E2eeCrypto {
     final cipher = GCMBlockCipher(AESEngine())
       ..init(
         encrypting,
-        AEADParameters(
-          KeyParameter(key),
-          128,
-          nonce,
-          Uint8List(0),
-        ),
+        AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)),
       );
     return cipher.process(input);
   }
 
   Uint8List _randomBytes(int length) => Uint8List.fromList(
-        List<int>.generate(length, (_) => _random.nextInt(256)),
-      );
+    List<int>.generate(length, (_) => _random.nextInt(256)),
+  );
 
   String _base64Url(Uint8List bytes) =>
       base64UrlEncode(bytes).replaceAll('=', '');
@@ -418,6 +411,13 @@ class E2eeCrypto {
   Uint8List _base64UrlDecode(String value) {
     if (value.isEmpty) return Uint8List(0);
     return Uint8List.fromList(base64Url.decode(base64Url.normalize(value)));
+  }
+
+  String _base64(Uint8List bytes) => base64Encode(bytes);
+
+  Uint8List _base64Decode(String value) {
+    if (value.isEmpty) return Uint8List(0);
+    return Uint8List.fromList(base64.decode(value));
   }
 
   BigInt _bigInt(Uint8List bytes) {
@@ -451,10 +451,10 @@ class E2eeService {
     required SessionStore sessionStore,
     E2eeKeyStore? keyStore,
     E2eeCrypto? crypto,
-  })  : _api = api,
-        _sessionStore = sessionStore,
-        _keyStore = keyStore ?? SecureE2eeKeyStore(),
-        _crypto = crypto ?? E2eeCrypto();
+  }) : _api = api,
+       _sessionStore = sessionStore,
+       _keyStore = keyStore ?? SecureE2eeKeyStore(),
+       _crypto = crypto ?? E2eeCrypto();
 
   final ApiClient _api;
   final SessionStore _sessionStore;
@@ -464,11 +464,17 @@ class E2eeService {
   Future<E2eeIdentity> currentIdentity() async {
     final token = await _sessionStore.readAccessToken();
     if (token == null || token.isEmpty) {
-      throw const ApiException(statusCode: 401, message: 'Authentication required.');
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Authentication required.',
+      );
     }
     final parts = token.split('.');
     if (parts.length < 2) {
-      throw const ApiException(statusCode: 401, message: 'Invalid access token.');
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Invalid access token.',
+      );
     }
     try {
       final payload = jsonDecode(
@@ -476,14 +482,18 @@ class E2eeService {
       );
       if (payload is! Map) throw const FormatException('Invalid JWT payload.');
       final data = Map<String, dynamic>.from(payload);
-      final userId = (data['_id'] ?? data['id'] ?? data['userId'])?.toString() ?? '';
+      final userId =
+          (data['_id'] ?? data['id'] ?? data['userId'])?.toString() ?? '';
       final sessionId = data['sid']?.toString() ?? '';
       if (userId.isEmpty || sessionId.isEmpty) {
         throw const FormatException('Missing user or session ID.');
       }
       return E2eeIdentity(userId: userId, sessionId: sessionId);
     } on FormatException {
-      throw const ApiException(statusCode: 401, message: 'Invalid access token.');
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Invalid access token.',
+      );
     }
   }
 
@@ -492,7 +502,8 @@ class E2eeService {
   }) async {
     final identity = await currentIdentity();
     var record = await _keyStore.read(identity.sessionId);
-    final valid = record != null &&
+    final valid =
+        record != null &&
         record.userId == identity.userId &&
         record.sessionId == identity.sessionId &&
         _crypto.validates(record);
@@ -605,9 +616,7 @@ class E2eeService {
   Future<Map<String, dynamic>> decryptMessage(
     Map<String, dynamic> message,
   ) async {
-    return Map<String, dynamic>.from(
-      await _decryptValue(message) as Map,
-    );
+    return Map<String, dynamic>.from(await _decryptValue(message) as Map);
   }
 
   Future<List<Map<String, dynamic>>> decryptMessages(
@@ -666,6 +675,9 @@ class E2eeService {
 
   Map<String, dynamic> _map(dynamic payload) {
     if (payload is Map) return Map<String, dynamic>.from(payload);
-    throw const ApiException(statusCode: 500, message: 'Invalid E2EE response.');
+    throw const ApiException(
+      statusCode: 500,
+      message: 'Invalid E2EE response.',
+    );
   }
 }

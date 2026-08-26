@@ -46,13 +46,21 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   String? error;
   String typingText = '';
   int lastSequence = 0;
+  late bool e2eeEnabled;
 
   String get roomId => widget.inbox['roomId']?.toString() ?? '';
   String get currentUserId => currentUser?['_id']?.toString() ?? '';
+  Map<String, dynamic> get effectiveInbox => {
+    ...widget.inbox,
+    'e2eeEnabled': e2eeEnabled,
+  };
 
   @override
   void initState() {
     super.initState();
+    e2eeEnabled =
+        widget.inbox['roomType']?.toString() == 'private' &&
+        widget.inbox['e2eeEnabled'] == true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
@@ -70,6 +78,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       chat.off('chat/pins', _onPinsEvent);
       chat.off('chat/typing', _onTypingEvent);
       chat.off('chat/typing-ends', _onTypingEnds);
+      chat.off('e2ee/room', _onE2eeRoom);
+      chat.off('e2ee/key-changed', _onE2eeKeyChanged);
     }
     connectionSubscription?.cancel();
     composer.dispose();
@@ -93,6 +103,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     chat.on('chat/pins', _onPinsEvent);
     chat.on('chat/typing', _onTypingEvent);
     chat.on('chat/typing-ends', _onTypingEnds);
+    chat.on('e2ee/room', _onE2eeRoom);
+    chat.on('e2ee/key-changed', _onE2eeKeyChanged);
 
     connectionSubscription = services.realtime.states.listen((state) {
       if (state == RealtimeConnectionState.connected) _catchUp();
@@ -104,11 +116,19 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         chat.listRoom(roomId, limit: 100),
         chat.openRoom(roomId),
         chat.pinnedMessages(roomId),
+        widget.inbox['roomType']?.toString() == 'private'
+            ? chat.e2eeRoomState(roomId)
+            : Future<Map<String, dynamic>>.value(const {
+                'enabled': false,
+                'version': 0,
+              }),
       ]);
       currentUser = Map<String, dynamic>.from(results[0] as Map);
-      final loaded = (results[1] as List)
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item));
+      e2eeEnabled =
+          Map<String, dynamic>.from(results[4] as Map)['enabled'] == true;
+      final loaded = (results[1] as List).whereType<Map>().map(
+        (item) => Map<String, dynamic>.from(item),
+      );
       _mergeMessages(loaded);
       _applyPins(Map<String, dynamic>.from(results[3] as Map));
       await chat.markRoomRead(widget.inbox);
@@ -139,18 +159,28 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       final results = await Future.wait<dynamic>([
         chat.listRoom(roomId, limit: 100),
         chat.pinnedMessages(roomId),
+        widget.inbox['roomType']?.toString() == 'private'
+            ? chat.e2eeRoomState(roomId)
+            : Future<Map<String, dynamic>>.value(const {
+                'enabled': false,
+                'version': 0,
+              }),
       ]);
       messages.clear();
       lastSequence = 0;
       _mergeMessages(
-        (results[0] as List)
-            .whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item)),
+        (results[0] as List).whereType<Map>().map(
+          (item) => Map<String, dynamic>.from(item),
+        ),
       );
       _applyPins(Map<String, dynamic>.from(results[1] as Map));
-      await chat.markRoomRead(widget.inbox);
+      await chat.markRoomRead(effectiveInbox);
       if (!mounted) return;
-      setState(() => loading = false);
+      setState(() {
+        e2eeEnabled =
+            Map<String, dynamic>.from(results[2] as Map)['enabled'] == true;
+        loading = false;
+      });
       _scrollToBottom();
     } on Object catch (failure) {
       if (!mounted) return;
@@ -189,41 +219,48 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     final raw = payload['pinned'];
     pinnedIds = raw is List
         ? raw
-            .whereType<Map>()
-            .map((item) => item['chatId']?.toString() ?? '')
-            .where((id) => id.isNotEmpty)
-            .toSet()
+              .whereType<Map>()
+              .map((item) => item['chatId']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
         : <String>{};
   }
 
-  void _onSyncResult(dynamic data) {
-    if (!mounted || data is! Map || data['roomId']?.toString() != roomId) return;
+  void _onSyncResult(dynamic data) async {
+    if (!mounted || data is! Map || data['roomId']?.toString() != roomId)
+      return;
     final rows = data['messages'];
     if (rows is! List) return;
-    setState(() {
-      _mergeMessages(
-        rows.whereType<Map>().map((item) => Map<String, dynamic>.from(item)),
-      );
-    });
+    final decrypted = <Map<String, dynamic>>[];
+    for (final raw in rows.whereType<Map>()) {
+      decrypted.add(await chat.decryptMessage(Map<String, dynamic>.from(raw)));
+    }
+    if (!mounted) return;
+    setState(() => _mergeMessages(decrypted));
     _scrollToBottom();
   }
 
-  void _onChatInsert(dynamic data) {
-    if (!mounted || data is! Map || data['roomId']?.toString() != roomId) return;
-    final message = Map<String, dynamic>.from(data);
+  void _onChatInsert(dynamic data) async {
+    if (!mounted || data is! Map || data['roomId']?.toString() != roomId)
+      return;
+    final message = await chat.decryptMessage(Map<String, dynamic>.from(data));
+    if (!mounted) return;
     setState(() => _mergeMessages([message]));
     if (!_isMine(message)) {
       chat.sendReceipt(message, read: true);
-      chat.markRoomRead(widget.inbox);
+      chat.markRoomRead(effectiveInbox);
     }
     _scrollToBottom();
   }
 
   void _onReceipt(dynamic data) {
-    if (!mounted || data is! Map || data['roomId']?.toString() != roomId) return;
+    if (!mounted || data is! Map || data['roomId']?.toString() != roomId)
+      return;
     final chatId = data['chatId']?.toString();
     if (chatId == null || chatId.isEmpty) return;
-    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    final index = messages.indexWhere(
+      (item) => item['_id']?.toString() == chatId,
+    );
     if (index < 0) return;
     setState(() {
       final next = Map<String, dynamic>.from(messages[index]);
@@ -237,7 +274,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     if (!mounted || data is! Map) return;
     final chatId = data['chatId']?.toString() ?? '';
     if (chatId.isEmpty) return;
-    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    final index = messages.indexWhere(
+      (item) => item['_id']?.toString() == chatId,
+    );
     if (index < 0) return;
     setState(() {
       final next = Map<String, dynamic>.from(messages[index]);
@@ -251,7 +290,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   void _onEdit(dynamic data) {
     if (!mounted || data is! Map) return;
     final chatId = data['chatId']?.toString() ?? '';
-    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    final index = messages.indexWhere(
+      (item) => item['_id']?.toString() == chatId,
+    );
     if (index < 0) return;
     setState(() {
       final next = Map<String, dynamic>.from(messages[index]);
@@ -267,14 +308,17 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   void _onDelete(dynamic data) {
     if (!mounted || data is! Map || data['chatsId'] is! List) return;
-    final ids = (data['chatsId'] as List).map((item) => item.toString()).toSet();
+    final ids = (data['chatsId'] as List)
+        .map((item) => item.toString())
+        .toSet();
     setState(() {
       messages.removeWhere((item) => ids.contains(item['_id']?.toString()));
       pinnedIds.removeAll(ids);
       if (replyingTo != null && ids.contains(replyingTo!['_id']?.toString())) {
         replyingTo = null;
       }
-      if (editingMessage != null && ids.contains(editingMessage!['_id']?.toString())) {
+      if (editingMessage != null &&
+          ids.contains(editingMessage!['_id']?.toString())) {
         editingMessage = null;
         composer.clear();
       }
@@ -284,7 +328,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   void _onViewOnceEvent(dynamic data) {
     if (!mounted || data is! Map) return;
     final chatId = data['chatId']?.toString() ?? '';
-    final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+    final index = messages.indexWhere(
+      (item) => item['_id']?.toString() == chatId,
+    );
     if (index < 0) return;
     setState(() {
       final next = Map<String, dynamic>.from(messages[index]);
@@ -318,7 +364,32 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     final message = data is Map
         ? data['message']?.toString() ?? 'Message could not be sent.'
         : 'Message could not be sent.';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _onE2eeRoom(dynamic data) {
+    if (!mounted || data is! Map || data['roomId']?.toString() != roomId)
+      return;
+    final enabled = data['enabled'] == true;
+    setState(() {
+      e2eeEnabled = enabled;
+      if (enabled && editingMessage != null) {
+        editingMessage = null;
+        composer.clear();
+      }
+    });
+    _snack(
+      enabled
+          ? 'End-to-end encryption enabled.'
+          : 'End-to-end encryption disabled.',
+    );
+  }
+
+  void _onE2eeKeyChanged(dynamic data) {
+    if (!mounted || data is! Map) return;
+    _snack('An E2EE device key changed. Verify the contact security code.');
   }
 
   void _mergeMessages(Iterable<Map<String, dynamic>> incoming) {
@@ -327,7 +398,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       final id = message['_id']?.toString();
       final clientId = message['clientMessageId']?.toString();
       final index = messages.indexWhere((item) {
-        if (id != null && id.isNotEmpty && item['_id']?.toString() == id) return true;
+        if (id != null && id.isNotEmpty && item['_id']?.toString() == id)
+          return true;
         return clientId != null &&
             clientId.isNotEmpty &&
             item['clientMessageId']?.toString() == clientId;
@@ -343,14 +415,23 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     messages.sort((left, right) {
       final a = DateTime.tryParse(left['createdAt']?.toString() ?? '');
       final b = DateTime.tryParse(right['createdAt']?.toString() ?? '');
-      return (a ?? DateTime.fromMillisecondsSinceEpoch(0))
-          .compareTo(b ?? DateTime.fromMillisecondsSinceEpoch(0));
+      return (a ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+        b ?? DateTime.fromMillisecondsSinceEpoch(0),
+      );
     });
   }
 
   Future<void> _send() async {
     final text = composer.text.trim();
     if (text.isEmpty || sending || uploading) return;
+
+    if (editingMessage != null && e2eeEnabled) {
+      _cancelComposerMode();
+      _snack(
+        'Editing is disabled for device-E2EE messages until encrypted edit envelopes are supported.',
+      );
+      return;
+    }
 
     if (editingMessage != null) {
       final editing = editingMessage!;
@@ -390,7 +471,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'pending': true,
       'profile': {
-        'fullname': user['fullname']?.toString() ?? user['username']?.toString() ?? 'You',
+        'fullname':
+            user['fullname']?.toString() ??
+            user['username']?.toString() ??
+            'You',
         'avatar': user['avatar'],
       },
     };
@@ -405,7 +489,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
     try {
       await chat.sendText(
-        inbox: widget.inbox,
+        inbox: effectiveInbox,
         text: text,
         clientMessageId: clientMessageId,
         replyTo: reply?['_id']?.toString(),
@@ -437,17 +521,25 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     return {
       '_id': message['_id'],
       'userId': message['userId'],
-      'fullname': profile is Map ? profile['fullname']?.toString() ?? 'Message' : 'Message',
+      'fullname': profile is Map
+          ? profile['fullname']?.toString() ?? 'Message'
+          : 'Message',
       'text': (message['text']?.toString().trim().isNotEmpty ?? false)
           ? message['text']?.toString()
           : file is Map
-              ? file['originalname']?.toString() ?? 'Attachment'
-              : 'Message',
+          ? file['originalname']?.toString() ?? 'Attachment'
+          : 'Message',
     };
   }
 
   Future<void> _showAttachmentSheet() async {
     if (uploading) return;
+    if (e2eeEnabled) {
+      _snack(
+        'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
+      );
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -458,10 +550,16 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
             runSpacing: 4,
             children: [
               const ListTile(
-                title: Text('Attach', style: TextStyle(fontWeight: FontWeight.w900)),
+                title: Text(
+                  'Attach',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library_outlined, color: SyncColors.sky),
+                leading: const Icon(
+                  Icons.photo_library_outlined,
+                  color: SyncColors.sky,
+                ),
                 title: const Text('Photo from gallery'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -469,7 +567,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.camera_alt_outlined, color: SyncColors.sky),
+                leading: const Icon(
+                  Icons.camera_alt_outlined,
+                  color: SyncColors.sky,
+                ),
                 title: const Text('Take photo'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -477,7 +578,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.video_library_outlined, color: SyncColors.sky),
+                leading: const Icon(
+                  Icons.video_library_outlined,
+                  color: SyncColors.sky,
+                ),
                 title: const Text('Video from gallery'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -485,7 +589,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.videocam_outlined, color: SyncColors.sky),
+                leading: const Icon(
+                  Icons.videocam_outlined,
+                  color: SyncColors.sky,
+                ),
                 title: const Text('Record video'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -493,7 +600,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.description_outlined, color: SyncColors.sky),
+                leading: const Icon(
+                  Icons.description_outlined,
+                  color: SyncColors.sky,
+                ),
                 title: const Text('Document / file'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -509,7 +619,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await imagePicker.pickImage(source: source, imageQuality: 92);
+      final picked = await imagePicker.pickImage(
+        source: source,
+        imageQuality: 92,
+      );
       if (picked == null || !mounted) return;
       await _prepareAttachment(
         filePath: picked.path,
@@ -595,8 +708,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                   contentPadding: EdgeInsets.zero,
                   value: viewOnce,
                   title: const Text('View once'),
-                  subtitle: const Text('Recipient can open this media one time.'),
-                  onChanged: (value) => setDialogState(() => viewOnce = value == true),
+                  subtitle: const Text(
+                    'Recipient can open this media one time.',
+                  ),
+                  onChanged: (value) =>
+                      setDialogState(() => viewOnce = value == true),
                 ),
               ],
             ],
@@ -609,7 +725,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
             FilledButton(
               onPressed: () => Navigator.pop(
                 dialogContext,
-                _AttachmentDraft(caption: caption.text.trim(), viewOnce: viewOnce),
+                _AttachmentDraft(
+                  caption: caption.text.trim(),
+                  viewOnce: viewOnce,
+                ),
               ),
               child: const Text('Send'),
             ),
@@ -627,7 +746,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         filename: filename,
       );
       final sent = await chat.sendAttachment(
-        inbox: widget.inbox,
+        inbox: effectiveInbox,
         file: uploaded,
         text: draft.caption,
         replyTo: replyingTo?['_id']?.toString(),
@@ -660,8 +779,13 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         : const <String>[];
     final starred = starredBy.contains(currentUserId);
     final pinned = pinnedIds.contains(chatId);
-    final viewOnce = message['viewOnce'] is Map && message['viewOnce']['enabled'] == true;
-    final canEdit = mine && !viewOnce && (message['text']?.toString().trim().isNotEmpty ?? false);
+    final viewOnce =
+        message['viewOnce'] is Map && message['viewOnce']['enabled'] == true;
+    final canEdit =
+        mine &&
+        !e2eeEnabled &&
+        !viewOnce &&
+        (message['text']?.toString().trim().isNotEmpty ?? false);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -679,7 +803,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                     borderRadius: BorderRadius.circular(22),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      chat.reactToMessage(roomId: roomId, chatId: chatId, emoji: emoji);
+                      chat.reactToMessage(
+                        roomId: roomId,
+                        chatId: chatId,
+                        emoji: emoji,
+                      );
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(9),
@@ -694,7 +822,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                   title: const Text('Remove my reaction'),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    chat.reactToMessage(roomId: roomId, chatId: chatId, emoji: null);
+                    chat.reactToMessage(
+                      roomId: roomId,
+                      chatId: chatId,
+                      emoji: null,
+                    );
                   },
                 ),
               ListTile(
@@ -705,14 +837,15 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                   _startReply(message);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.forward_rounded),
-                title: const Text('Forward'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _forwardMessage(message);
-                },
-              ),
+              if (!e2eeEnabled)
+                ListTile(
+                  leading: const Icon(Icons.forward_rounded),
+                  title: const Text('Forward'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _forwardMessage(message);
+                  },
+                ),
               if (canEdit)
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
@@ -723,7 +856,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                   },
                 ),
               ListTile(
-                leading: Icon(starred ? Icons.star_rounded : Icons.star_border_rounded),
+                leading: Icon(
+                  starred ? Icons.star_rounded : Icons.star_border_rounded,
+                ),
                 title: Text(starred ? 'Unstar' : 'Star'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -731,7 +866,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined),
+                leading: Icon(
+                  pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                ),
                 title: Text(pinned ? 'Unpin' : 'Pin'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -739,7 +876,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: SyncColors.danger),
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: SyncColors.danger,
+                ),
                 title: const Text('Delete for me'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -748,7 +888,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
               ),
               if (mine)
                 ListTile(
-                  leading: const Icon(Icons.delete_forever_outlined, color: SyncColors.danger),
+                  leading: const Icon(
+                    Icons.delete_forever_outlined,
+                    color: SyncColors.danger,
+                  ),
                   title: const Text('Delete for everyone'),
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -767,6 +910,12 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   Future<void> _forwardMessage(Map<String, dynamic> message) async {
+    if (e2eeEnabled || message['e2eeEnvelope'] is Map) {
+      _snack(
+        'Forwarding device-E2EE messages is disabled to prevent plaintext downgrade.',
+      );
+      return;
+    }
     final chatId = message['_id']?.toString() ?? '';
     if (chatId.isEmpty) return;
     try {
@@ -793,7 +942,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       editingMessage = message;
       replyingTo = null;
       composer.text = message['text']?.toString() ?? '';
-      composer.selection = TextSelection.collapsed(offset: composer.text.length);
+      composer.selection = TextSelection.collapsed(
+        offset: composer.text.length,
+      );
     });
   }
 
@@ -813,11 +964,15 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     try {
       final payload = await chat.toggleStar(chatId, starred: starred);
       if (!mounted) return;
-      final index = messages.indexWhere((item) => item['_id']?.toString() == chatId);
+      final index = messages.indexWhere(
+        (item) => item['_id']?.toString() == chatId,
+      );
       if (index < 0) return;
       setState(() {
         final next = Map<String, dynamic>.from(messages[index]);
-        next['starredBy'] = payload['starredBy'] is List ? payload['starredBy'] : const [];
+        next['starredBy'] = payload['starredBy'] is List
+            ? payload['starredBy']
+            : const [];
         messages[index] = next;
       });
     } on Object catch (failure) {
@@ -825,7 +980,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     }
   }
 
-  Future<void> _togglePin(String chatId, {required bool currentlyPinned}) async {
+  Future<void> _togglePin(
+    String chatId, {
+    required bool currentlyPinned,
+  }) async {
     try {
       if (currentlyPinned) {
         await chat.unpinMessage(roomId: roomId, chatId: chatId);
@@ -857,9 +1015,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
 
   Future<void> _recordVoiceNote() async {
     if (sending || uploading || editingMessage != null) return;
-    if (widget.inbox['e2eeEnabled'] == true) {
+    if (e2eeEnabled) {
       _snack(
-        'This room uses device E2EE. Mobile key exchange must be enabled before sending.',
+        'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
       );
       return;
     }
@@ -874,12 +1032,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         filename: draft.filename,
       );
       final sent = await chat.sendAttachment(
-        inbox: widget.inbox,
-        file: {
-          ...uploaded,
-          'type': 'audio',
-          'duration': draft.durationSeconds,
-        },
+        inbox: effectiveInbox,
+        file: {...uploaded, 'type': 'audio', 'duration': draft.durationSeconds},
         replyTo: replyingTo?['_id']?.toString(),
       );
       if (!mounted) return;
@@ -899,6 +1053,12 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   Future<void> _showScheduleMenu() async {
+    if (e2eeEnabled) {
+      _snack(
+        'Scheduled send is disabled while device E2EE is enabled because the server cannot encrypt a message later without device private keys.',
+      );
+      return;
+    }
     if (editingMessage != null) {
       _snack('Finish editing before scheduling a message.');
       return;
@@ -911,7 +1071,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const ListTile(
-              title: Text('Schedule message', style: TextStyle(fontWeight: FontWeight.w900)),
+              title: Text(
+                'Schedule message',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.schedule_send_outlined),
@@ -990,11 +1153,17 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       initialTime: TimeOfDay.fromDateTime(initial),
     );
     if (time == null || !mounted) return;
-    final scheduled = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final scheduled = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
 
     try {
       await chat.scheduleMessage(
-        inbox: widget.inbox,
+        inbox: effectiveInbox,
         text: text,
         replyTo: replyingTo?['_id']?.toString(),
         mode: mode,
@@ -1006,7 +1175,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         composer.clear();
         replyingTo = null;
       });
-      _snack(mode == 'recurring' ? 'Recurring message scheduled.' : 'Message scheduled.');
+      _snack(
+        mode == 'recurring'
+            ? 'Recurring message scheduled.'
+            : 'Message scheduled.',
+      );
     } on Object catch (failure) {
       if (mounted) _snack(_messageFor(failure));
     }
@@ -1020,7 +1193,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     }
     try {
       await chat.scheduleMessage(
-        inbox: widget.inbox,
+        inbox: effectiveInbox,
         text: text,
         replyTo: replyingTo?['_id']?.toString(),
         mode: 'when-online',
@@ -1049,7 +1222,10 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
             child: Column(
               children: [
                 const ListTile(
-                  title: Text('Scheduled messages', style: TextStyle(fontWeight: FontWeight.w900)),
+                  title: Text(
+                    'Scheduled messages',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
                 ),
                 Expanded(
                   child: jobs.isEmpty
@@ -1075,7 +1251,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
                                   await chat.cancelScheduled(id);
                                   if (!sheetContext.mounted) return;
                                   Navigator.pop(sheetContext);
-                                  if (mounted) _snack('Scheduled message cancelled.');
+                                  if (mounted)
+                                    _snack('Scheduled message cancelled.');
                                 },
                                 icon: const Icon(Icons.close_rounded),
                               ),
@@ -1098,7 +1275,9 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     if (mode == 'when-online') return 'When contact is online';
     final raw = job['nextRunAt'] ?? job['scheduledFor'];
     final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
-    final when = date == null ? '' : '${date.day}/${date.month}/${date.year} ${_clock(date)}';
+    final when = date == null
+        ? ''
+        : '${date.day}/${date.month}/${date.year} ${_clock(date)}';
     if (mode == 'recurring') {
       final recurring = job['recurringType']?.toString() ?? 'recurring';
       return '${recurring[0].toUpperCase()}${recurring.substring(1)} · $when';
@@ -1107,7 +1286,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   bool _isMine(Map<String, dynamic> message) =>
-      currentUserId.isNotEmpty && message['userId']?.toString() == currentUserId;
+      currentUserId.isNotEmpty &&
+      message['userId']?.toString() == currentUserId;
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1120,9 +1300,31 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     });
   }
 
+  Future<void> _showE2eeSheet() async {
+    if (widget.inbox['roomType']?.toString() != 'private') {
+      _snack('Device E2EE is currently available for private chats only.');
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _E2eeSecuritySheet(
+        chat: chat,
+        roomId: roomId,
+        initialEnabled: e2eeEnabled,
+        onChanged: (enabled) {
+          if (mounted) setState(() => e2eeEnabled = enabled);
+        },
+      ),
+    );
+  }
+
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _messageFor(Object error) {
@@ -1133,27 +1335,65 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: context.isDark ? SyncColors.spill950 : SyncColors.slate200,
+      backgroundColor: context.isDark
+          ? SyncColors.spill950
+          : SyncColors.slate200,
       body: SafeArea(
         child: Column(
           children: [
             _RoomHeader(
               name: widget.name,
-              inbox: widget.inbox,
+              inbox: effectiveInbox,
               typingText: typingText,
+              e2eeEnabled: e2eeEnabled,
+              onSecurity: _showE2eeSheet,
             ),
+            if (e2eeEnabled)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
+                color: context.panel,
+                child: const Row(
+                  children: [
+                    Icon(Icons.lock_rounded, size: 15, color: SyncColors.sky),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        'End-to-end encrypted · Device E2EE',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (pinnedIds.isNotEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 color: context.panel,
                 child: Row(
                   children: [
-                    const Icon(Icons.push_pin_rounded, size: 15, color: SyncColors.sky),
+                    const Icon(
+                      Icons.push_pin_rounded,
+                      size: 15,
+                      color: SyncColors.sky,
+                    ),
                     const SizedBox(width: 7),
                     Text(
                       '${pinnedIds.length} pinned message${pinnedIds.length == 1 ? '' : 's'}',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
@@ -1169,7 +1409,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
               onAttachment: _showAttachmentSheet,
               onSchedule: _showScheduleMenu,
               onVoice: _recordVoiceNote,
-              onTyping: () => chat.typing(widget.inbox),
+              onTyping: () => chat.typing(effectiveInbox),
               onSend: _send,
             ),
           ],
@@ -1187,7 +1427,11 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_outlined, size: 44, color: SyncColors.sky),
+              const Icon(
+                Icons.cloud_off_outlined,
+                size: 44,
+                color: SyncColors.sky,
+              ),
               const SizedBox(height: 12),
               Text(error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
@@ -1230,16 +1474,237 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 }
 
+class _E2eeSecuritySheet extends StatefulWidget {
+  const _E2eeSecuritySheet({
+    required this.chat,
+    required this.roomId,
+    required this.initialEnabled,
+    required this.onChanged,
+  });
+
+  final ChatRepository chat;
+  final String roomId;
+  final bool initialEnabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_E2eeSecuritySheet> createState() => _E2eeSecuritySheetState();
+}
+
+class _E2eeSecuritySheetState extends State<_E2eeSecuritySheet> {
+  late bool enabled;
+  bool busy = false;
+  String? fingerprint;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    enabled = widget.initialEnabled;
+  }
+
+  Future<void> _registerDevice() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final record = await widget.chat.registerE2eeDevice();
+      if (!mounted) return;
+      setState(() {
+        fingerprint = record.fingerprint;
+        busy = false;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = failure is ApiException
+            ? failure.message
+            : failure.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _toggle() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final payload = await widget.chat.setE2eeRoomEnabled(
+        widget.roomId,
+        enabled: !enabled,
+      );
+      if (!mounted) return;
+      final next = payload['enabled'] == true;
+      setState(() {
+        enabled = next;
+        busy = false;
+      });
+      widget.onChanged(next);
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = failure is ApiException
+            ? failure.message
+            : failure.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  String _formatFingerprint(String value) {
+    final clean = value.replaceAll(RegExp(r'\s+'), '');
+    final chunks = <String>[];
+    for (var index = 0; index < clean.length; index += 4) {
+      final end = (index + 4).clamp(0, clean.length);
+      chunks.add(clean.substring(index, end));
+    }
+    return chunks.join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 6, 18, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: SyncColors.sky.withValues(alpha: .12),
+                  ),
+                  child: Icon(
+                    enabled ? Icons.lock_rounded : Icons.security_outlined,
+                    color: SyncColors.sky,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'End-to-end encryption',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        enabled
+                            ? 'Enabled for this private chat'
+                            : 'Available for this private chat',
+                        style: TextStyle(fontSize: 12, color: context.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Messages use ECDH P-256, HKDF-SHA256 and AES-256-GCM. Private keys stay in secure storage on this device and are never uploaded.',
+              style: TextStyle(height: 1.4, color: context.muted),
+            ),
+            const SizedBox(height: 14),
+            if (error != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: SyncColors.danger.withValues(alpha: .08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(error!, style: const TextStyle(fontSize: 12)),
+              ),
+            if (fingerprint != null) ...[
+              Text(
+                'This device security code',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: context.muted,
+                ),
+              ),
+              const SizedBox(height: 5),
+              SelectableText(
+                _formatFingerprint(fingerprint!),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+            if (busy) const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : _registerDevice,
+                    icon: const Icon(Icons.phonelink_lock_outlined),
+                    label: const Text('Register this device'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: busy ? null : _toggle,
+                    icon: Icon(
+                      enabled ? Icons.lock_open_rounded : Icons.lock_rounded,
+                    ),
+                    label: Text(enabled ? 'Disable' : 'Enable'),
+                  ),
+                ),
+              ],
+            ),
+            if (enabled) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Encrypted media, scheduled send, forwarding and message editing remain disabled until encrypted versions of those protocols are supported.',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.35,
+                  color: context.muted,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
     required this.name,
     required this.inbox,
     required this.typingText,
+    required this.e2eeEnabled,
+    required this.onSecurity,
   });
 
   final String name;
   final Map<String, dynamic> inbox;
   final String typingText;
+  final bool e2eeEnabled;
+  final VoidCallback onSecurity;
 
   @override
   Widget build(BuildContext context) {
@@ -1273,21 +1738,36 @@ class _RoomHeader extends StatelessWidget {
                 Text(
                   typingText.isNotEmpty
                       ? typingText
+                      : e2eeEnabled
+                      ? 'End-to-end encrypted'
                       : group
-                          ? 'Group conversation'
-                          : 'SyncChat contact',
+                      ? 'Group conversation'
+                      : 'SyncChat contact',
                   style: TextStyle(
                     fontSize: 12,
-                    color: typingText.isNotEmpty ? SyncColors.sky : context.muted,
-                    fontWeight: typingText.isNotEmpty ? FontWeight.w700 : FontWeight.w400,
+                    color: typingText.isNotEmpty
+                        ? SyncColors.sky
+                        : context.muted,
+                    fontWeight: typingText.isNotEmpty
+                        ? FontWeight.w700
+                        : FontWeight.w400,
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.videocam_outlined)),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.videocam_outlined),
+          ),
           IconButton(onPressed: () {}, icon: const Icon(Icons.call_outlined)),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert_rounded)),
+          IconButton(
+            tooltip: 'Security',
+            onPressed: onSecurity,
+            icon: Icon(
+              e2eeEnabled ? Icons.lock_rounded : Icons.security_outlined,
+            ),
+          ),
         ],
       ),
     );
@@ -1326,7 +1806,9 @@ class _MessageBubble extends StatelessWidget {
       child: GestureDetector(
         onLongPress: onLongPress,
         child: Container(
-          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * .78,
+          ),
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.fromLTRB(12, 8, 10, 6),
           decoration: BoxDecoration(
@@ -1340,7 +1822,11 @@ class _MessageBubble extends StatelessWidget {
               bottomRight: Radius.circular(mine ? 5 : 18),
             ),
             boxShadow: const [
-              BoxShadow(color: Color(0x160F172A), blurRadius: 5, offset: Offset(0, 2)),
+              BoxShadow(
+                color: Color(0x160F172A),
+                blurRadius: 5,
+                offset: Offset(0, 2),
+              ),
             ],
           ),
           child: Column(
@@ -1362,11 +1848,16 @@ class _MessageBubble extends StatelessWidget {
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: context.softPanel.withOpacity(.7),
                     borderRadius: BorderRadius.circular(10),
-                    border: const Border(left: BorderSide(color: SyncColors.sky, width: 3)),
+                    border: const Border(
+                      left: BorderSide(color: SyncColors.sky, width: 3),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1402,7 +1893,10 @@ class _MessageBubble extends StatelessWidget {
                   children: reactions.entries
                       .map(
                         (entry) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: context.softPanel,
                             borderRadius: BorderRadius.circular(99),
@@ -1410,7 +1904,10 @@ class _MessageBubble extends StatelessWidget {
                           ),
                           child: Text(
                             '${entry.key} ${entry.value}',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       )
@@ -1421,12 +1918,27 @@ class _MessageBubble extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (message['e2eeEnvelope'] is Map) ...[
+                    const Icon(
+                      Icons.lock_rounded,
+                      size: 12,
+                      color: SyncColors.sky,
+                    ),
+                    const SizedBox(width: 3),
+                  ],
                   if (pinned) ...[
-                    const Icon(Icons.push_pin_rounded, size: 12, color: SyncColors.sky),
+                    const Icon(
+                      Icons.push_pin_rounded,
+                      size: 12,
+                      color: SyncColors.sky,
+                    ),
                     const SizedBox(width: 3),
                   ],
                   if (message['isEdited'] == true) ...[
-                    Text('edited', style: TextStyle(fontSize: 9, color: context.muted)),
+                    Text(
+                      'edited',
+                      style: TextStyle(fontSize: 9, color: context.muted),
+                    ),
                     const SizedBox(width: 4),
                   ],
                   Text(
@@ -1439,18 +1951,18 @@ class _MessageBubble extends StatelessWidget {
                       failed
                           ? Icons.error_outline_rounded
                           : pending
-                              ? Icons.schedule_rounded
-                              : read
-                                  ? Icons.done_all_rounded
-                                  : delivered
-                                      ? Icons.done_all_rounded
-                                      : Icons.done_rounded,
+                          ? Icons.schedule_rounded
+                          : read
+                          ? Icons.done_all_rounded
+                          : delivered
+                          ? Icons.done_all_rounded
+                          : Icons.done_rounded,
                       size: 14,
                       color: failed
                           ? SyncColors.danger
                           : read
-                              ? SyncColors.sky
-                              : context.muted,
+                          ? SyncColors.sky
+                          : context.muted,
                     ),
                   ],
                 ],
@@ -1506,7 +2018,9 @@ class _AttachmentContent extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                opened ? Icons.check_circle_outline_rounded : Icons.looks_one_outlined,
+                opened
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.looks_one_outlined,
                 color: SyncColors.sky,
               ),
               const SizedBox(width: 9),
@@ -1518,8 +2032,8 @@ class _AttachmentContent extends StatelessWidget {
                       type == 'image'
                           ? 'View-once photo'
                           : type == 'video'
-                              ? 'View-once video'
-                              : 'View-once message',
+                          ? 'View-once video'
+                          : 'View-once message',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     Text(
@@ -1625,9 +2139,15 @@ class _FileCard extends StatelessWidget {
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                Text(subtitle, style: TextStyle(fontSize: 10, color: context.muted)),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 10, color: context.muted),
+                ),
               ],
             ),
           ),
@@ -1648,24 +2168,33 @@ class _ViewOnceDialog extends StatelessWidget {
     final text = payload['text']?.toString() ?? '';
     final file = payload['file'];
     final url = file is Map ? file['url']?.toString() ?? '' : '';
-    final name = file is Map ? file['originalname']?.toString() ?? 'Media' : 'Media';
+    final name = file is Map
+        ? file['originalname']?.toString() ?? 'Media'
+        : 'Media';
 
     Widget content;
     if (type == 'image' && url.isNotEmpty) {
       content = Image.network(
         url,
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const Center(child: Text('Image could not be displayed.')),
+        errorBuilder: (_, __, ___) =>
+            const Center(child: Text('Image could not be displayed.')),
       );
     } else if (type == 'video') {
       content = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.play_circle_outline_rounded, size: 64, color: SyncColors.sky),
+          const Icon(
+            Icons.play_circle_outline_rounded,
+            size: 64,
+            color: SyncColors.sky,
+          ),
           const SizedBox(height: 10),
           Text(name, textAlign: TextAlign.center),
           const SizedBox(height: 4),
-          const Text('Video opened. Native playback is added in the media-runtime wave.'),
+          const Text(
+            'Video opened. Native playback is added in the media-runtime wave.',
+          ),
         ],
       );
     } else {
@@ -1726,7 +2255,12 @@ class _Composer extends StatelessWidget {
     final modeMessage = editingMessage ?? replyingTo;
     final modeTitle = editingMessage != null ? 'Editing message' : 'Replying';
     return Container(
-      padding: EdgeInsets.fromLTRB(8, 7, 8, MediaQuery.paddingOf(context).bottom + 8),
+      padding: EdgeInsets.fromLTRB(
+        8,
+        7,
+        8,
+        MediaQuery.paddingOf(context).bottom + 8,
+      ),
       decoration: BoxDecoration(
         color: context.panel,
         border: Border(top: BorderSide(color: context.border)),
@@ -1741,7 +2275,9 @@ class _Composer extends StatelessWidget {
               decoration: BoxDecoration(
                 color: context.softPanel,
                 borderRadius: BorderRadius.circular(12),
-                border: const Border(left: BorderSide(color: SyncColors.sky, width: 3)),
+                border: const Border(
+                  left: BorderSide(color: SyncColors.sky, width: 3),
+                ),
               ),
               child: Row(
                 children: [
@@ -1758,7 +2294,8 @@ class _Composer extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          modeMessage['text']?.toString().trim().isNotEmpty == true
+                          modeMessage['text']?.toString().trim().isNotEmpty ==
+                                  true
                               ? modeMessage['text'].toString()
                               : 'Attachment',
                           maxLines: 1,
@@ -1796,7 +2333,9 @@ class _Composer extends StatelessWidget {
                   onChanged: (_) => onTyping(),
                   onSubmitted: (_) => onSend(),
                   decoration: InputDecoration(
-                    hintText: editingMessage != null ? 'Edit message' : 'Message',
+                    hintText: editingMessage != null
+                        ? 'Edit message'
+                        : 'Message',
                     prefixIcon: const Icon(Icons.emoji_emotions_outlined),
                     suffixIcon: IconButton(
                       tooltip: 'Schedule',
@@ -1825,9 +2364,16 @@ class _Composer extends StatelessWidget {
                     child: sending
                         ? const Padding(
                             padding: EdgeInsets.all(13),
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                        : const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                   ),
                 ),
               ),

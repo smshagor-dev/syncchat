@@ -14,18 +14,13 @@ Future<bool?> showForwardMessageSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _ForwardMessageSheet(
-      fromRoomId: fromRoomId,
-      chatIds: chatIds,
-    ),
+    builder: (_) =>
+        _ForwardMessageSheet(fromRoomId: fromRoomId, chatIds: chatIds),
   );
 }
 
 class _ForwardMessageSheet extends StatefulWidget {
-  const _ForwardMessageSheet({
-    required this.fromRoomId,
-    required this.chatIds,
-  });
+  const _ForwardMessageSheet({required this.fromRoomId, required this.chatIds});
 
   final String fromRoomId;
   final List<String> chatIds;
@@ -77,9 +72,9 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
         inboxes
           ..clear()
           ..addAll(
-            (results[1] as List)
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item)),
+            (results[1] as List).whereType<Map>().map(
+              (item) => Map<String, dynamic>.from(item),
+            ),
           );
         loading = false;
         error = null;
@@ -95,19 +90,24 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
 
   List<Map<String, dynamic>> get filtered {
     final query = search.text.trim().toLowerCase();
-    return inboxes.where((inbox) {
-      if (inbox['roomId']?.toString() == widget.fromRoomId) return false;
-      if (_forwardBlocked(inbox)) return false;
-      if (query.isEmpty) return true;
-      final title = _title(inbox).toLowerCase();
-      final subtitle = _subtitle(inbox).toLowerCase();
-      return title.contains(query) || subtitle.contains(query);
-    }).toList(growable: false);
+    return inboxes
+        .where((inbox) {
+          if (inbox['roomId']?.toString() == widget.fromRoomId) return false;
+          if (_forwardBlocked(inbox)) return false;
+          if (query.isEmpty) return true;
+          final title = _title(inbox).toLowerCase();
+          final subtitle = _subtitle(inbox).toLowerCase();
+          return title.contains(query) || subtitle.contains(query);
+        })
+        .toList(growable: false);
   }
 
-  bool _forwardBlocked(Map<String, dynamic> inbox) =>
-      inbox['secretChatEnabled'] == true &&
-      (inbox['secretForwardBlocked'] == null || inbox['secretForwardBlocked'] == true);
+  bool _forwardBlocked(Map<String, dynamic> inbox) {
+    if (inbox['e2eeEnabled'] == true) return true;
+    return inbox['secretChatEnabled'] == true &&
+        (inbox['secretForwardBlocked'] == null ||
+            inbox['secretForwardBlocked'] == true);
+  }
 
   Future<void> _forward(Map<String, dynamic> destination) async {
     final toRoomId = destination['roomId']?.toString() ?? '';
@@ -126,6 +126,14 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
       ]);
       final fromInbox = liveRooms[0];
       final toInbox = liveRooms[1];
+      if (fromInbox['e2eeEnabled'] == true || toInbox['e2eeEnabled'] == true) {
+        throw const ApiException(
+          statusCode: 403,
+          message:
+              'Forwarding device-E2EE messages is disabled to prevent plaintext downgrade.',
+          payload: {'code': 'E2EE_FORWARD_BLOCKED'},
+        );
+      }
       if (_forwardBlocked(fromInbox) || _forwardBlocked(toInbox)) {
         throw const ApiException(
           statusCode: 403,
@@ -139,14 +147,15 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
         'fromRoomId': widget.fromRoomId,
         'chatsId': widget.chatIds,
         'toRoomId': toRoomId,
-        'toRoomType': toInbox['roomType']?.toString() ??
+        'toRoomType':
+            toInbox['roomType']?.toString() ??
             destination['roomType']?.toString() ??
             'private',
         'toOwnersId': toInbox['ownersId'] is List
             ? toInbox['ownersId']
             : destination['ownersId'] is List
-                ? destination['ownersId']
-                : const [],
+            ? destination['ownersId']
+            : const [],
       });
 
       if (mounted) Navigator.pop(context, true);
@@ -163,7 +172,8 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
     if (inbox['roomType']?.toString() == 'group') {
       final channel = inbox['channel'];
       final group = inbox['group'];
-      if (channel is Map && channel['name']?.toString().trim().isNotEmpty == true) {
+      if (channel is Map &&
+          channel['name']?.toString().trim().isNotEmpty == true) {
         return channel['name'].toString();
       }
       if (group is Map && group['name']?.toString().trim().isNotEmpty == true) {
@@ -231,7 +241,10 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
                       children: [
                         Text(
                           'Forward Message',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                         SizedBox(height: 2),
                         Text('Choose a conversation'),
@@ -275,63 +288,67 @@ class _ForwardMessageSheetState extends State<_ForwardMessageSheet> {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : rows.isEmpty
-                      ? Center(
-                          child: Text(
-                            search.text.trim().isEmpty
-                                ? 'No conversation available for forwarding.'
-                                : 'No chat found.',
-                            style: TextStyle(color: context.muted),
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _load,
-                          child: ListView.separated(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(10, 4, 10, 18),
-                            itemCount: rows.length,
-                            separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              indent: 64,
-                              color: context.border,
-                            ),
-                            itemBuilder: (_, index) {
-                              final inbox = rows[index];
-                              final roomId = inbox['roomId']?.toString() ?? '';
-                              final busy = sendingRoomId == roomId;
-                              final title = _title(inbox);
-                              return ListTile(
-                                enabled: sendingRoomId == null,
-                                leading: SyncAvatar(
-                                  name: title,
-                                  radius: 21,
-                                  online: false,
-                                ),
-                                title: Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                subtitle: Text(
-                                  _subtitle(inbox),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: busy
-                                    ? const SizedBox.square(
-                                        dimension: 22,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Icon(
-                                        Icons.send_rounded,
-                                        color: SyncColors.sky,
-                                        size: 20,
-                                      ),
-                                onTap: () => _forward(inbox),
-                              );
-                            },
-                          ),
+                  ? Center(
+                      child: Text(
+                        search.text.trim().isEmpty
+                            ? 'No conversation available for forwarding.'
+                            : 'No chat found.',
+                        style: TextStyle(color: context.muted),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(10, 4, 10, 18),
+                        itemCount: rows.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          indent: 64,
+                          color: context.border,
                         ),
+                        itemBuilder: (_, index) {
+                          final inbox = rows[index];
+                          final roomId = inbox['roomId']?.toString() ?? '';
+                          final busy = sendingRoomId == roomId;
+                          final title = _title(inbox);
+                          return ListTile(
+                            enabled: sendingRoomId == null,
+                            leading: SyncAvatar(
+                              name: title,
+                              radius: 21,
+                              online: false,
+                            ),
+                            title: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              _subtitle(inbox),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: busy
+                                ? const SizedBox.square(
+                                    dimension: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.send_rounded,
+                                    color: SyncColors.sky,
+                                    size: 20,
+                                  ),
+                            onTap: () => _forward(inbox),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
