@@ -196,14 +196,9 @@ class DeviceIntegrationService {
         return await NativeCallPushService.ensureFirebaseForAndroid();
       }
       if (Platform.isIOS) {
-        if (Firebase.apps.isEmpty) {
-          await Firebase.initializeApp();
-        }
-        await FirebaseMessaging.instance.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+        // iOS Firebase must be initialized by StandardPushRegistration using
+        // explicit release configuration. Do not fall back to a missing
+        // GoogleService-Info.plist and do not prompt for permission on startup.
         return Firebase.apps.isNotEmpty;
       }
     } on Object {
@@ -221,7 +216,7 @@ class DeviceIntegrationService {
             IOSFlutterLocalNotificationsPlugin
           >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
-      if (await _ensureMessagingReady()) {
+      if (Firebase.apps.isNotEmpty) {
         await FirebaseMessaging.instance.requestPermission(
           alert: true,
           badge: true,
