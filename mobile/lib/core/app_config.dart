@@ -21,13 +21,21 @@ class SyncChatConfig {
       'SYNCCHAT_SOCKET_URL',
       defaultValue: 'http://127.0.0.1:5599',
     );
-    const firebaseApiKey = String.fromEnvironment('SYNCCHAT_FIREBASE_API_KEY');
-    const firebaseAppId = String.fromEnvironment('SYNCCHAT_FIREBASE_APP_ID');
+    const firebaseApiKey = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_API_KEY',
+      defaultValue: 'AIzaSyCIabLqUfQeyrD5e8D6wQj58ktPKKzKWcg',
+    );
+    const firebaseAppId = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_APP_ID',
+      defaultValue: '1:183539740148:android:aeb359ff30de6297f85da1',
+    );
     const firebaseMessagingSenderId = String.fromEnvironment(
       'SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID',
+      defaultValue: '183539740148',
     );
     const firebaseProjectId = String.fromEnvironment(
       'SYNCCHAT_FIREBASE_PROJECT_ID',
+      defaultValue: 'chat-c001b',
     );
     const appVersion = String.fromEnvironment(
       'SYNCCHAT_APP_VERSION',
