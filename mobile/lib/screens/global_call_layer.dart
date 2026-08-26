@@ -39,9 +39,8 @@ class _GlobalCallLayerState extends State<GlobalCallLayer> {
     if (!mounted || bound) return;
     calling = context.services.calling;
     calling!.on('call/incoming', _onIncoming);
-    nativeAcceptSubscription = context.services.nativeCallPush.acceptedCalls.listen(
-      (call) => _presentIncoming(call, autoAccept: true),
-    );
+    nativeAcceptSubscription = context.services.nativeCallPush.acceptedCalls
+        .listen((call) => _presentIncoming(call, autoAccept: true));
     bound = true;
   }
 

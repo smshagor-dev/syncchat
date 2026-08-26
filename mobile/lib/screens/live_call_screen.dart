@@ -31,12 +31,14 @@ class LiveCallScreen extends StatefulWidget {
     required this.video,
     this.inbox,
     this.incomingCall,
+    this.autoAccept = false,
   });
 
   final Map<String, dynamic>? inbox;
   final Map<String, dynamic>? incomingCall;
   final String name;
   final bool video;
+  final bool autoAccept;
 
   bool get incoming => incomingCall != null;
 
@@ -84,6 +86,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
   String get userId => currentUser?['_id']?.toString() ?? '';
   String get callerId => widget.incomingCall?['fromUserId']?.toString() ?? '';
   bool get group => roomType == 'group';
+  bool get groupHost => group && !widget.incoming;
 
   List<String> get recipients {
     final owners = widget.inbox?['ownersId'];
@@ -150,7 +153,11 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
             ? (widget.video ? 'Incoming video call' : 'Incoming voice call')
             : 'Preparing call…';
       });
-      if (!widget.incoming) await _startOutgoing();
+      if (!widget.incoming) {
+        await _startOutgoing();
+      } else if (widget.autoAccept) {
+        await _accept();
+      }
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -276,6 +283,12 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
           .catchError((_) {});
     }
     await _disposeMedia();
+    final nativeCallId = callId;
+    if (nativeCallId != null && nativeCallId.isNotEmpty) {
+      await context.services.nativeCallPush
+          .endNativeUi(nativeCallId)
+          .catchError((_) {});
+    }
     if (!mounted) return;
     Navigator.of(context).maybePop();
   }
@@ -551,6 +564,12 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
       });
     }
     _startDuration();
+    final nativeCallId = callId;
+    if (nativeCallId != null && nativeCallId.isNotEmpty) {
+      context.services.nativeCallPush
+          .markConnected(nativeCallId)
+          .catchError((_) {});
+    }
   }
 
   void _onError(dynamic raw) {
@@ -599,6 +618,8 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     calling.on('call/busy', _onBusy);
     calling.on('call/missed', _onMissed);
     calling.on('call/cancelled', _onCancelled);
+    calling.on('call/moderation', _onModeration);
+    calling.on('call/moderation-applied', _onModerationApplied);
   }
 
   void _unbindEvents() {
@@ -615,7 +636,46 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     calling.off('call/busy', _onBusy);
     calling.off('call/missed', _onMissed);
     calling.off('call/cancelled', _onCancelled);
+    calling.off('call/moderation', _onModeration);
+    calling.off('call/moderation-applied', _onModerationApplied);
     callingBound = false;
+  }
+
+  Future<void> _forceMuteFromHost() async {
+    if (sfuMode) {
+      await liveKitRoom?.localParticipant?.setMicrophoneEnabled(false);
+    } else {
+      for (final track
+          in localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+        track.enabled = false;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        muted = true;
+        status = 'Muted by group call host';
+      });
+    }
+  }
+
+  void _onModeration(dynamic raw) {
+    if (raw is! Map || !_matches(raw)) return;
+    final action = raw['action']?.toString();
+    if (action == 'mute') {
+      _forceMuteFromHost().catchError((_) {});
+    } else if (action == 'remove') {
+      _finish('Removed from group call');
+    }
+  }
+
+  void _onModerationApplied(dynamic raw) {
+    if (raw is! Map || !_matches(raw) || !groupHost || !mounted) return;
+    final action = raw['action']?.toString() ?? '';
+    final target = raw['targetUserId']?.toString() ?? '';
+    if (action.isEmpty || target.isEmpty) return;
+    setState(() {
+      status = action == 'remove' ? 'Participant removed' : 'Participant muted';
+    });
   }
 
   void _onEnded(dynamic raw) => _finishFromEvent('Call ended', raw);
@@ -703,6 +763,104 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     }
     _localRenderer.srcObject = null;
     _remoteRenderer.srcObject = null;
+  }
+
+  List<String> get _moderatableParticipantIds {
+    final ids = <String>{};
+    ids.addAll(_peers.keys);
+    final room = liveKitRoom;
+    if (room != null) {
+      ids.addAll(
+        room.remoteParticipants.values
+            .map((participant) => participant.identity)
+            .where((id) => id.isNotEmpty),
+      );
+    }
+    ids.remove(userId);
+    return ids.toList(growable: false);
+  }
+
+  Future<void> _moderateParticipant(String targetUserId, String action) async {
+    final id = callId;
+    if (!groupHost || id == null || id.isEmpty || targetUserId.isEmpty) return;
+    await calling.emit('call/moderate', {
+      'callId': id,
+      'userId': userId,
+      'targetUserId': targetUserId,
+      'action': action,
+    });
+  }
+
+  Future<void> _showModerationSheet() async {
+    final participants = _moderatableParticipantIds;
+    if (participants.isEmpty || !mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF101B23),
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Manage participants',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...participants.map(
+                (participantId) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: SyncAvatar(name: participantId, radius: 18),
+                  title: Text(
+                    participantId.length > 18
+                        ? '${participantId.substring(0, 8)}…${participantId.substring(participantId.length - 6)}'
+                        : participantId,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  trailing: Wrap(
+                    spacing: 4,
+                    children: [
+                      IconButton(
+                        tooltip: 'Mute participant',
+                        icon: const Icon(
+                          Icons.mic_off_rounded,
+                          color: Colors.white70,
+                        ),
+                        onPressed: () async {
+                          await _moderateParticipant(participantId, 'mute');
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                      ),
+                      IconButton(
+                        tooltip: 'Remove participant',
+                        icon: const Icon(
+                          Icons.person_remove_rounded,
+                          color: SyncColors.danger,
+                        ),
+                        onPressed: () async {
+                          await _moderateParticipant(participantId, 'remove');
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _messageFor(Object error) {
@@ -961,6 +1119,14 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
             active: cameraOff,
             tooltip: cameraOff ? 'Camera on' : 'Camera off',
             onTap: _toggleCamera,
+          ),
+        ],
+        if (groupHost && _moderatableParticipantIds.isNotEmpty) ...[
+          const SizedBox(width: 10),
+          _CallControl(
+            icon: Icons.manage_accounts_rounded,
+            tooltip: 'Manage participants',
+            onTap: _showModerationSheet,
           ),
         ],
         const SizedBox(width: 14),

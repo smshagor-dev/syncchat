@@ -28,3 +28,9 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Flutter generated state
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
