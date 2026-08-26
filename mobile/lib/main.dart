@@ -14,6 +14,7 @@ import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'screens/mobile_social_auth_screen.dart';
 import 'theme.dart';
+import 'widgets/authenticated_account_gate.dart';
 import 'widgets/biometric_gate.dart';
 import 'widgets/connection_resilience_layer.dart';
 import 'widgets/notification_navigation_layer.dart';
@@ -86,14 +87,17 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   }
 
   Widget _authenticatedHome() {
-    return BiometricGate(
+    return AuthenticatedAccountGate(
       onLogout: _logout,
-      child: ConnectionResilienceLayer(
-        child: NotificationNavigationLayer(
-          child: GlobalCallLayer(
-            child: LiveMobileShell(
-              onThemeChanged: _setDarkMode,
-              onLogout: _logout,
+      child: BiometricGate(
+        onLogout: _logout,
+        child: ConnectionResilienceLayer(
+          child: NotificationNavigationLayer(
+            child: GlobalCallLayer(
+              child: LiveMobileShell(
+                onThemeChanged: _setDarkMode,
+                onLogout: _logout,
+              ),
             ),
           ),
         ),
