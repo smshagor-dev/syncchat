@@ -19,11 +19,7 @@ Future<void> openOutgoingCall(
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       fullscreenDialog: true,
-      builder: (_) => LiveCallScreen(
-        inbox: inbox,
-        name: name,
-        video: video,
-      ),
+      builder: (_) => LiveCallScreen(inbox: inbox, name: name, video: video),
     ),
   );
 }
@@ -63,6 +59,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
   Timer? ringTimer;
 
   bool initialized = false;
+  bool callingBound = false;
   bool joined = false;
   bool connected = false;
   bool muted = false;
@@ -85,8 +82,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
       'private';
 
   String get userId => currentUser?['_id']?.toString() ?? '';
-  String get callerId =>
-      widget.incomingCall?['fromUserId']?.toString() ?? '';
+  String get callerId => widget.incomingCall?['fromUserId']?.toString() ?? '';
   bool get group => roomType == 'group';
 
   List<String> get recipients {
@@ -131,6 +127,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
     _bindEvents();
+    callingBound = true;
 
     try {
       final results = await Future.wait<dynamic>([
@@ -238,27 +235,28 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
 
   Future<void> _reject() async {
     if (callId != null && userId.isNotEmpty) {
-      await calling.emit('call/reject', {
-        'callId': callId,
-        'roomId': roomId,
-        'fromUserId': userId,
-        'toUserId': callerId,
-      }).catchError((_) {});
+      await calling
+          .emit('call/reject', {
+            'callId': callId,
+            'roomId': roomId,
+            'fromUserId': userId,
+            'toUserId': callerId,
+          })
+          .catchError((_) {});
     }
     await _close();
   }
 
   Future<void> _end() async {
     if (callId != null && userId.isNotEmpty) {
-      await calling.emit(
-        connected || widget.incoming ? 'call/end' : 'call/cancel',
-        {
-          'callId': callId,
-          'roomId': roomId,
-          'userId': userId,
-          'reason': connected ? 'ended' : 'cancelled',
-        },
-      ).catchError((_) {});
+      await calling
+          .emit(connected || widget.incoming ? 'call/end' : 'call/cancel', {
+            'callId': callId,
+            'roomId': roomId,
+            'userId': userId,
+            'reason': connected ? 'ended' : 'cancelled',
+          })
+          .catchError((_) {});
     }
     await _close();
   }
@@ -269,11 +267,13 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     durationTimer?.cancel();
     ringTimer?.cancel();
     if (joined && userId.isNotEmpty) {
-      await calling.emit('call/leave', {
-        'callId': callId,
-        'roomId': roomId,
-        'userId': userId,
-      }).catchError((_) {});
+      await calling
+          .emit('call/leave', {
+            'callId': callId,
+            'roomId': roomId,
+            'userId': userId,
+          })
+          .catchError((_) {});
     }
     await _disposeMedia();
     if (!mounted) return;
@@ -295,7 +295,9 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
               'facingMode': 'user',
               'width': {'ideal': (video['width'] as num?)?.toInt() ?? 1280},
               'height': {'ideal': (video['height'] as num?)?.toInt() ?? 720},
-              'frameRate': {'ideal': (video['frameRate'] as num?)?.toInt() ?? 30},
+              'frameRate': {
+                'ideal': (video['frameRate'] as num?)?.toInt() ?? 30,
+              },
             }
           : false,
     });
@@ -320,16 +322,15 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     pc.onIceCandidate = (candidate) {
       final candidateText = candidate.candidate;
       if (candidateText == null || candidateText.isEmpty) return;
-      calling.emit('call/signal', {
-        'callId': callId,
-        'roomId': roomId,
-        'fromUserId': userId,
-        'toUserId': peerId,
-        'signal': {
-          'type': 'ice',
-          'candidate': candidate.toMap(),
-        },
-      }).catchError((_) {});
+      calling
+          .emit('call/signal', {
+            'callId': callId,
+            'roomId': roomId,
+            'fromUserId': userId,
+            'toUserId': peerId,
+            'signal': {'type': 'ice', 'candidate': candidate.toMap()},
+          })
+          .catchError((_) {});
     };
     pc.onTrack = (event) {
       if (event.streams.isNotEmpty) {
@@ -473,9 +474,9 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     setState(() => status = 'Connecting group media…');
     await room.prepareConnection(url, token);
     await room.connect(url, token);
-    await room.localParticipant.setMicrophoneEnabled(true);
+    await room.localParticipant?.setMicrophoneEnabled(true);
     if (widget.video) {
-      await room.localParticipant.setCameraEnabled(true);
+      await room.localParticipant?.setCameraEnabled(true);
     }
     await calling.emit('call/join', {
       'callId': canonicalCallId,
@@ -575,10 +576,14 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
 
   bool _matches(Map raw, {bool allowMissingRoom = false}) {
     final rawRoom = raw['roomId']?.toString() ?? '';
-    if (!allowMissingRoom && rawRoom.isNotEmpty && rawRoom != roomId) return false;
+    if (!allowMissingRoom && rawRoom.isNotEmpty && rawRoom != roomId)
+      return false;
     if (rawRoom.isNotEmpty && rawRoom != roomId) return false;
     final rawCall = raw['callId']?.toString() ?? '';
-    return callId == null || callId!.isEmpty || rawCall.isEmpty || rawCall == callId;
+    return callId == null ||
+        callId!.isEmpty ||
+        rawCall.isEmpty ||
+        rawCall == callId;
   }
 
   void _bindEvents() {
@@ -597,7 +602,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
   }
 
   void _unbindEvents() {
-    if (!initialized && !closing) return;
+    if (!callingBound) return;
     calling.off('call/started', _onStarted);
     calling.off('call/user-joined', _onUserJoined);
     calling.off('call/signal', _onSignal);
@@ -610,6 +615,7 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     calling.off('call/busy', _onBusy);
     calling.off('call/missed', _onMissed);
     calling.off('call/cancelled', _onCancelled);
+    callingBound = false;
   }
 
   void _onEnded(dynamic raw) => _finishFromEvent('Call ended', raw);
@@ -637,9 +643,10 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
   Future<void> _toggleMute() async {
     final next = !muted;
     if (sfuMode) {
-      await liveKitRoom?.localParticipant.setMicrophoneEnabled(!next);
+      await liveKitRoom?.localParticipant?.setMicrophoneEnabled(!next);
     } else {
-      for (final track in localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+      for (final track
+          in localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
         track.enabled = !next;
       }
     }
@@ -650,9 +657,10 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     if (!widget.video) return;
     final next = !cameraOff;
     if (sfuMode) {
-      await liveKitRoom?.localParticipant.setCameraEnabled(!next);
+      await liveKitRoom?.localParticipant?.setCameraEnabled(!next);
     } else {
-      for (final track in localStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
+      for (final track
+          in localStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
         track.enabled = !next;
       }
     }
@@ -712,9 +720,12 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
     final room = liveKitRoom;
     if (room == null) return const [];
     final tracks = <lk.VideoTrack>[];
-    for (final publication in room.localParticipant.videoTrackPublications) {
-      final track = publication.track;
-      if (track != null) tracks.add(track);
+    final localParticipant = room.localParticipant;
+    if (localParticipant != null) {
+      for (final publication in localParticipant.videoTrackPublications) {
+        final track = publication.track;
+        if (track != null) tracks.add(track);
+      }
     }
     for (final participant in room.remoteParticipants.values) {
       for (final publication in participant.videoTrackPublications) {
@@ -741,7 +752,10 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0x990D1A21),
                       borderRadius: BorderRadius.circular(99),
@@ -749,11 +763,19 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.lock_rounded, color: SyncColors.success, size: 15),
+                        Icon(
+                          Icons.lock_rounded,
+                          color: SyncColors.success,
+                          size: 15,
+                        ),
                         SizedBox(width: 6),
                         Text(
                           'Encrypted media transport',
-                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ],
                     ),
@@ -769,7 +791,8 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
                 ],
               ),
             ),
-            if (!widget.video || (!connected && _remoteRenderer.srcObject == null && !sfuMode))
+            if (!widget.video ||
+                (!connected && _remoteRenderer.srcObject == null && !sfuMode))
               Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -779,19 +802,29 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
                     Text(
                       widget.name,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 7),
                     Text(
                       connected ? durationLabel : status,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white60, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     if (group && sfuMode) ...[
                       const SizedBox(height: 8),
                       Text(
-                        '${liveKitRoom?.remoteParticipants.length ?? 0 + 1} participants · LiveKit SFU',
-                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                        '${(liveKitRoom?.remoteParticipants.length ?? 0) + 1} participants · LiveKit SFU',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ],
@@ -854,7 +887,10 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
       fit: StackFit.expand,
       children: [
         if (_remoteRenderer.srcObject != null)
-          RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+          RTCVideoView(
+            _remoteRenderer,
+            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+          )
         else
           const ColoredBox(color: Color(0xFF071018)),
         if (_localRenderer.srcObject != null)
@@ -919,7 +955,9 @@ class _LiveCallScreenState extends State<LiveCallScreen> {
         if (widget.video) ...[
           const SizedBox(width: 10),
           _CallControl(
-            icon: cameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+            icon: cameraOff
+                ? Icons.videocam_off_rounded
+                : Icons.videocam_rounded,
             active: cameraOff,
             tooltip: cameraOff ? 'Camera on' : 'Camera off',
             onTap: _toggleCamera,

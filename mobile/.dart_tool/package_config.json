@@ -8,6 +8,12 @@
       "languageVersion": "3.3"
     },
     {
+      "name": "asn1lib",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/asn1lib-1.6.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "async",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/async-2.13.1",
       "packageUri": "lib/",
@@ -86,6 +92,18 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "connectivity_plus",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/connectivity_plus-7.3.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "connectivity_plus_platform_interface",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/connectivity_plus_platform_interface-2.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "2.18"
+    },
+    {
       "name": "convert",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/convert-3.1.2",
       "packageUri": "lib/",
@@ -102,6 +120,36 @@
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/crypto-3.0.7",
       "packageUri": "lib/",
       "languageVersion": "3.4"
+    },
+    {
+      "name": "dart_jsonwebtoken",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/dart_jsonwebtoken-3.4.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "dart_webrtc",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/dart_webrtc-1.8.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
+      "name": "dbus",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/dbus-0.7.15",
+      "packageUri": "lib/",
+      "languageVersion": "2.17"
+    },
+    {
+      "name": "device_info_plus",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/device_info_plus-12.4.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "device_info_plus_platform_interface",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/device_info_plus_platform_interface-7.0.3",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
     },
     {
       "name": "fake_async",
@@ -123,7 +171,7 @@
     },
     {
       "name": "file_picker",
-      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/file_picker-8.3.7",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/file_picker-10.3.10",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -218,6 +266,12 @@
       "languageVersion": "3.11"
     },
     {
+      "name": "flutter_webrtc",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
       "name": "hooks",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/hooks-2.2.0",
       "packageUri": "lib/",
@@ -302,6 +356,18 @@
       "languageVersion": "3.3"
     },
     {
+      "name": "js",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/js-0.7.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "json_annotation",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/json_annotation-4.12.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
+    },
+    {
       "name": "leak_tracker",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/leak_tracker-11.0.2",
       "packageUri": "lib/",
@@ -318,6 +384,18 @@
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/leak_tracker_testing-3.0.2",
       "packageUri": "lib/",
       "languageVersion": "3.2"
+    },
+    {
+      "name": "livekit_client",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/livekit_client-2.11.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "logger",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/logger-2.7.0",
+      "packageUri": "lib/",
+      "languageVersion": "2.17"
     },
     {
       "name": "logging",
@@ -348,6 +426,18 @@
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/mime-2.0.0",
       "packageUri": "lib/",
       "languageVersion": "3.2"
+    },
+    {
+      "name": "mime_type",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/mime_type-1.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
+      "name": "nm",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/nm-0.5.0",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
     },
     {
       "name": "objective_c",
@@ -404,6 +494,12 @@
       "languageVersion": "3.2"
     },
     {
+      "name": "petitparser",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/petitparser-7.0.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
+    },
+    {
       "name": "platform",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/platform-3.1.6",
       "packageUri": "lib/",
@@ -420,6 +516,12 @@
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/pointycastle-4.0.0",
       "packageUri": "lib/",
       "languageVersion": "3.2"
+    },
+    {
+      "name": "protobuf",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/protobuf-6.0.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
     },
     {
       "name": "pub_semver",
@@ -480,6 +582,12 @@
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/record_windows-2.2.3",
       "packageUri": "lib/",
       "languageVersion": "3.12"
+    },
+    {
+      "name": "sdp_transform",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/sdp_transform-0.3.2",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
     },
     {
       "name": "sky_engine",
@@ -578,16 +686,34 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "webrtc_interface",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/webrtc_interface-1.5.1",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
       "name": "win32",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/win32-5.15.0",
       "packageUri": "lib/",
       "languageVersion": "3.8"
     },
     {
+      "name": "win32_registry",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/win32_registry-2.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
       "name": "xdg_directories",
       "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/xdg_directories-1.1.0",
       "packageUri": "lib/",
       "languageVersion": "3.3"
+    },
+    {
+      "name": "xml",
+      "rootUri": "file:///home/runner/.pub-cache/hosted/pub.dev/xml-7.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.11"
     },
     {
       "name": "yaml",

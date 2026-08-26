@@ -11,8 +11,10 @@
         "file_picker",
         "flutter",
         "flutter_secure_storage",
+        "flutter_webrtc",
         "http",
         "image_picker",
+        "livekit_client",
         "path_provider",
         "pointycastle",
         "record",
@@ -85,6 +87,35 @@
       ]
     },
     {
+      "name": "livekit_client",
+      "version": "2.11.0",
+      "dependencies": [
+        "asn1lib",
+        "async",
+        "collection",
+        "connectivity_plus",
+        "crypto",
+        "dart_jsonwebtoken",
+        "dart_webrtc",
+        "device_info_plus",
+        "fixnum",
+        "flutter",
+        "flutter_web_plugins",
+        "flutter_webrtc",
+        "http",
+        "json_annotation",
+        "logging",
+        "meta",
+        "mime_type",
+        "path",
+        "protobuf",
+        "sdp_transform",
+        "synchronized",
+        "uuid",
+        "web"
+      ]
+    },
+    {
       "name": "image_picker",
       "version": "1.2.3",
       "dependencies": [
@@ -109,6 +140,19 @@
       ]
     },
     {
+      "name": "flutter_webrtc",
+      "version": "1.6.0",
+      "dependencies": [
+        "collection",
+        "dart_webrtc",
+        "flutter",
+        "logger",
+        "path_provider",
+        "web",
+        "webrtc_interface"
+      ]
+    },
+    {
       "name": "flutter_secure_storage",
       "version": "10.3.1",
       "dependencies": [
@@ -123,9 +167,10 @@
     },
     {
       "name": "file_picker",
-      "version": "8.3.7",
+      "version": "10.3.10",
       "dependencies": [
         "cross_file",
+        "dbus",
         "ffi",
         "flutter",
         "flutter_plugin_android_lifecycle",
@@ -334,6 +379,13 @@
       ]
     },
     {
+      "name": "convert",
+      "version": "3.1.2",
+      "dependencies": [
+        "typed_data"
+      ]
+    },
+    {
       "name": "path_provider_windows",
       "version": "2.3.0",
       "dependencies": [
@@ -382,6 +434,70 @@
         "jni_flutter",
         "path_provider_platform_interface"
       ]
+    },
+    {
+      "name": "uuid",
+      "version": "4.6.0",
+      "dependencies": [
+        "crypto",
+        "fixnum"
+      ]
+    },
+    {
+      "name": "synchronized",
+      "version": "3.4.1+2",
+      "dependencies": []
+    },
+    {
+      "name": "sdp_transform",
+      "version": "0.3.2",
+      "dependencies": []
+    },
+    {
+      "name": "protobuf",
+      "version": "6.0.0",
+      "dependencies": [
+        "collection",
+        "fixnum",
+        "meta"
+      ]
+    },
+    {
+      "name": "mime_type",
+      "version": "1.0.1",
+      "dependencies": []
+    },
+    {
+      "name": "flutter_web_plugins",
+      "version": "0.0.0",
+      "dependencies": [
+        "flutter"
+      ]
+    },
+    {
+      "name": "fixnum",
+      "version": "1.1.1",
+      "dependencies": []
+    },
+    {
+      "name": "crypto",
+      "version": "3.0.7",
+      "dependencies": [
+        "typed_data"
+      ]
+    },
+    {
+      "name": "async",
+      "version": "2.13.1",
+      "dependencies": [
+        "collection",
+        "meta"
+      ]
+    },
+    {
+      "name": "asn1lib",
+      "version": "1.6.5",
+      "dependencies": []
     },
     {
       "name": "image_picker_windows",
@@ -463,12 +579,9 @@
       ]
     },
     {
-      "name": "async",
-      "version": "2.13.1",
-      "dependencies": [
-        "collection",
-        "meta"
-      ]
+      "name": "webrtc_interface",
+      "version": "1.5.1",
+      "dependencies": []
     },
     {
       "name": "flutter_secure_storage_windows",
@@ -517,24 +630,11 @@
       ]
     },
     {
-      "name": "cross_file",
-      "version": "0.3.5+5",
-      "dependencies": [
-        "meta",
-        "web"
-      ]
-    },
-    {
       "name": "win32",
       "version": "5.15.0",
       "dependencies": [
         "ffi"
       ]
-    },
-    {
-      "name": "ffi",
-      "version": "2.2.0",
-      "dependencies": []
     },
     {
       "name": "plugin_platform_interface",
@@ -551,24 +651,17 @@
       ]
     },
     {
-      "name": "flutter_web_plugins",
-      "version": "0.0.0",
-      "dependencies": [
-        "flutter"
-      ]
-    },
-    {
-      "name": "uuid",
-      "version": "4.6.0",
-      "dependencies": [
-        "crypto",
-        "fixnum"
-      ]
-    },
-    {
-      "name": "synchronized",
-      "version": "3.4.1+2",
+      "name": "ffi",
+      "version": "2.2.0",
       "dependencies": []
+    },
+    {
+      "name": "cross_file",
+      "version": "0.3.5+5",
+      "dependencies": [
+        "meta",
+        "web"
+      ]
     },
     {
       "name": "file",
@@ -697,6 +790,13 @@
       ]
     },
     {
+      "name": "typed_data",
+      "version": "1.4.0",
+      "dependencies": [
+        "collection"
+      ]
+    },
+    {
       "name": "platform",
       "version": "3.1.6",
       "dependencies": []
@@ -787,25 +887,6 @@
       "dependencies": []
     },
     {
-      "name": "typed_data",
-      "version": "1.4.0",
-      "dependencies": [
-        "collection"
-      ]
-    },
-    {
-      "name": "fixnum",
-      "version": "1.1.1",
-      "dependencies": []
-    },
-    {
-      "name": "crypto",
-      "version": "3.0.7",
-      "dependencies": [
-        "typed_data"
-      ]
-    },
-    {
       "name": "vm_service",
       "version": "15.3.0",
       "dependencies": []
@@ -876,11 +957,135 @@
       ]
     },
     {
-      "name": "convert",
-      "version": "3.1.2",
+      "name": "dart_webrtc",
+      "version": "1.8.1",
       "dependencies": [
-        "typed_data"
+        "collection",
+        "js",
+        "logging",
+        "meta",
+        "synchronized",
+        "web",
+        "webrtc_interface"
       ]
+    },
+    {
+      "name": "dart_jsonwebtoken",
+      "version": "3.4.1",
+      "dependencies": [
+        "clock",
+        "convert",
+        "pointycastle"
+      ]
+    },
+    {
+      "name": "json_annotation",
+      "version": "4.12.0",
+      "dependencies": [
+        "meta"
+      ]
+    },
+    {
+      "name": "device_info_plus",
+      "version": "12.4.0",
+      "dependencies": [
+        "device_info_plus_platform_interface",
+        "ffi",
+        "file",
+        "flutter",
+        "flutter_web_plugins",
+        "meta",
+        "web",
+        "win32",
+        "win32_registry"
+      ]
+    },
+    {
+      "name": "win32_registry",
+      "version": "2.1.0",
+      "dependencies": [
+        "ffi",
+        "meta",
+        "win32"
+      ]
+    },
+    {
+      "name": "device_info_plus_platform_interface",
+      "version": "7.0.3",
+      "dependencies": [
+        "flutter",
+        "meta",
+        "plugin_platform_interface"
+      ]
+    },
+    {
+      "name": "dbus",
+      "version": "0.7.15",
+      "dependencies": [
+        "args",
+        "ffi",
+        "meta",
+        "xml"
+      ]
+    },
+    {
+      "name": "xml",
+      "version": "7.0.1",
+      "dependencies": [
+        "collection",
+        "meta",
+        "petitparser"
+      ]
+    },
+    {
+      "name": "petitparser",
+      "version": "7.0.2",
+      "dependencies": [
+        "collection",
+        "meta"
+      ]
+    },
+    {
+      "name": "connectivity_plus",
+      "version": "7.3.1",
+      "dependencies": [
+        "collection",
+        "connectivity_plus_platform_interface",
+        "flutter",
+        "flutter_web_plugins",
+        "meta",
+        "nm",
+        "web"
+      ]
+    },
+    {
+      "name": "nm",
+      "version": "0.5.0",
+      "dependencies": [
+        "dbus"
+      ]
+    },
+    {
+      "name": "connectivity_plus_platform_interface",
+      "version": "2.1.0",
+      "dependencies": [
+        "flutter",
+        "meta",
+        "plugin_platform_interface"
+      ]
+    },
+    {
+      "name": "logger",
+      "version": "2.7.0",
+      "dependencies": [
+        "clock",
+        "meta"
+      ]
+    },
+    {
+      "name": "js",
+      "version": "0.7.2",
+      "dependencies": []
     }
   ],
   "configVersion": 1

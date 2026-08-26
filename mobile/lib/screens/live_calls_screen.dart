@@ -147,7 +147,9 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     final missed = _isMissed(call);
     final outgoing = call['userId']?.toString() == currentUserId;
     final text = call['text']?.toString() ?? 'Call';
-    final date = DateTime.tryParse(call['createdAt']?.toString() ?? '')?.toLocal();
+    final date = DateTime.tryParse(
+      call['createdAt']?.toString() ?? '',
+    )?.toLocal();
     final video = text.toLowerCase().contains('video');
 
     return ListTile(
@@ -258,16 +260,23 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
                           itemBuilder: (_, index) {
                             final inbox = inboxes[index];
                             final name = _inboxName(inbox, self);
-                            final group = inbox['roomType']?.toString() == 'group';
+                            final group =
+                                inbox['roomType']?.toString() == 'group';
                             return ListTile(
                               leading: SyncAvatar(name: name, radius: 22),
                               title: Text(
                                 name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
-                              subtitle: Text(group ? 'Group conversation' : 'Private conversation'),
+                              subtitle: Text(
+                                group
+                                    ? 'Group conversation'
+                                    : 'Private conversation',
+                              ),
                               trailing: Wrap(
                                 children: [
                                   IconButton(
@@ -374,14 +383,20 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
   String _dateLabel(DateTime? value) {
     if (value == null) return 'recently';
     final now = DateTime.now();
-    final sameDay = value.year == now.year && value.month == now.month && value.day == now.day;
-    final time = '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    final sameDay =
+        value.year == now.year &&
+        value.month == now.month &&
+        value.day == now.day;
+    final time =
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
     if (sameDay) return 'Today, $time';
     return '${value.day}/${value.month}/${value.year}, $time';
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _messageFor(Object error) {

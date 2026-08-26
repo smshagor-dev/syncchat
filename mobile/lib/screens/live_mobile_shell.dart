@@ -46,8 +46,8 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   Widget _pageForTab() {
     return switch (selected) {
       LiveHomeTab.chats => LiveChatsScreen(
-          onMenu: () => scaffoldKey.currentState?.openDrawer(),
-        ),
+        onMenu: () => scaffoldKey.currentState?.openDrawer(),
+      ),
       LiveHomeTab.status => const LiveStatusScreen(),
       LiveHomeTab.communities => const LiveCommunitiesScreen(),
       LiveHomeTab.channels => const LiveChannelsScreen(),
@@ -73,28 +73,26 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     final Widget screen = switch (target) {
       'contacts' => const LiveContactsScreen(),
       'archive' => const CollectionScreen(
-          title: 'Archive',
-          icon: Icons.archive_outlined,
-          description: 'Chats archived from the main inbox.',
-        ),
+        title: 'Archive',
+        icon: Icons.archive_outlined,
+        description: 'Chats archived from the main inbox.',
+      ),
       'lists' => const CollectionScreen(
-          title: 'Lists',
-          icon: Icons.format_list_bulleted_rounded,
-          description: 'Custom chat lists and grouped conversations.',
-        ),
+        title: 'Lists',
+        icon: Icons.format_list_bulleted_rounded,
+        description: 'Custom chat lists and grouped conversations.',
+      ),
       'media' => const CollectionScreen(
-          title: 'Media',
-          icon: Icons.image_outlined,
-          description: 'Shared photos, videos, links and files.',
-        ),
+        title: 'Media',
+        icon: Icons.image_outlined,
+        description: 'Shared photos, videos, links and files.',
+      ),
       'settings' => SettingsScreen(onThemeChanged: widget.onThemeChanged),
       'profile' => const LiveProfileScreen(),
       _ => const LiveContactsScreen(),
     };
 
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => screen),
-    );
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 }
 
@@ -159,7 +157,9 @@ class _LiveBottomDock extends StatelessWidget {
                             boxShadow: active
                                 ? [
                                     BoxShadow(
-                                      color: SyncColors.sky.withValues(alpha: .38),
+                                      color: SyncColors.sky.withValues(
+                                        alpha: .38,
+                                      ),
                                       blurRadius: 12,
                                       offset: const Offset(0, 5),
                                     ),
@@ -231,7 +231,9 @@ class _LiveMobileRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       width: 94,
-      backgroundColor: context.isDark ? SyncColors.spill900 : SyncColors.slate900,
+      backgroundColor: context.isDark
+          ? SyncColors.spill900
+          : SyncColors.slate900,
       shape: const RoundedRectangleBorder(),
       child: SafeArea(
         child: Column(

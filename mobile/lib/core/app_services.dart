@@ -37,29 +37,19 @@ class AppServices {
       config: resolvedConfig,
       sessionStore: resolvedSessionStore,
     );
-    final auth = AuthRepository(
-      api: api,
-      sessionStore: resolvedSessionStore,
-    );
+    final auth = AuthRepository(api: api, sessionStore: resolvedSessionStore);
     final realtime = RealtimeClient(
       config: resolvedConfig,
       sessionStore: resolvedSessionStore,
     );
-    final e2ee = E2eeService(
-      api: api,
-      sessionStore: resolvedSessionStore,
-    );
+    final e2ee = E2eeService(api: api, sessionStore: resolvedSessionStore);
     final chat = ChatRepository(
       api: api,
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
     );
-    final calling = CallingRepository(
-      api: api,
-      auth: auth,
-      realtime: realtime,
-    );
+    final calling = CallingRepository(api: api, auth: auth, realtime: realtime);
 
     return AppServices(
       config: resolvedConfig,

@@ -37,12 +37,11 @@ class CallRuntimeConfig {
       groupEnabled: source['groupEnabled'] != false,
       maxGroupParticipants:
           (source['maxGroupParticipants'] as num?)?.toInt() ?? 4,
-      ringingTimeoutSec:
-          (source['ringingTimeoutSec'] as num?)?.toInt() ?? 45,
-      reconnectGraceSec:
-          (source['reconnectGraceSec'] as num?)?.toInt() ?? 12,
-      iceTransportPolicy:
-          source['iceTransportPolicy']?.toString() == 'relay' ? 'relay' : 'all',
+      ringingTimeoutSec: (source['ringingTimeoutSec'] as num?)?.toInt() ?? 45,
+      reconnectGraceSec: (source['reconnectGraceSec'] as num?)?.toInt() ?? 12,
+      iceTransportPolicy: source['iceTransportPolicy']?.toString() == 'relay'
+          ? 'relay'
+          : 'all',
       iceServers: mapList(source['iceServers']),
       audioProfile: map(source['audioProfile']),
       videoProfile: map(source['videoProfile']),
@@ -63,7 +62,11 @@ class CallRuntimeConfig {
   final Map<String, dynamic> videoProfile;
   final Map<String, dynamic> groupSfu;
 
-  bool allows({required bool video, required bool group, int participants = 2}) {
+  bool allows({
+    required bool video,
+    required bool group,
+    int participants = 2,
+  }) {
     if (!enabled) return false;
     if (video && !videoEnabled) return false;
     if (!video && !audioEnabled) return false;
@@ -78,9 +81,9 @@ class CallingRepository {
     required ApiClient api,
     required AuthRepository auth,
     required RealtimeClient realtime,
-  })  : _api = api,
-        _auth = auth,
-        _realtime = realtime;
+  }) : _api = api,
+       _auth = auth,
+       _realtime = realtime;
 
   final ApiClient _api;
   final AuthRepository _auth;
@@ -113,7 +116,10 @@ class CallingRepository {
 
   Future<Map<String, dynamic>> sessionMedia(String callId) async {
     final response = await _api.get('/calling/session/$callId');
-    return _mapPayload(response.payload, error: 'Invalid call session response.');
+    return _mapPayload(
+      response.payload,
+      error: 'Invalid call session response.',
+    );
   }
 
   Future<Map<String, dynamic>> sfuCredentials(String callId) async {
@@ -157,10 +163,7 @@ class CallingRepository {
         .toList(growable: false);
   }
 
-  Map<String, dynamic> _mapPayload(
-    dynamic payload, {
-    required String error,
-  }) {
+  Map<String, dynamic> _mapPayload(dynamic payload, {required String error}) {
     if (payload is Map) return Map<String, dynamic>.from(payload);
     throw ApiException(statusCode: 500, message: error);
   }

@@ -11,6 +11,7 @@ import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'forward_message_sheet.dart';
+import 'live_call_screen.dart';
 import 'voice_note_widgets.dart';
 
 class LiveChatRoomScreen extends StatefulWidget {
@@ -1346,6 +1347,22 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
               inbox: effectiveInbox,
               typingText: typingText,
               e2eeEnabled: e2eeEnabled,
+              onAudioCall: () {
+                openOutgoingCall(
+                  context,
+                  inbox: effectiveInbox,
+                  name: widget.name,
+                  video: false,
+                );
+              },
+              onVideoCall: () {
+                openOutgoingCall(
+                  context,
+                  inbox: effectiveInbox,
+                  name: widget.name,
+                  video: true,
+                );
+              },
               onSecurity: _showE2eeSheet,
             ),
             if (e2eeEnabled)
@@ -1697,6 +1714,8 @@ class _RoomHeader extends StatelessWidget {
     required this.inbox,
     required this.typingText,
     required this.e2eeEnabled,
+    required this.onAudioCall,
+    required this.onVideoCall,
     required this.onSecurity,
   });
 
@@ -1704,6 +1723,8 @@ class _RoomHeader extends StatelessWidget {
   final Map<String, dynamic> inbox;
   final String typingText;
   final bool e2eeEnabled;
+  final VoidCallback onAudioCall;
+  final VoidCallback onVideoCall;
   final VoidCallback onSecurity;
 
   @override
@@ -1757,10 +1778,15 @@ class _RoomHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () {},
+            tooltip: 'Video call',
+            onPressed: onVideoCall,
             icon: const Icon(Icons.videocam_outlined),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.call_outlined)),
+          IconButton(
+            tooltip: 'Voice call',
+            onPressed: onAudioCall,
+            icon: const Icon(Icons.call_outlined),
+          ),
           IconButton(
             tooltip: 'Security',
             onPressed: onSecurity,
