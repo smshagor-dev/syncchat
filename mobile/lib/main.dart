@@ -9,9 +9,9 @@ import 'core/background_message_handler.dart';
 import 'core/biometric_service.dart';
 import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
-import 'screens.dart';
 import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
+import 'screens/mobile_social_auth_screen.dart';
 import 'theme.dart';
 import 'widgets/biometric_gate.dart';
 import 'widgets/connection_resilience_layer.dart';
@@ -101,7 +101,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   }
 
   Widget _authScreen() {
-    return AuthScreen(
+    return MobileSocialAuthScreen(
       authRepository: _services.auth,
       onAuthenticated: (context) async {
         await BiometricService.enableAfterSuccessfulLogin();
