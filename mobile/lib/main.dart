@@ -13,6 +13,8 @@ import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
 import 'widgets/biometric_gate.dart';
+import 'widgets/connection_resilience_layer.dart';
+import 'widgets/notification_navigation_layer.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,10 +83,14 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   Widget _authenticatedHome() {
     return BiometricGate(
       onLogout: _logout,
-      child: GlobalCallLayer(
-        child: LiveMobileShell(
-          onThemeChanged: _setDarkMode,
-          onLogout: _logout,
+      child: ConnectionResilienceLayer(
+        child: NotificationNavigationLayer(
+          child: GlobalCallLayer(
+            child: LiveMobileShell(
+              onThemeChanged: _setDarkMode,
+              onLogout: _logout,
+            ),
+          ),
         ),
       ),
     );
@@ -95,6 +101,9 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       authRepository: _services.auth,
       onAuthenticated: (context) async {
         await BiometricService.enableAfterSuccessfulLogin();
+        // Prime the encrypted cache so an immediate offline restart can render
+        // the signed-in identity and old conversations without waiting on HTTP.
+        unawaited(_services.chat.currentUser(refresh: true));
         // Authentication success must not wait on sockets, FCM token
         // registration, OEM permission APIs, or notification channels.
         unawaited(_startAuthenticatedIntegrations());
@@ -141,6 +150,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     }
     _services.realtime.disconnect();
     await _services.auth.logout();
+    await _services.chatCache.clear();
     BiometricService.expireUnlock();
     await DeviceIntegrationService.dispose();
     if (!context.mounted) return;
@@ -158,14 +168,18 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     if (!hasSession) return false;
 
     try {
-      await _services.auth.currentUser().timeout(const Duration(seconds: 10));
+      // CachedChatRepository caches the signed-in identity and can serve it
+      // offline, while ApiClient transparently rotates an expired access token.
+      await _services.chat
+          .currentUser(refresh: true)
+          .timeout(const Duration(seconds: 10));
       unawaited(_services.api.ensurePersistentSession());
       unawaited(_startAuthenticatedIntegrations());
       return true;
     } on ApiException catch (error) {
       // Offline startup must not throw the user back to the login page. The
-      // encrypted local cache is available immediately and the API client will
-      // refresh/revalidate the server session when connectivity returns.
+      // encrypted local cache remains visible and reconnect/catch-up runs when
+      // connectivity returns.
       if (error.isOffline) {
         unawaited(_startAuthenticatedIntegrations());
         return true;
