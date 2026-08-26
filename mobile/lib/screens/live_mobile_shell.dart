@@ -10,6 +10,7 @@ import 'live_calls_screen.dart';
 import 'live_channels_screen.dart';
 import 'live_chat_tools_screen.dart';
 import 'live_collection_screens.dart';
+import 'live_community_group_search_screen.dart';
 import 'live_device_contacts_screen.dart';
 import 'live_full_profile_screen.dart';
 import 'live_groups_screen.dart';
@@ -114,9 +115,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   }
 
   Widget pageForTab() => switch (selected) {
-        LiveHomeTab.chats => LiveP0ChatsScreen(
-            onMenu: () => scaffoldKey.currentState?.openDrawer(),
-          ),
+        LiveHomeTab.chats => LiveP0ChatsScreen(onMenu: () => scaffoldKey.currentState?.openDrawer()),
         LiveHomeTab.status => const LiveP0StatusScreen(),
         LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
         LiveHomeTab.channels => const ChannelHubScreen(),
@@ -152,6 +151,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'contacts' => const LiveP0ContactsScreen(),
       'device-contacts' => const LiveDeviceContactsScreen(),
       'groups' => const LiveGroupsScreen(),
+      'community-group' => const LiveCommunityGroupSearchScreen(),
       'room-admin' => const LiveRoomAdminHubScreen(),
       'room-security' => const LiveRoomSecurityHubScreen(),
       'rich-attachments' => const LiveRichAttachmentsHubScreen(),
@@ -160,10 +160,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
       'lists' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.lists),
       'media' => const LiveMediaScreen(),
-      'settings' => LiveSettingsHubScreen(
-          onThemeChanged: widget.onThemeChanged,
-          onLogout: widget.onLogout,
-        ),
+      'settings' => LiveSettingsHubScreen(onThemeChanged: widget.onThemeChanged, onLogout: widget.onLogout),
       'profile' => const LiveFullProfileScreen(),
       'edit-profile' => const LiveProfileEditScreen(),
       _ => const LiveP0ContactsScreen(),
@@ -196,13 +193,7 @@ class _BottomDock extends StatelessWidget {
         color: context.panel.withValues(alpha: .96),
         borderRadius: BorderRadius.circular(27),
         border: Border.all(color: context.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x500F172A),
-            blurRadius: 30,
-            offset: Offset(0, 12),
-          ),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x500F172A), blurRadius: 30, offset: Offset(0, 12))],
       ),
       child: Row(
         children: items.map((item) {
@@ -227,31 +218,17 @@ class _BottomDock extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: active ? SyncColors.sky : context.softPanel,
                         boxShadow: active
-                            ? [
-                                BoxShadow(
-                                  color: SyncColors.sky.withValues(alpha: .38),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ]
+                            ? [BoxShadow(color: SyncColors.sky.withValues(alpha: .38), blurRadius: 12, offset: const Offset(0, 5))]
                             : null,
                       ),
-                      child: Icon(
-                        item.$3,
-                        size: 17,
-                        color: active ? Colors.white : context.muted,
-                      ),
+                      child: Icon(item.$3, size: 17, color: active ? Colors.white : context.muted),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       item.$2,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: active ? SyncColors.sky : context.muted,
-                      ),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: active ? SyncColors.sky : context.muted),
                     ),
                   ],
                 ),
@@ -280,6 +257,7 @@ class _FullPageDrawer extends StatelessWidget {
     ('contacts', 'Contacts', Icons.group_outlined),
     ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
     ('groups', 'Groups', Icons.groups_rounded),
+    ('community-group', 'New community group', Icons.group_add_outlined),
     ('room-admin', 'Group & channel admin', Icons.admin_panel_settings_outlined),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
@@ -313,10 +291,7 @@ class _FullPageDrawer extends StatelessWidget {
                   Container(
                     width: 45,
                     height: 45,
-                    decoration: BoxDecoration(
-                      color: SyncColors.sky,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                    decoration: BoxDecoration(color: SyncColors.sky, borderRadius: BorderRadius.circular(14)),
                     child: const Icon(Icons.forum_rounded, color: Colors.white, size: 26),
                   ),
                   const SizedBox(width: 12),
@@ -324,33 +299,19 @@ class _FullPageDrawer extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'SyncChat',
-                          style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900),
-                        ),
-                        Text(
-                          'Menu',
-                          style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
+                        Text('SyncChat', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
+                        Text('Menu', style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 25),
-                  ),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 25)),
                 ],
               ),
             ),
             const Divider(height: 1, color: Colors.white12),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  10,
-                  10,
-                  10,
-                  MediaQuery.paddingOf(context).bottom + 10,
-                ),
+                padding: EdgeInsets.fromLTRB(10, 10, 10, MediaQuery.paddingOf(context).bottom + 10),
                 children: [
                   ...primary.map((item) => row(item)),
                   section('Library'),
@@ -361,10 +322,7 @@ class _FullPageDrawer extends StatelessWidget {
                   ListTile(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     leading: const Icon(Icons.logout_rounded, color: Color(0xFFFF7B86)),
-                    title: const Text(
-                      'Log out',
-                      style: TextStyle(color: Color(0xFFFF7B86), fontWeight: FontWeight.w900),
-                    ),
+                    title: const Text('Log out', style: TextStyle(color: Color(0xFFFF7B86), fontWeight: FontWeight.w900)),
                     onTap: () => onSelected('logout'),
                   ),
                 ],
@@ -379,10 +337,7 @@ class _FullPageDrawer extends StatelessWidget {
   Widget row((String, String, IconData) item) => ListTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         leading: Icon(item.$3, color: Colors.white70),
-        title: Text(
-          item.$2,
-          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
-        ),
+        title: Text(item.$2, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
         trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
         onTap: () => onSelected(item.$1),
       );
@@ -391,12 +346,7 @@ class _FullPageDrawer extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 18, 14, 5),
         child: Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white38,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: .8,
-          ),
+          style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8),
         ),
       );
 }
