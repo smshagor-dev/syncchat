@@ -21,20 +21,19 @@ class DeviceIntegrationService {
     if (_initialized) return;
     _initialized = true;
 
-    const android = AndroidInitializationSettings('ic_stat_syncchat');
-    const ios = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('ic_stat_syncchat'),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
-    const settings = InitializationSettings(android: android, iOS: ios);
     await _notifications.initialize(settings: settings);
 
     if (Platform.isAndroid) {
       final androidPlugin = _notifications
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.createNotificationChannel(
         const AndroidNotificationChannel(
           'syncchat_messages',
@@ -46,7 +45,7 @@ class DeviceIntegrationService {
     }
   }
 
-  static Future<Map<String, ph.PermissionStatus>> requestCommunicationPermissions() async {
+  static Future<Map<ph.Permission, ph.PermissionStatus>> requestCommunicationPermissions() async {
     final permissions = <ph.Permission>[
       ph.Permission.notification,
       ph.Permission.camera,
@@ -58,12 +57,8 @@ class DeviceIntegrationService {
     return permissions.request();
   }
 
-  static Future<Map<String, dynamic>> syncAddressBook(
-    ContactRepository repository,
-  ) async {
-    final permission = await FlutterContacts.permissions.request(
-      PermissionType.read,
-    );
+  static Future<Map<String, dynamic>> syncAddressBook(ContactRepository repository) async {
+    final permission = await FlutterContacts.permissions.request(PermissionType.read);
     if (permission != PermissionStatus.granted) {
       throw StateError('Contacts permission is required to find people who use SyncChat.');
     }
@@ -121,9 +116,7 @@ class DeviceIntegrationService {
     await ph.Permission.notification.request();
     if (Platform.isIOS) {
       await _notifications
-          .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin
-          >()
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
   }
@@ -150,7 +143,13 @@ class DeviceIntegrationService {
         presentSound: true,
       ),
     );
-    await _notifications.show(id, title, body, details, payload: payload);
+    await _notifications.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: payload,
+    );
   }
 
   static Future<void> dispose() async {
