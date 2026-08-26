@@ -26,6 +26,9 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            // AAPT2 9.1 can crash while crunching otherwise-valid launcher PNGs.
+            // Keep the supplied SyncChat icon bytes untouched for release builds.
+            isCrunchPngs = false
         }
     }
 }
