@@ -51,6 +51,22 @@ jobs:
             cp /tmp/syncchat_mobile_scaffold/.metadata mobile/.metadata
           fi
 
+      - name: Narrow iOS plist patch target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/integrate_flutter_calling.py')
+          text = path.read_text()
+          old = "        text = replace_once(text, '</dict>', additions + '</dict>', \"ios calling permissions\")"
+          new = """        head, separator, tail = text.rpartition('</dict>')
+          if not separator:
+              raise SystemExit('ios calling permissions: top-level dict close not found')
+          text = head + additions + separator + tail"""
+          if text.count(old) != 1:
+              raise SystemExit(f'plist patch source mismatch: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Integrate calling runtime and permissions
         run: python3 .github/scripts/integrate_flutter_calling.py
 
