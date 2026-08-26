@@ -90,6 +90,18 @@ jobs:
           PY
       - name: Apply final native calling integration
         run: python3 .github/scripts/finalize_flutter_native_calls.py
+      - name: Normalize CallKit NSDictionary bridge
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('mobile/ios/Runner/AppDelegate.swift')
+          text = path.read_text()
+          old = '    data.extra = payload\n'
+          new = '    data.extra = payload as NSDictionary\n'
+          if old not in text and new not in text:
+              raise SystemExit('CallKit payload assignment not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Format
         run: |
           dart format \
@@ -137,6 +149,18 @@ jobs:
           PY
       - name: Apply validated native calling integration
         run: python3 .github/scripts/finalize_flutter_native_calls.py
+      - name: Normalize CallKit NSDictionary bridge
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('mobile/ios/Runner/AppDelegate.swift')
+          text = path.read_text()
+          old = '    data.extra = payload\n'
+          new = '    data.extra = payload as NSDictionary\n'
+          if old not in text and new not in text:
+              raise SystemExit('CallKit payload assignment not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Remove one-time integration files
         run: |
           rm -f .github/scripts/finalize_flutter_native_calls.py
