@@ -5,6 +5,11 @@ class SyncChatConfig {
     this.socketPath = '/socket.io',
     this.chatUploadLimitMb = 100,
     this.avatarUploadLimitMb = 10,
+    this.firebaseApiKey = '',
+    this.firebaseAppId = '',
+    this.firebaseMessagingSenderId = '',
+    this.firebaseProjectId = '',
+    this.appVersion = '0.1.0',
   });
 
   factory SyncChatConfig.fromEnvironment() {
@@ -16,10 +21,27 @@ class SyncChatConfig {
       'SYNCCHAT_SOCKET_URL',
       defaultValue: 'http://127.0.0.1:5599',
     );
+    const firebaseApiKey = String.fromEnvironment('SYNCCHAT_FIREBASE_API_KEY');
+    const firebaseAppId = String.fromEnvironment('SYNCCHAT_FIREBASE_APP_ID');
+    const firebaseMessagingSenderId = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_MESSAGING_SENDER_ID',
+    );
+    const firebaseProjectId = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_PROJECT_ID',
+    );
+    const appVersion = String.fromEnvironment(
+      'SYNCCHAT_APP_VERSION',
+      defaultValue: '0.1.0',
+    );
 
     return const SyncChatConfig(
       apiBaseUrl: apiBaseUrl,
       socketUrl: socketUrl,
+      firebaseApiKey: firebaseApiKey,
+      firebaseAppId: firebaseAppId,
+      firebaseMessagingSenderId: firebaseMessagingSenderId,
+      firebaseProjectId: firebaseProjectId,
+      appVersion: appVersion,
     );
   }
 
@@ -28,6 +50,17 @@ class SyncChatConfig {
   final String socketPath;
   final int chatUploadLimitMb;
   final int avatarUploadLimitMb;
+  final String firebaseApiKey;
+  final String firebaseAppId;
+  final String firebaseMessagingSenderId;
+  final String firebaseProjectId;
+  final String appVersion;
+
+  bool get hasAndroidFirebaseConfig =>
+      firebaseApiKey.trim().isNotEmpty &&
+      firebaseAppId.trim().isNotEmpty &&
+      firebaseMessagingSenderId.trim().isNotEmpty &&
+      firebaseProjectId.trim().isNotEmpty;
 
   Uri apiUri(String path, {Map<String, dynamic>? queryParameters}) {
     final base = _validatedBase(apiBaseUrl, name: 'SYNCCHAT_API_BASE_URL');
