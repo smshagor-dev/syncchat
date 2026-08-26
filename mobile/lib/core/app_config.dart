@@ -9,6 +9,9 @@ class SyncChatConfig {
     this.firebaseAppId = '',
     this.firebaseMessagingSenderId = '',
     this.firebaseProjectId = '',
+    this.firebaseIosApiKey = '',
+    this.firebaseIosAppId = '',
+    this.firebaseIosBundleId = '',
     this.appVersion = '0.1.0',
   });
 
@@ -37,6 +40,18 @@ class SyncChatConfig {
       'SYNCCHAT_FIREBASE_PROJECT_ID',
       defaultValue: 'chat-c001b',
     );
+    const firebaseIosApiKey = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_IOS_API_KEY',
+      defaultValue: '',
+    );
+    const firebaseIosAppId = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_IOS_APP_ID',
+      defaultValue: '',
+    );
+    const firebaseIosBundleId = String.fromEnvironment(
+      'SYNCCHAT_FIREBASE_IOS_BUNDLE_ID',
+      defaultValue: 'com.syncchat.syncchatMobile',
+    );
     const appVersion = String.fromEnvironment(
       'SYNCCHAT_APP_VERSION',
       defaultValue: '0.1.0',
@@ -49,6 +64,9 @@ class SyncChatConfig {
       firebaseAppId: firebaseAppId,
       firebaseMessagingSenderId: firebaseMessagingSenderId,
       firebaseProjectId: firebaseProjectId,
+      firebaseIosApiKey: firebaseIosApiKey,
+      firebaseIosAppId: firebaseIosAppId,
+      firebaseIosBundleId: firebaseIosBundleId,
       appVersion: appVersion,
     );
   }
@@ -62,6 +80,9 @@ class SyncChatConfig {
   final String firebaseAppId;
   final String firebaseMessagingSenderId;
   final String firebaseProjectId;
+  final String firebaseIosApiKey;
+  final String firebaseIosAppId;
+  final String firebaseIosBundleId;
   final String appVersion;
 
   bool get hasAndroidFirebaseConfig =>
@@ -69,6 +90,13 @@ class SyncChatConfig {
       firebaseAppId.trim().isNotEmpty &&
       firebaseMessagingSenderId.trim().isNotEmpty &&
       firebaseProjectId.trim().isNotEmpty;
+
+  bool get hasIosFirebaseConfig =>
+      firebaseIosApiKey.trim().isNotEmpty &&
+      firebaseIosAppId.trim().isNotEmpty &&
+      firebaseMessagingSenderId.trim().isNotEmpty &&
+      firebaseProjectId.trim().isNotEmpty &&
+      firebaseIosBundleId.trim().isNotEmpty;
 
   Uri apiUri(String path, {Map<String, dynamic>? queryParameters}) {
     final base = _validatedBase(apiBaseUrl, name: 'SYNCCHAT_API_BASE_URL');
