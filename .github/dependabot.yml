@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "sharp"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     groups:
       backend-minor-patch:
         patterns:
