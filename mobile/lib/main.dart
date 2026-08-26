@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'core/api_client.dart';
 import 'core/app_scope.dart';
 import 'core/app_services.dart';
+import 'core/biometric_service.dart';
 import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
 import 'screens.dart';
 import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'theme.dart';
+import 'widgets/biometric_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,10 +79,13 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   }
 
   Widget _authenticatedHome() {
-    return GlobalCallLayer(
-      child: LiveMobileShell(
-        onThemeChanged: _setDarkMode,
-        onLogout: _logout,
+    return BiometricGate(
+      onLogout: _logout,
+      child: GlobalCallLayer(
+        child: LiveMobileShell(
+          onThemeChanged: _setDarkMode,
+          onLogout: _logout,
+        ),
       ),
     );
   }
@@ -89,6 +94,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     return AuthScreen(
       authRepository: _services.auth,
       onAuthenticated: (context) async {
+        await BiometricService.enableAfterSuccessfulLogin();
         // Authentication success must not wait on sockets, FCM token
         // registration, OEM permission APIs, or notification channels.
         unawaited(_startAuthenticatedIntegrations());
@@ -134,7 +140,8 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       // Local logout must still succeed when the network/native layer is down.
     }
     _services.realtime.disconnect();
-    await _services.auth.logoutLocal();
+    await _services.auth.logout();
+    BiometricService.expireUnlock();
     await DeviceIntegrationService.dispose();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -151,10 +158,18 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     if (!hasSession) return false;
 
     try {
-      await _services.auth.currentUser().timeout(const Duration(seconds: 8));
+      await _services.auth.currentUser().timeout(const Duration(seconds: 10));
+      unawaited(_services.api.ensurePersistentSession());
       unawaited(_startAuthenticatedIntegrations());
       return true;
     } on ApiException catch (error) {
+      // Offline startup must not throw the user back to the login page. The
+      // encrypted local cache is available immediately and the API client will
+      // refresh/revalidate the server session when connectivity returns.
+      if (error.isOffline) {
+        unawaited(_startAuthenticatedIntegrations());
+        return true;
+      }
       if (error.isUnauthorized) {
         await _services.auth.logoutLocal();
       }
