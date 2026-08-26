@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'live_calls_screen.dart';
+import 'live_chat_tools_screen.dart';
 import 'live_collection_screens.dart';
+import 'live_device_contacts_screen.dart';
 import 'live_home_screens.dart';
-import 'live_settings_screen.dart';
+import 'live_message_requests_screen.dart';
+import 'live_profile_edit_screen.dart';
+import 'live_settings_hub_screen.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
 
 class LiveMobileShell extends StatefulWidget {
-  const LiveMobileShell({super.key, required this.onThemeChanged});
+  const LiveMobileShell({
+    super.key,
+    required this.onThemeChanged,
+    required this.onLogout,
+  });
 
   final ValueChanged<bool> onThemeChanged;
+  final Future<void> Function(BuildContext context) onLogout;
 
   @override
   State<LiveMobileShell> createState() => _LiveMobileShellState();
@@ -25,16 +34,17 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: scaffoldKey,
-      drawerScrimColor: Colors.black.withValues(alpha: .46),
-      drawer: _LiveMobileRail(onSelected: _openRailTarget),
+      drawerScrimColor: Colors.black.withValues(alpha: .48),
+      drawerEdgeDragWidth: 30,
+      drawer: _FullPageDrawer(onSelected: _openTarget),
       body: Stack(
         children: [
-          Positioned.fill(child: _pageForTab()),
+          Positioned.fill(child: pageForTab()),
           Positioned(
             left: 12,
             right: 12,
             bottom: MediaQuery.paddingOf(context).bottom + 8,
-            child: _LiveBottomDock(
+            child: _BottomDock(
               selected: selected,
               onSelect: (tab) => setState(() => selected = tab),
             ),
@@ -44,19 +54,15 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
     );
   }
 
-  Widget _pageForTab() {
-    return switch (selected) {
-      LiveHomeTab.chats => LiveChatsScreen(
-        onMenu: () => scaffoldKey.currentState?.openDrawer(),
-      ),
-      LiveHomeTab.status => const LiveStatusScreen(),
-      LiveHomeTab.communities => const LiveCommunitiesScreen(),
-      LiveHomeTab.channels => const LiveChannelsScreen(),
-      LiveHomeTab.calls => const LiveCallsScreen(),
-    };
-  }
+  Widget pageForTab() => switch (selected) {
+    LiveHomeTab.chats => LiveChatsScreen(onMenu: () => scaffoldKey.currentState?.openDrawer()),
+    LiveHomeTab.status => const LiveStatusScreen(),
+    LiveHomeTab.communities => const LiveCommunitiesScreen(),
+    LiveHomeTab.channels => const LiveChannelsScreen(),
+    LiveHomeTab.calls => const LiveCallsScreen(),
+  };
 
-  void _openRailTarget(String target) {
+  Future<void> _openTarget(String target) async {
     Navigator.pop(context);
     final tabTargets = <String, LiveHomeTab>{
       'chats': LiveHomeTab.chats,
@@ -71,26 +77,32 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       return;
     }
 
+    if (target == 'logout') {
+      await widget.onLogout(context);
+      return;
+    }
+
     final Widget screen = switch (target) {
       'contacts' => const LiveContactsScreen(),
-      'archive' => const LiveInboxCollectionScreen(
-        kind: LiveInboxCollectionKind.archive,
-      ),
-      'lists' => const LiveInboxCollectionScreen(
-        kind: LiveInboxCollectionKind.lists,
-      ),
+      'device-contacts' => const LiveDeviceContactsScreen(),
+      'requests' => const LiveMessageRequestsScreen(),
+      'chat-tools' => const LiveChatToolsScreen(),
+      'archive' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.archive),
+      'lists' => const LiveInboxCollectionScreen(kind: LiveInboxCollectionKind.lists),
       'media' => const LiveMediaScreen(),
-      'settings' => LiveSettingsScreen(onThemeChanged: widget.onThemeChanged),
+      'settings' => LiveSettingsHubScreen(onThemeChanged: widget.onThemeChanged, onLogout: widget.onLogout),
       'profile' => const LiveProfileScreen(),
+      'edit-profile' => const LiveProfileEditScreen(),
       _ => const LiveContactsScreen(),
     };
 
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 }
 
-class _LiveBottomDock extends StatelessWidget {
-  const _LiveBottomDock({required this.selected, required this.onSelect});
+class _BottomDock extends StatelessWidget {
+  const _BottomDock({required this.selected, required this.onSelect});
 
   final LiveHomeTab selected;
   final ValueChanged<LiveHomeTab> onSelect;
@@ -111,13 +123,7 @@ class _LiveBottomDock extends StatelessWidget {
         color: context.panel.withValues(alpha: .96),
         borderRadius: BorderRadius.circular(27),
         border: Border.all(color: context.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x500F172A),
-            blurRadius: 30,
-            offset: Offset(0, 12),
-          ),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x500F172A), blurRadius: 30, offset: Offset(0, 12))],
       ),
       child: Row(
         children: items.map((item) {
@@ -129,67 +135,24 @@ class _LiveBottomDock extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
                 decoration: BoxDecoration(
-                  color: active
-                      ? SyncColors.sky.withValues(alpha: .12)
-                      : Colors.transparent,
+                  color: active ? SyncColors.sky.withValues(alpha: .12) : Colors.transparent,
                   borderRadius: BorderRadius.circular(19),
                 ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.topCenter,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 29,
-                          height: 29,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: active ? SyncColors.sky : context.softPanel,
-                            boxShadow: active
-                                ? [
-                                    BoxShadow(
-                                      color: SyncColors.sky.withValues(
-                                        alpha: .38,
-                                      ),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Icon(
-                            item.$3,
-                            size: 17,
-                            color: active ? Colors.white : context.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.$2,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: active ? SyncColors.sky : context.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (active)
-                      Positioned(
-                        top: -9,
-                        child: Container(
-                          width: 32,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: SyncColors.sky,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                        ),
+                    Container(
+                      width: 29,
+                      height: 29,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: active ? SyncColors.sky : context.softPanel,
+                        boxShadow: active ? [BoxShadow(color: SyncColors.sky.withValues(alpha: .38), blurRadius: 12, offset: const Offset(0, 5))] : null,
                       ),
+                      child: Icon(item.$3, size: 17, color: active ? Colors.white : context.muted),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(item.$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: active ? SyncColors.sky : context.muted)),
                   ],
                 ),
               ),
@@ -201,83 +164,86 @@ class _LiveBottomDock extends StatelessWidget {
   }
 }
 
-class _LiveMobileRail extends StatelessWidget {
-  const _LiveMobileRail({required this.onSelected});
+class _FullPageDrawer extends StatelessWidget {
+  const _FullPageDrawer({required this.onSelected});
 
   final ValueChanged<String> onSelected;
 
-  static const items = [
+  static const primary = [
     ('chats', 'Chats', Icons.chat_bubble_outline_rounded),
+    ('requests', 'Message requests', Icons.mark_unread_chat_alt_outlined),
+    ('chat-tools', 'Chat tools', Icons.tune_rounded),
     ('calls', 'Calls', Icons.call_outlined),
     ('status', 'Status', Icons.donut_large_rounded),
     ('contacts', 'Contacts', Icons.group_outlined),
+    ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
+  ];
+
+  static const library = [
     ('archive', 'Archive', Icons.archive_outlined),
     ('lists', 'Lists', Icons.format_list_bulleted_rounded),
     ('media', 'Media', Icons.image_outlined),
-    ('settings', 'Settings', Icons.settings_outlined),
+  ];
+
+  static const account = [
     ('profile', 'Profile', Icons.person_outline_rounded),
+    ('edit-profile', 'Edit profile', Icons.edit_outlined),
+    ('settings', 'Settings', Icons.settings_outlined),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      width: 94,
-      backgroundColor: context.isDark
-          ? SyncColors.spill900
-          : SyncColors.slate900,
+      width: MediaQuery.sizeOf(context).width,
       shape: const RoundedRectangleBorder(),
+      backgroundColor: context.isDark ? SyncColors.spill900 : SyncColors.slate900,
       child: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: Colors.white70,
-                  size: 19,
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 10, 10, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 45,
+                    height: 45,
+                    decoration: BoxDecoration(color: SyncColors.sky, borderRadius: BorderRadius.circular(14)),
+                    child: const Icon(Icons.forum_rounded, color: Colors.white, size: 26),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('SyncChat', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
+                        Text('Menu', style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 25)),
+                ],
               ),
             ),
+            const Divider(height: 1, color: Colors.white12),
             Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.fromLTRB(
-                  5,
-                  0,
-                  5,
-                  MediaQuery.paddingOf(context).bottom + 16,
-                ),
-                itemCount: items.length,
-                itemBuilder: (_, index) {
-                  final item = items[index];
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => onSelected(item.$1),
-                    child: SizedBox(
-                      height: 56,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(item.$3, size: 21, color: Colors.white70),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.$2,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(10, 10, 10, MediaQuery.paddingOf(context).bottom + 10),
+                children: [
+                  ...primary.map((item) => row(item)),
+                  section('Library'),
+                  ...library.map((item) => row(item)),
+                  section('Account'),
+                  ...account.map((item) => row(item)),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    leading: const Icon(Icons.logout_rounded, color: Color(0xFFFF7B86)),
+                    title: const Text('Log out', style: TextStyle(color: Color(0xFFFF7B86), fontWeight: FontWeight.w900)),
+                    onTap: () => onSelected('logout'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -285,4 +251,17 @@ class _LiveMobileRail extends StatelessWidget {
       ),
     );
   }
+
+  Widget row((String, String, IconData) item) => ListTile(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    leading: Icon(item.$3, color: Colors.white70),
+    title: Text(item.$2, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+    trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+    onTap: () => onSelected(item.$1),
+  );
+
+  Widget section(String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 18, 14, 5),
+    child: Text(label.toUpperCase(), style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8)),
+  );
 }
