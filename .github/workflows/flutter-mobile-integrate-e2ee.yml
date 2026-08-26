@@ -27,6 +27,31 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Narrow schedule patch target
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/integrate_flutter_e2ee.py')
+          text = path.read_text()
+          old = '''# Both schedule call sites should use effectiveInbox.
+          if room.count("inbox: widget.inbox,") != 2:
+              raise SystemExit(
+                  f"schedule effective inbox: expected 2 remaining matches, found {room.count('inbox: widget.inbox,')}"
+              )
+          room = room.replace("inbox: widget.inbox,", "inbox: effectiveInbox,", 2)'''
+          new = '''# Both schedule call sites should use effectiveInbox without touching RoomHeader.
+          schedule_needle = "      await chat.scheduleMessage(\\n        inbox: widget.inbox,"
+          schedule_replacement = "      await chat.scheduleMessage(\\n        inbox: effectiveInbox,"
+          if room.count(schedule_needle) != 2:
+              raise SystemExit(
+                  f"schedule effective inbox: expected 2 schedule matches, found {room.count(schedule_needle)}"
+              )
+          room = room.replace(schedule_needle, schedule_replacement, 2)'''
+          if text.count(old) != 1:
+              raise SystemExit('Could not find the schedule patch safety block')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Integrate E2EE runtime
         run: python3 .github/scripts/integrate_flutter_e2ee.py
 
