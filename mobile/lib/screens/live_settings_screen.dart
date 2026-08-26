@@ -88,122 +88,245 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-              ? _SettingsError(message: error!, onRetry: _load)
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-                  children: [
-                    _section(
-                      'Appearance & chats',
-                      Icons.palette_outlined,
-                      [
-                        _toggle('Dark mode', 'Use the dark SyncChat theme.', 'dark'),
-                        _toggle('Enter to send', 'Send text when pressing Enter.', 'enterToSend'),
-                        _toggle('Keep archived', 'Keep chats archived when new messages arrive.', 'keepArchived'),
-                        _toggle('Spell check', 'Use spelling assistance while composing.', 'spellCheckEnabled'),
-                        _toggle('Replace text with emoji', 'Enable emoji text replacement.', 'replaceTextWithEmoji'),
-                        _choice(
-                          'Media quality',
-                          'Default upload/playback quality.',
-                          'mediaQuality',
-                          const {'standard': 'Standard', 'hd': 'HD'},
-                        ),
-                        _choice(
-                          'Wallpaper',
-                          'Conversation background preset.',
-                          'chatWallpaperPreset',
-                          const {
-                            'whatsapp': 'Sync pattern',
-                            'plain': 'Plain',
-                            'sunset': 'Sunset',
-                            'ocean': 'Ocean',
-                            'forest': 'Forest',
-                          },
-                        ),
-                      ],
+          ? _SettingsError(message: error!, onRetry: _load)
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+              children: [
+                _section('Appearance & chats', Icons.palette_outlined, [
+                  _toggle('Dark mode', 'Use the dark SyncChat theme.', 'dark'),
+                  _toggle(
+                    'Enter to send',
+                    'Send text when pressing Enter.',
+                    'enterToSend',
+                  ),
+                  _toggle(
+                    'Keep archived',
+                    'Keep chats archived when new messages arrive.',
+                    'keepArchived',
+                  ),
+                  _toggle(
+                    'Spell check',
+                    'Use spelling assistance while composing.',
+                    'spellCheckEnabled',
+                  ),
+                  _toggle(
+                    'Replace text with emoji',
+                    'Enable emoji text replacement.',
+                    'replaceTextWithEmoji',
+                  ),
+                  _choice(
+                    'Media quality',
+                    'Default upload/playback quality.',
+                    'mediaQuality',
+                    const {'standard': 'Standard', 'hd': 'HD'},
+                  ),
+                  _choice(
+                    'Wallpaper',
+                    'Conversation background preset.',
+                    'chatWallpaperPreset',
+                    const {
+                      'whatsapp': 'Sync pattern',
+                      'plain': 'Plain',
+                      'sunset': 'Sunset',
+                      'ocean': 'Ocean',
+                      'forest': 'Forest',
+                    },
+                  ),
+                ]),
+                _section('Notifications', Icons.notifications_none_rounded, [
+                  _toggle(
+                    'Messages',
+                    'Notify for direct messages.',
+                    'notifyMessages',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Groups',
+                    'Notify for group messages.',
+                    'notifyGroups',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Status',
+                    'Notify for status activity.',
+                    'notifyStatus',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Calls',
+                    'Notify for incoming calls.',
+                    'notifyCalls',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Previews',
+                    'Show message previews in notifications.',
+                    'showNotificationPreviews',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Push notifications',
+                    'Allow push delivery.',
+                    'showPushNotification',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'In-app banner',
+                    'Show foreground notification banners.',
+                    'showNotificationBanner',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Outgoing sound',
+                    'Play sound after sending.',
+                    'outgoingMessageSoundEnabled',
+                    fallback: true,
+                  ),
+                ]),
+                _section('Privacy', Icons.shield_outlined, [
+                  _choice(
+                    'Last seen',
+                    'Who can see your last seen.',
+                    'lastSeenVisibility',
+                    const {
+                      'everyone': 'Everyone',
+                      'contacts': 'Contacts',
+                      'nobody': 'Nobody',
+                    },
+                  ),
+                  _choice(
+                    'Online status',
+                    'Who can see when you are online.',
+                    'onlineVisibility',
+                    const {
+                      'everyone': 'Everyone',
+                      'contacts': 'Contacts',
+                      'nobody': 'Nobody',
+                    },
+                  ),
+                  _choice(
+                    'Profile photo',
+                    'Who can see your profile photo.',
+                    'profilePhotoVisibility',
+                    const {
+                      'everyone': 'Everyone',
+                      'contacts': 'Contacts',
+                      'nobody': 'Nobody',
+                    },
+                  ),
+                  _choice(
+                    'Status visibility',
+                    'Who can see your status.',
+                    'statusVisibility',
+                    const {
+                      'everyone': 'Everyone',
+                      'contacts': 'Contacts',
+                      'nobody': 'Nobody',
+                    },
+                  ),
+                  _toggle(
+                    'Read receipts',
+                    'Send and receive read receipts.',
+                    'readReceiptsEnabled',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Message requests',
+                    'Allow messages from people outside contacts.',
+                    'messageRequestsEnabled',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Disable link previews',
+                    'Do not fetch link previews.',
+                    'disableLinkPreviews',
+                  ),
+                  _toggle(
+                    'Security notifications',
+                    'Notify when security state changes.',
+                    'securityNotificationsEnabled',
+                    fallback: true,
+                  ),
+                  _action(
+                    'Blocked contacts',
+                    'Review people you have blocked.',
+                    Icons.block_rounded,
+                    _openBlocked,
+                  ),
+                  _action(
+                    'Hidden chats',
+                    'Review and unhide private chats.',
+                    Icons.visibility_off_outlined,
+                    _openHidden,
+                  ),
+                ]),
+                _section('Voice & video', Icons.video_call_outlined, [
+                  _toggle(
+                    'Camera',
+                    'Allow camera use for video calls.',
+                    'cameraEnabled',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Microphone',
+                    'Allow microphone use for calls and voice notes.',
+                    'microphoneEnabled',
+                    fallback: true,
+                  ),
+                  _toggle(
+                    'Speaker',
+                    'Allow speakerphone output.',
+                    'speakerEnabled',
+                    fallback: true,
+                  ),
+                ]),
+                _section(
+                  'Security & account',
+                  Icons.admin_panel_settings_outlined,
+                  [
+                    _action(
+                      'Devices',
+                      'Review sessions and remotely sign out devices.',
+                      Icons.devices_other_rounded,
+                      _openDevices,
                     ),
-                    _section(
-                      'Notifications',
-                      Icons.notifications_none_rounded,
-                      [
-                        _toggle('Messages', 'Notify for direct messages.', 'notifyMessages', fallback: true),
-                        _toggle('Groups', 'Notify for group messages.', 'notifyGroups', fallback: true),
-                        _toggle('Status', 'Notify for status activity.', 'notifyStatus', fallback: true),
-                        _toggle('Calls', 'Notify for incoming calls.', 'notifyCalls', fallback: true),
-                        _toggle('Previews', 'Show message previews in notifications.', 'showNotificationPreviews', fallback: true),
-                        _toggle('Push notifications', 'Allow push delivery.', 'showPushNotification', fallback: true),
-                        _toggle('In-app banner', 'Show foreground notification banners.', 'showNotificationBanner', fallback: true),
-                        _toggle('Outgoing sound', 'Play sound after sending.', 'outgoingMessageSoundEnabled', fallback: true),
-                      ],
+                    _action(
+                      _bool('twoFactorEnabled')
+                          ? 'Two-factor authentication: On'
+                          : 'Two-factor authentication',
+                      'Authenticator codes and recovery protection.',
+                      Icons.verified_user_outlined,
+                      _manageTwoFactor,
                     ),
-                    _section(
-                      'Privacy',
-                      Icons.shield_outlined,
-                      [
-                        _choice(
-                          'Last seen',
-                          'Who can see your last seen.',
-                          'lastSeenVisibility',
-                          const {'everyone': 'Everyone', 'contacts': 'Contacts', 'nobody': 'Nobody'},
-                        ),
-                        _choice(
-                          'Online status',
-                          'Who can see when you are online.',
-                          'onlineVisibility',
-                          const {'everyone': 'Everyone', 'contacts': 'Contacts', 'nobody': 'Nobody'},
-                        ),
-                        _choice(
-                          'Profile photo',
-                          'Who can see your profile photo.',
-                          'profilePhotoVisibility',
-                          const {'everyone': 'Everyone', 'contacts': 'Contacts', 'nobody': 'Nobody'},
-                        ),
-                        _choice(
-                          'Status visibility',
-                          'Who can see your status.',
-                          'statusVisibility',
-                          const {'everyone': 'Everyone', 'contacts': 'Contacts', 'nobody': 'Nobody'},
-                        ),
-                        _toggle('Read receipts', 'Send and receive read receipts.', 'readReceiptsEnabled', fallback: true),
-                        _toggle('Message requests', 'Allow messages from people outside contacts.', 'messageRequestsEnabled', fallback: true),
-                        _toggle('Disable link previews', 'Do not fetch link previews.', 'disableLinkPreviews'),
-                        _toggle('Security notifications', 'Notify when security state changes.', 'securityNotificationsEnabled', fallback: true),
-                        _action('Blocked contacts', 'Review people you have blocked.', Icons.block_rounded, _openBlocked),
-                        _action('Hidden chats', 'Review and unhide private chats.', Icons.visibility_off_outlined, _openHidden),
-                      ],
+                    _action(
+                      _bool('appLockEnabled') ? 'App lock: On' : 'App lock',
+                      'Protect the app with an additional password.',
+                      Icons.lock_outline_rounded,
+                      _manageAppLock,
                     ),
-                    _section(
-                      'Voice & video',
-                      Icons.video_call_outlined,
-                      [
-                        _toggle('Camera', 'Allow camera use for video calls.', 'cameraEnabled', fallback: true),
-                        _toggle('Microphone', 'Allow microphone use for calls and voice notes.', 'microphoneEnabled', fallback: true),
-                        _toggle('Speaker', 'Allow speakerphone output.', 'speakerEnabled', fallback: true),
-                      ],
+                    _action(
+                      'Change password',
+                      'Change your password and revoke other sessions.',
+                      Icons.password_rounded,
+                      _changePassword,
                     ),
-                    _section(
-                      'Security & account',
-                      Icons.admin_panel_settings_outlined,
-                      [
-                        _action('Devices', 'Review sessions and remotely sign out devices.', Icons.devices_other_rounded, _openDevices),
-                        _action(
-                          _bool('twoFactorEnabled') ? 'Two-factor authentication: On' : 'Two-factor authentication',
-                          'Authenticator codes and recovery protection.',
-                          Icons.verified_user_outlined,
-                          _manageTwoFactor,
-                        ),
-                        _action(
-                          _bool('appLockEnabled') ? 'App lock: On' : 'App lock',
-                          'Protect the app with an additional password.',
-                          Icons.lock_outline_rounded,
-                          _manageAppLock,
-                        ),
-                        _action('Change password', 'Change your password and revoke other sessions.', Icons.password_rounded, _changePassword),
-                        _action('Export account info', 'Generate a portable account export and email the secure link.', Icons.download_outlined, _requestExport),
-                        _action('Delete account', 'Permanently delete your SyncChat account.', Icons.delete_forever_outlined, _deleteAccount, danger: true),
-                      ],
+                    _action(
+                      'Export account info',
+                      'Generate a portable account export and email the secure link.',
+                      Icons.download_outlined,
+                      _requestExport,
+                    ),
+                    _action(
+                      'Delete account',
+                      'Permanently delete your SyncChat account.',
+                      Icons.delete_forever_outlined,
+                      _deleteAccount,
+                      danger: true,
                     ),
                   ],
                 ),
+              ],
+            ),
     );
   }
 
@@ -216,7 +339,10 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
           children: [
             ListTile(
               leading: Icon(icon, color: SyncColors.sky),
-              title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              title: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
             Divider(height: 1, color: context.border),
             ...children,
@@ -254,7 +380,10 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
         value: options.containsKey(current) ? current : options.keys.first,
         underline: const SizedBox.shrink(),
         items: options.entries
-            .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value)))
+            .map(
+              (entry) =>
+                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            )
             .toList(growable: false),
         onChanged: saving.contains(key)
             ? null
@@ -300,9 +429,9 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
   }
 
   Future<void> _openHidden() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const _HiddenChatsScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const _HiddenChatsScreen()));
   }
 
   Future<void> _manageTwoFactor() async {
@@ -374,7 +503,11 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
   Future<void> _changePassword() async {
     final values = await _threeFieldDialog(
       title: 'Change password',
-      labels: const ['Current password', 'New password', 'Confirm new password'],
+      labels: const [
+        'Current password',
+        'New password',
+        'Confirm new password',
+      ],
     );
     if (values == null) return;
     try {
@@ -413,7 +546,9 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
     if (password == null || password.isEmpty) return;
     try {
       await context.services.auth.deleteAccount(password);
-      await context.services.nativeCallPush.unregisterCurrentDevice().catchError((_) {});
+      await context.services.nativeCallPush
+          .unregisterCurrentDevice()
+          .catchError((_) {});
       await context.services.auth.logoutLocal();
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -440,10 +575,7 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (helper != null) ...[
-              Text(helper),
-              const SizedBox(height: 12),
-            ],
+            if (helper != null) ...[Text(helper), const SizedBox(height: 12)],
             TextField(
               controller: controller,
               obscureText: obscure,
@@ -453,7 +585,10 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: danger
                 ? FilledButton.styleFrom(backgroundColor: SyncColors.danger)
@@ -492,15 +627,21 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: second,
-              keyboardType: numericSecond ? TextInputType.number : TextInputType.text,
+              keyboardType: numericSecond
+                  ? TextInputType.number
+                  : TextInputType.text,
               decoration: InputDecoration(labelText: secondLabel),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, (first.text, second.text)),
+            onPressed: () =>
+                Navigator.pop(dialogContext, (first.text, second.text)),
             child: const Text('Continue'),
           ),
         ],
@@ -525,7 +666,11 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final item in [(first, labels[0]), (second, labels[1]), (third, labels[2])]) ...[
+            for (final item in [
+              (first, labels[0]),
+              (second, labels[1]),
+              (third, labels[2]),
+            ]) ...[
               TextField(
                 controller: item.$1,
                 obscureText: true,
@@ -536,9 +681,16 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, (first.text, second.text, third.text)),
+            onPressed: () => Navigator.pop(dialogContext, (
+              first.text,
+              second.text,
+              third.text,
+            )),
             child: const Text('Change password'),
           ),
         ],
@@ -552,7 +704,8 @@ class _LiveSettingsScreenState extends State<LiveSettingsScreen> {
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -598,41 +751,60 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
       appBar: AppBar(
         title: const Text('Devices'),
         actions: [
-          TextButton(onPressed: _logoutOthers, child: const Text('Logout others')),
+          TextButton(
+            onPressed: _logoutOthers,
+            child: const Text('Logout others'),
+          ),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-              ? _SettingsError(message: error!, onRetry: _load)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(12),
-                    itemCount: sessions.length,
-                    separatorBuilder: (_, __) => Divider(color: context.border),
-                    itemBuilder: (_, index) {
-                      final session = sessions[index];
-                      final current = session['current'] == true || session['isCurrent'] == true;
-                      final id = session['_id']?.toString() ?? session['id']?.toString() ?? '';
-                      final label = session['deviceLabel']?.toString().trim() ?? '';
-                      final userAgent = session['userAgent']?.toString().trim() ?? '';
-                      return ListTile(
-                        leading: Icon(current ? Icons.smartphone_rounded : Icons.devices_other_rounded),
-                        title: Text(label.isNotEmpty ? label : (current ? 'Current device' : 'Signed-in device')),
-                        subtitle: Text(userAgent.isNotEmpty ? userAgent : 'SyncChat session'),
-                        trailing: current || id.isEmpty
-                            ? const Chip(label: Text('Current'))
-                            : IconButton(
-                                tooltip: 'Remote logout',
-                                onPressed: () => _revoke(id),
-                                icon: const Icon(Icons.logout_rounded),
-                              ),
-                      );
-                    },
-                  ),
-                ),
+          ? _SettingsError(message: error!, onRetry: _load)
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: sessions.length,
+                separatorBuilder: (_, __) => Divider(color: context.border),
+                itemBuilder: (_, index) {
+                  final session = sessions[index];
+                  final current =
+                      session['current'] == true ||
+                      session['isCurrent'] == true;
+                  final id =
+                      session['_id']?.toString() ??
+                      session['id']?.toString() ??
+                      '';
+                  final label = session['deviceLabel']?.toString().trim() ?? '';
+                  final userAgent =
+                      session['userAgent']?.toString().trim() ?? '';
+                  return ListTile(
+                    leading: Icon(
+                      current
+                          ? Icons.smartphone_rounded
+                          : Icons.devices_other_rounded,
+                    ),
+                    title: Text(
+                      label.isNotEmpty
+                          ? label
+                          : (current ? 'Current device' : 'Signed-in device'),
+                    ),
+                    subtitle: Text(
+                      userAgent.isNotEmpty ? userAgent : 'SyncChat session',
+                    ),
+                    trailing: current || id.isEmpty
+                        ? const Chip(label: Text('Current'))
+                        : IconButton(
+                            tooltip: 'Remote logout',
+                            onPressed: () => _revoke(id),
+                            icon: const Icon(Icons.logout_rounded),
+                          ),
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -642,7 +814,8 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_errorText(failure))));
     }
   }
 
@@ -652,7 +825,8 @@ class _DeviceSessionsScreenState extends State<_DeviceSessionsScreen> {
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_errorText(failure))));
     }
   }
 }
@@ -690,24 +864,29 @@ class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : contacts.isEmpty
-              ? const Center(child: Text('No blocked contacts.'))
-              : ListView.builder(
-                  itemCount: contacts.length,
-                  itemBuilder: (_, index) {
-                    final item = contacts[index];
-                    final name = item['fullname']?.toString() ?? item['username']?.toString() ?? 'Contact';
-                    final userId = item['userId']?.toString() ?? '';
-                    return ListTile(
-                      leading: SyncAvatar(name: name),
-                      title: Text(name),
-                      subtitle: item['username'] == null ? null : Text('@${item['username']}'),
-                      trailing: TextButton(
-                        onPressed: userId.isEmpty ? null : () => _unblock(userId),
-                        child: const Text('Unblock'),
-                      ),
-                    );
-                  },
-                ),
+          ? const Center(child: Text('No blocked contacts.'))
+          : ListView.builder(
+              itemCount: contacts.length,
+              itemBuilder: (_, index) {
+                final item = contacts[index];
+                final name =
+                    item['fullname']?.toString() ??
+                    item['username']?.toString() ??
+                    'Contact';
+                final userId = item['userId']?.toString() ?? '';
+                return ListTile(
+                  leading: SyncAvatar(name: name),
+                  title: Text(name),
+                  subtitle: item['username'] == null
+                      ? null
+                      : Text('@${item['username']}'),
+                  trailing: TextButton(
+                    onPressed: userId.isEmpty ? null : () => _unblock(userId),
+                    child: const Text('Unblock'),
+                  ),
+                );
+              },
+            ),
     );
   }
 
@@ -717,7 +896,8 @@ class _BlockedContactsScreenState extends State<_BlockedContactsScreen> {
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_errorText(failure))));
     }
   }
 }
@@ -755,57 +935,63 @@ class _HiddenChatsScreenState extends State<_HiddenChatsScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : chats.isEmpty
-              ? const Center(child: Text('No hidden chats.'))
-              : ListView.builder(
-                  itemCount: chats.length,
-                  itemBuilder: (_, index) {
-                    final inbox = chats[index];
-                    final roomId = inbox['roomId']?.toString() ?? '';
-                    final name = _hiddenChatName(inbox);
-                    return ListTile(
-                      leading: SyncAvatar(name: name),
-                      title: Text(name),
-                      trailing: TextButton(
-                        onPressed: roomId.isEmpty ? null : () => _unhide(roomId),
-                        child: const Text('Unhide'),
-                      ),
-                      onTap: roomId.isEmpty
-                          ? null
-                          : () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name),
-                                ),
-                              ),
-                    );
-                  },
-                ),
+          ? const Center(child: Text('No hidden chats.'))
+          : ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (_, index) {
+                final inbox = chats[index];
+                final roomId = inbox['roomId']?.toString() ?? '';
+                final name = _hiddenChatName(inbox);
+                return ListTile(
+                  leading: SyncAvatar(name: name),
+                  title: Text(name),
+                  trailing: TextButton(
+                    onPressed: roomId.isEmpty ? null : () => _unhide(roomId),
+                    child: const Text('Unhide'),
+                  ),
+                  onTap: roomId.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                LiveChatRoomScreen(inbox: inbox, name: name),
+                          ),
+                        ),
+                );
+              },
+            ),
     );
   }
 
   Future<void> _unhide(String roomId) async {
     try {
-      await context.services.inbox.updatePreferences(
-        roomId,
-        {'action': 'hide', 'value': false},
-      );
+      await context.services.inbox.updatePreferences(roomId, {
+        'action': 'hide',
+        'value': false,
+      });
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_errorText(failure))));
     }
   }
 }
 
 String _hiddenChatName(Map<String, dynamic> inbox) {
   final channel = inbox['channel'];
-  if (channel is Map && channel['name'] != null) return channel['name'].toString();
+  if (channel is Map && channel['name'] != null)
+    return channel['name'].toString();
   final group = inbox['group'];
   if (group is Map && group['name'] != null) return group['name'].toString();
   final owners = inbox['owners'];
   if (owners is List && owners.isNotEmpty) {
-    final raw = owners.whereType<Map>().firstOrNull;
-    if (raw != null) {
-      return raw['fullname']?.toString() ?? raw['username']?.toString() ?? 'Hidden chat';
+    final mapped = owners.whereType<Map>().toList(growable: false);
+    if (mapped.isNotEmpty) {
+      final raw = mapped.first;
+      return raw['fullname']?.toString() ??
+          raw['username']?.toString() ??
+          'Hidden chat';
     }
   }
   return 'Hidden chat';
@@ -830,7 +1016,11 @@ class _SettingsError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined, size: 48, color: SyncColors.sky),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: SyncColors.sky,
+            ),
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),

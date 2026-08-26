@@ -588,8 +588,7 @@ class E2eeService {
     if (missing.isNotEmpty) {
       throw ApiException(
         statusCode: 409,
-        message:
-            'Every participant must register an E2EE device before this message can be sent.',
+        message: 'Every participant must register an E2EE device before this message can be sent.',
         payload: {'missingUserIds': missing},
       );
     }
