@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'api_client.dart';
 import 'auth_repository.dart';
@@ -73,6 +76,10 @@ class CachedChatRepository extends ChatRepository {
     required ChatCache cache,
   }) : _cache = cache,
        super(api: api, auth: auth, realtime: realtime, e2ee: e2ee);
+
+  static const _pendingUploadKey = '_syncchatPendingUpload';
+  static const _localPathKey = '_syncchatLocalPath';
+  static const _filenameKey = '_syncchatFilename';
 
   final ChatCache _cache;
 
@@ -200,16 +207,11 @@ class CachedChatRepository extends ChatRepository {
     String? topicId,
     bool viewOnce = false,
   }) async {
-    final roomId = inbox['roomId']?.toString().trim() ?? '';
-    if (roomId.isEmpty) {
-      throw const ApiException(
-        statusCode: 400,
-        message: 'This chat does not have a valid room ID.',
-      );
-    }
+    final roomId = _roomId(inbox);
     final user = await currentUser();
     final queuedAt = DateTime.now().toUtc().toIso8601String();
     await _cache.enqueueOutbox({
+      'kind': 'text',
       'clientMessageId': clientMessageId,
       'inbox': Map<String, dynamic>.from(inbox),
       'text': text.trim(),
@@ -231,14 +233,160 @@ class CachedChatRepository extends ChatRepository {
         'createdAt': queuedAt,
         'pending': true,
         'queuedOffline': true,
-        'profile': {
-          'fullname': user['fullname']?.toString() ??
-              user['username']?.toString() ??
-              'You',
-          'avatar': user['avatar'],
-        },
+        'profile': _cachedProfile(user),
       },
     ]);
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadAttachment({
+    required String filePath,
+    String? filename,
+  }) async {
+    final resolvedFilename = _resolveFilename(filePath, filename);
+    final localDescriptor = await _localDescriptor(
+      filePath: filePath,
+      filename: resolvedFilename,
+    );
+
+    if (!await _hasNetworkTransport()) return localDescriptor;
+
+    try {
+      final uploaded = await super.uploadAttachment(
+        filePath: filePath,
+        filename: resolvedFilename,
+      );
+      return {
+        ...uploaded,
+        _localPathKey: filePath,
+        _filenameKey: resolvedFilename,
+      };
+    } on ApiException catch (error) {
+      if (!error.isOffline) rethrow;
+      return localDescriptor;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> sendAttachment({
+    required Map<String, dynamic> inbox,
+    required Map<String, dynamic> file,
+    String text = '',
+    String? clientMessageId,
+    String? replyTo,
+    String? topicId,
+    bool viewOnce = false,
+  }) async {
+    _guardOfflineE2eeMedia(inbox);
+    final resolvedId = clientMessageId?.trim().isNotEmpty == true
+        ? clientMessageId!.trim()
+        : createClientMessageId();
+    final prepared = Map<String, dynamic>.from(file);
+
+    if (!await _hasNetworkTransport()) {
+      return _queueAttachment(
+        inbox: inbox,
+        file: prepared,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+    }
+
+    try {
+      final remoteFile = await _ensureRemoteAttachment(prepared);
+      return await super.sendAttachment(
+        inbox: inbox,
+        file: _publicFile(remoteFile),
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+    } on ApiException catch (error) {
+      if (!error.isOffline) rethrow;
+      return _queueAttachment(
+        inbox: inbox,
+        file: prepared,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+    } on SocketAckException {
+      if (await _hasNetworkTransport()) rethrow;
+      return _queueAttachment(
+        inbox: inbox,
+        file: prepared,
+        text: text,
+        clientMessageId: resolvedId,
+        replyTo: replyTo,
+        topicId: topicId,
+        viewOnce: viewOnce,
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> _queueAttachment({
+    required Map<String, dynamic> inbox,
+    required Map<String, dynamic> file,
+    required String text,
+    required String clientMessageId,
+    String? replyTo,
+    String? topicId,
+    bool viewOnce = false,
+  }) async {
+    final roomId = _roomId(inbox);
+    final user = await currentUser();
+    final queuedAt = DateTime.now().toUtc().toIso8601String();
+    final filename = file['originalname']?.toString().trim().isNotEmpty == true
+        ? file['originalname'].toString().trim()
+        : file[_filenameKey]?.toString().trim().isNotEmpty == true
+            ? file[_filenameKey].toString().trim()
+            : 'attachment';
+    final originalLocalPath = file[_localPathKey]?.toString().trim() ?? '';
+    final stagedLocalPath = originalLocalPath.isEmpty
+        ? ''
+        : await _persistOutboxFile(originalLocalPath, filename);
+    final queuedFile = {
+      ...file,
+      if (stagedLocalPath.isNotEmpty) _localPathKey: stagedLocalPath,
+      _filenameKey: filename,
+    };
+
+    await _cache.enqueueOutbox({
+      'kind': 'attachment',
+      'clientMessageId': clientMessageId,
+      'inbox': Map<String, dynamic>.from(inbox),
+      'text': text.trim(),
+      'replyTo': replyTo,
+      'topicId': topicId,
+      'viewOnce': viewOnce,
+      'file': queuedFile,
+      'queuedAt': queuedAt,
+    });
+
+    final pending = <String, dynamic>{
+      'clientMessageId': clientMessageId,
+      'roomId': roomId,
+      'roomType': inbox['roomType']?.toString() ?? 'private',
+      'userId': user['_id']?.toString(),
+      'text': text.trim(),
+      'replyTo': replyTo,
+      'topicId': topicId,
+      'viewOnce': viewOnce,
+      'createdAt': queuedAt,
+      'pending': true,
+      'queuedOffline': true,
+      'file': _pendingFilePreview(queuedFile),
+      'profile': _cachedProfile(user),
+    };
+    await _cache.mergeRoomMessages(roomId, [pending]);
+    return pending;
   }
 
   Future<int> drainOutbox() async {
@@ -252,30 +400,226 @@ class CachedChatRepository extends ChatRepository {
         continue;
       }
       final id = item['clientMessageId']?.toString().trim() ?? '';
-      final text = item['text']?.toString() ?? '';
-      if (id.isEmpty || text.trim().isEmpty) {
+      if (id.isEmpty) {
         await _cache.removeOutbox(id);
         continue;
       }
+
       try {
-        await super.sendText(
-          inbox: Map<String, dynamic>.from(inboxValue),
-          text: text,
-          clientMessageId: id,
-          replyTo: item['replyTo']?.toString(),
-          topicId: item['topicId']?.toString(),
-          viewOnce: item['viewOnce'] == true,
-        );
+        final kind = item['kind']?.toString() ?? 'text';
+        if (kind == 'attachment') {
+          await _drainAttachment(item, Map<String, dynamic>.from(inboxValue), id);
+        } else {
+          final text = item['text']?.toString() ?? '';
+          if (text.trim().isEmpty) {
+            await _cache.removeOutbox(id);
+            continue;
+          }
+          await super.sendText(
+            inbox: Map<String, dynamic>.from(inboxValue),
+            text: text,
+            clientMessageId: id,
+            replyTo: item['replyTo']?.toString(),
+            topicId: item['topicId']?.toString(),
+            viewOnce: item['viewOnce'] == true,
+          );
+        }
         await _cache.removeOutbox(id);
         sent += 1;
       } on ApiException catch (error) {
         if (error.isOffline) break;
-        // Keep a rejected item queued instead of silently losing user text.
+        // Keep a server-rejected item queued instead of silently losing user data.
+      } on SocketAckException {
+        break;
       } on Object {
         break;
       }
     }
     return sent;
+  }
+
+  Future<void> _drainAttachment(
+    Map<String, dynamic> item,
+    Map<String, dynamic> inbox,
+    String clientMessageId,
+  ) async {
+    _guardOfflineE2eeMedia(inbox);
+    final rawFile = item['file'];
+    if (rawFile is! Map) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'Queued attachment metadata is missing.',
+      );
+    }
+    final queuedFile = Map<String, dynamic>.from(rawFile);
+    final remoteFile = await _ensureRemoteAttachment(queuedFile);
+    final sent = await super.sendAttachment(
+      inbox: inbox,
+      file: _publicFile(remoteFile),
+      text: item['text']?.toString() ?? '',
+      clientMessageId: clientMessageId,
+      replyTo: item['replyTo']?.toString(),
+      topicId: item['topicId']?.toString(),
+      viewOnce: item['viewOnce'] == true,
+    );
+    final roomId = _roomId(inbox);
+    await _cache.mergeRoomMessages(roomId, [sent]);
+    await _deleteStagedFile(queuedFile[_localPathKey]?.toString());
+  }
+
+  Future<Map<String, dynamic>> _ensureRemoteAttachment(
+    Map<String, dynamic> file,
+  ) async {
+    final pendingUpload = file[_pendingUploadKey] == true;
+    if (!pendingUpload) return file;
+
+    final localPath = file[_localPathKey]?.toString().trim() ?? '';
+    if (localPath.isEmpty || !await File(localPath).exists()) {
+      throw const ApiException(
+        statusCode: 410,
+        message: 'The queued attachment file is no longer available on this device.',
+      );
+    }
+    final filename = file[_filenameKey]?.toString().trim().isNotEmpty == true
+        ? file[_filenameKey].toString().trim()
+        : _resolveFilename(localPath, file['originalname']?.toString());
+    final uploaded = await super.uploadAttachment(
+      filePath: localPath,
+      filename: filename,
+    );
+    return {
+      ...uploaded,
+      if (file['type'] != null) 'type': file['type'],
+      if (file['duration'] != null) 'duration': file['duration'],
+      _localPathKey: localPath,
+      _filenameKey: filename,
+    };
+  }
+
+  Future<Map<String, dynamic>> _localDescriptor({
+    required String filePath,
+    required String filename,
+  }) async {
+    final source = File(filePath);
+    if (!await source.exists()) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'The selected attachment is no longer available.',
+      );
+    }
+    final size = await source.length();
+    return {
+      _pendingUploadKey: true,
+      _localPathKey: filePath,
+      _filenameKey: filename,
+      'originalname': filename,
+      'type': _inferAttachmentType(filename),
+      'size': size,
+    };
+  }
+
+  Map<String, dynamic> _publicFile(Map<String, dynamic> file) =>
+      Map<String, dynamic>.fromEntries(
+        file.entries.where((entry) => !entry.key.startsWith('_syncchat')),
+      );
+
+  Map<String, dynamic> _pendingFilePreview(Map<String, dynamic> file) => {
+        'originalname': file['originalname'] ?? file[_filenameKey] ?? 'attachment',
+        'type': file['type'] ?? 'file',
+        'size': file['size'],
+        'duration': file['duration'],
+        'localPath': file[_localPathKey],
+        'pending': true,
+      };
+
+  Map<String, dynamic> _cachedProfile(Map<String, dynamic> user) => {
+        'fullname': user['fullname']?.toString() ??
+            user['username']?.toString() ??
+            'You',
+        'avatar': user['avatar'],
+      };
+
+  String _roomId(Map<String, dynamic> inbox) {
+    final roomId = inbox['roomId']?.toString().trim() ?? '';
+    if (roomId.isEmpty) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'This chat does not have a valid room ID.',
+      );
+    }
+    return roomId;
+  }
+
+  void _guardOfflineE2eeMedia(Map<String, dynamic> inbox) {
+    if (inbox['roomType']?.toString() == 'private' &&
+        inbox['e2eeEnabled'] == true) {
+      throw const ApiException(
+        statusCode: 409,
+        message:
+            'Media sending is disabled while device E2EE is enabled because encrypted media attachments are not implemented yet.',
+        payload: {'code': 'E2EE_MEDIA_NOT_SUPPORTED'},
+      );
+    }
+  }
+
+  String _resolveFilename(String filePath, String? requested) {
+    final value = requested?.trim() ?? '';
+    if (value.isNotEmpty) return value;
+    final parts = filePath.split(RegExp(r'[\\/]'));
+    return parts.isEmpty || parts.last.trim().isEmpty ? 'attachment' : parts.last;
+  }
+
+  String _inferAttachmentType(String filename) {
+    final lower = filename.toLowerCase();
+    const images = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
+    const videos = ['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi'];
+    const audio = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus', '.webm'];
+    if (images.any(lower.endsWith)) return 'image';
+    if (videos.any(lower.endsWith)) return 'video';
+    if (audio.any(lower.endsWith)) return 'audio';
+    return 'file';
+  }
+
+  Future<String> _persistOutboxFile(String sourcePath, String filename) async {
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw const ApiException(
+        statusCode: 410,
+        message: 'The selected attachment is no longer available.',
+      );
+    }
+    final root = Directory(
+      '${(await getApplicationDocumentsDirectory()).path}${Platform.pathSeparator}syncchat_outbox',
+    );
+    await root.create(recursive: true);
+    final normalizedSource = source.absolute.path;
+    final normalizedRoot = root.absolute.path;
+    if (normalizedSource.startsWith('$normalizedRoot${Platform.pathSeparator}')) {
+      return normalizedSource;
+    }
+    final safeName = filename
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
+        .replaceAll(RegExp(r'^\.+'), '');
+    final target = File(
+      '${root.path}${Platform.pathSeparator}${DateTime.now().microsecondsSinceEpoch}_${safeName.isEmpty ? 'attachment' : safeName}',
+    );
+    await source.copy(target.path);
+    return target.path;
+  }
+
+  Future<void> _deleteStagedFile(String? path) async {
+    final value = path?.trim() ?? '';
+    if (value.isEmpty) return;
+    try {
+      final root = Directory(
+        '${(await getApplicationDocumentsDirectory()).path}${Platform.pathSeparator}syncchat_outbox',
+      ).absolute.path;
+      final file = File(value).absolute;
+      if (!file.path.startsWith('$root${Platform.pathSeparator}')) return;
+      if (await file.exists()) await file.delete();
+    } on Object {
+      // A stale staged file is safe to clean on a later maintenance pass.
+    }
   }
 
   Future<int> pendingOutboxCount() async => (await _cache.readOutbox()).length;
