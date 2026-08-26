@@ -82,6 +82,22 @@ class DeviceIntegrationService {
     return repository.syncMobile(payload);
   }
 
+  static Future<String?> createPhoneContact({
+    required String name,
+    required String phone,
+  }) async {
+    final cleanedPhone = phone.trim();
+    if (cleanedPhone.isEmpty) {
+      throw StateError('Phone number is required to save a phone contact.');
+    }
+    final cleanedName = name.trim().isEmpty ? cleanedPhone : name.trim();
+    final contact = Contact(
+      name: Name(first: cleanedName),
+      phones: [Phone(number: cleanedPhone)],
+    );
+    return FlutterContacts.native.showCreator(contact: contact);
+  }
+
   static Future<void> startForegroundMessaging() async {
     await initialize();
     if (!Platform.isAndroid) return;
