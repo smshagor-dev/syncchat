@@ -158,6 +158,14 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const filters = <(String, String)>[
+      ('all', 'All'),
+      ('unread', 'Unread'),
+      ('pinned', 'Pinned'),
+      ('list', 'List'),
+      ('hidden', 'Hidden'),
+    ];
+
     return SyncStandardPage(
       title: 'Chats',
       actions: [
@@ -197,15 +205,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                   height: 34,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    children: const [
-                      ('all', 'All'),
-                      ('unread', 'Unread'),
-                      ('pinned', 'Pinned'),
-                      ('list', 'List'),
-                      ('hidden', 'Hidden'),
-                    ].map((entry) {
-                      return const SizedBox.shrink();
-                    }).toList(),
+                    children: filters
+                        .map(_buildFilterChip)
+                        .toList(growable: false),
                   ),
                 ),
               ],
@@ -398,12 +400,12 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
           password,
         );
         if (result['verified'] != true) {
-          _message('Password verification failed.', error: true);
+          _message('Password verification failed.');
           return;
         }
       } on Object catch (failure) {
         if (!mounted) return;
-        _message(_errorText(failure), error: true);
+        _message(_errorText(failure));
         return;
       }
     }
@@ -597,7 +599,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       }
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -615,7 +617,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       }
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     }
   }
 
@@ -638,7 +640,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       _message(result.scope == 'both' ? 'Shared chat lock enabled.' : 'Chat lock enabled.');
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -663,7 +665,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       _message('Chat lock password changed.');
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -687,7 +689,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       _message('Chat lock removed.');
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -709,7 +711,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       _message('Chat cleared.');
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -749,7 +751,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       _message(scope == 'both' ? 'Chat deleted for both participants.' : 'Chat deleted.');
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     } finally {
       _clearBusy(roomId);
     }
@@ -761,7 +763,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      _message(_errorText(failure), error: true);
+      _message(_errorText(failure));
     }
   }
 
@@ -854,7 +856,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (mounted && busyRoomId == roomId) setState(() => busyRoomId = null);
   }
 
-  void _message(String text, {bool error = false}) {
+  void _message(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
