@@ -72,7 +72,6 @@ app.use((req, res, next) => {
 });
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(
   express.urlencoded({ limit: '10mb', parameterLimit: 10000, extended: false })
@@ -304,7 +303,7 @@ if (!config.isDev && config.serveFrontend) {
     );
   } else {
     app.use(express.static(publicRoot));
-    app.get('*', async (req, res) => {
+    app.get('/{*splat}', async (req, res) => {
       const pathname = normalizeRoutePath(req.path);
       const requestHostname = getRequestHostname(req);
       const isAdminHost =
