@@ -116,46 +116,41 @@ class SyncChatConfig {
     final raw = value?.trim() ?? '';
     if (raw.isEmpty) return '';
 
+    // Protocol-relative public media is valid on the web. Native Image.network
+    // needs an explicit scheme, so inherit the configured SyncChat scheme.
+    if (raw.startsWith('//')) {
+      return '${_socketOrigin().scheme}:$raw';
+    }
+
     final parsed = Uri.tryParse(raw);
     if (parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
-      final apiBase = _validatedBase(apiBaseUrl, name: 'SYNCCHAT_API_BASE_URL');
-      final alreadyBackendMedia =
-          parsed.host == apiBase.host && parsed.path.endsWith('/media/proxy');
-      if (alreadyBackendMedia) return raw;
-
       final localHost = parsed.host == 'localhost' ||
           parsed.host == '127.0.0.1' ||
           parsed.host == '::1';
+
+      // Development/legacy payloads can contain localhost upload URLs. They
+      // must point at the configured SyncChat origin on a physical device.
       if (localHost && parsed.path.startsWith('/uploads/')) {
-        final legacy = _socketOrigin().replace(
+        return _socketOrigin().replace(
           path: parsed.path,
           query: parsed.hasQuery ? parsed.query : null,
           fragment: parsed.hasFragment ? parsed.fragment : null,
         ).toString();
-        return apiUri('/media/proxy', queryParameters: {'url': legacy}).toString();
       }
 
-      if (_looksLikePersistentMedia(parsed.path)) {
-        return apiUri('/media/proxy', queryParameters: {'url': raw}).toString();
-      }
+      // Public storage/CDN/social avatar URLs are already usable by the native
+      // client. Do not route arbitrary image URLs through /media/proxy because
+      // that endpoint intentionally accepts configured SyncChat storage only.
+      // Explicit backend proxy URLs remain valid here and are returned as-is.
       return raw;
     }
 
-    if (raw.startsWith('/uploads/')) {
-      final legacy = _socketOrigin().replace(path: raw).toString();
-      return apiUri('/media/proxy', queryParameters: {'url': legacy}).toString();
+    if (raw.startsWith('/uploads/') || raw.startsWith('uploads/')) {
+      final path = raw.startsWith('/') ? raw : '/$raw';
+      return _socketOrigin().resolve(path).toString();
     }
 
     return raw;
-  }
-
-  bool _looksLikePersistentMedia(String path) {
-    final lower = path.toLowerCase();
-    const extensions = <String>[
-      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.heic', '.heif',
-      '.mp4', '.webm', '.mov', '.mp3', '.m4a', '.aac', '.ogg', '.wav', '.pdf',
-    ];
-    return extensions.any(lower.endsWith);
   }
 
   Uri _socketOrigin() {
