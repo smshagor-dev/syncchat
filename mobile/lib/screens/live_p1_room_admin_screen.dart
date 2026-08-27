@@ -98,7 +98,11 @@ class _LiveRoomAdminHubScreenState extends State<LiveRoomAdminHubScreen> {
                                 ? (entity['pendingMembersId'] as List).length
                                 : 0;
                             return ListTile(
-                              leading: SyncAvatar(name: name, radius: 23),
+                              leading: SyncAvatar(
+                                name: name,
+                                imageUrl: entity['avatar']?.toString(),
+                                radius: 23,
+                              ),
                               title: Text(name, style: const TextStyle(fontWeight: FontWeight.w900)),
                               subtitle: Text('${isChannel ? 'Channel' : 'Group'} · $pending pending'),
                               trailing: const Icon(Icons.chevron_right_rounded),
@@ -376,7 +380,11 @@ class _LiveRoomAdminScreenState extends State<LiveRoomAdminScreen> {
                               children: pending.map((row) {
                                 final label = _memberName(row);
                                 return ListTile(
-                                  leading: SyncAvatar(name: label, radius: 20),
+                                  leading: SyncAvatar(
+                                    name: label,
+                                    imageUrl: _memberAvatar(row),
+                                    radius: 20,
+                                  ),
                                   title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
                                   subtitle: Text(_memberSubtitle(row)),
                                   trailing: Wrap(
@@ -561,6 +569,17 @@ String _memberName(Map<String, dynamic> row) {
     return profile['fullname']?.toString() ?? profile['username']?.toString() ?? 'Member';
   }
   return 'Member';
+}
+
+String? _memberAvatar(Map<String, dynamic> row) {
+  final direct = row['avatar']?.toString().trim() ?? '';
+  if (direct.isNotEmpty) return direct;
+  final profile = row['profile'];
+  if (profile is Map) {
+    final nested = profile['avatar']?.toString().trim() ?? '';
+    if (nested.isNotEmpty) return nested;
+  }
+  return null;
 }
 
 String _memberSubtitle(Map<String, dynamic> row) {
