@@ -7,10 +7,7 @@
     "core:default",
     "autostart:default",
     "deep-link:default",
-    "dialog:default",
-    "fs:default",
     "notification:default",
-    "opener:default",
-    "store:default"
+    "opener:default"
   ]
 }
