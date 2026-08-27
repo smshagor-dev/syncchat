@@ -9,9 +9,16 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-android-debug.yml'
 
+permissions:
+  contents: write
+
 concurrency:
   group: syncchat-android-debug-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  DEBUG_RELEASE_TAG: mobile-debug-v0.1.0-4
+  DEBUG_RELEASE_TITLE: SyncChat Android Debug v0.1.0+4
 
 jobs:
   debug-apk:
@@ -45,12 +52,35 @@ jobs:
         run: flutter build apk --debug
 
       - name: Package debug APK
-        run: cp build/app/outputs/flutter-apk/app-debug.apk "$RUNNER_TEMP/Syncchat-debug.apk"
+        run: |
+          mkdir -p "$RUNNER_TEMP/syncchat-debug-release"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$RUNNER_TEMP/syncchat-debug-release/Syncchat-debug.apk"
+          sha256sum "$RUNNER_TEMP/syncchat-debug-release/Syncchat-debug.apk" > "$RUNNER_TEMP/syncchat-debug-release/Syncchat-debug.apk.sha256"
 
       - name: Upload Syncchat debug APK
         uses: actions/upload-artifact@v4
         with:
           name: Syncchat-debug-apk
-          path: ${{ runner.temp }}/Syncchat-debug.apk
+          path: |
+            ${{ runner.temp }}/syncchat-debug-release/Syncchat-debug.apk
+            ${{ runner.temp }}/syncchat-debug-release/Syncchat-debug.apk.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish debug GitHub prerelease
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="$RUNNER_TEMP/syncchat-debug-release/Syncchat-debug.apk"
+          HASH="$RUNNER_TEMP/syncchat-debug-release/Syncchat-debug.apk.sha256"
+          if gh release view "$DEBUG_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$DEBUG_RELEASE_TAG" "$APK" "$HASH" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$DEBUG_RELEASE_TAG" "$APK" "$HASH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$DEBUG_RELEASE_TITLE" \
+              --notes "Installable SyncChat Android debug build for direct device testing. Debug-signed, not intended for Google Play production distribution." \
+              --prerelease
+          fi
