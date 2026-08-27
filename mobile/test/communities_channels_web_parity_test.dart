@@ -21,6 +21,11 @@ void main() {
       'LiveChatRoomScreen',
       "imageUrl: community['avatar']?.toString()",
       'avatarDataUri',
+      "final relativeTime = _relativeTime(content['time']);",
+      'mainAxisSize: MainAxisSize.min',
+      'if (relativeTime.isNotEmpty)',
+      'a few seconds ago',
+      'years ago',
     ]) {
       expect(source, contains(contract));
     }
