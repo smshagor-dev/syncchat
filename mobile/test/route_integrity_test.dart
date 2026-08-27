@@ -17,10 +17,10 @@ void main() {
       'kind: LiveInboxCollectionKind.archive',
       "'lists' => const LiveInboxCollectionScreen(",
       'kind: LiveInboxCollectionKind.lists',
-      "'starred' => const LiveStarredMessagesScreen()",
       "'media' => const LiveMediaScreen()",
+      "'feedback' => const LiveFeedbackScreen()",
       "'settings' => LiveSettingsHubScreen(",
-      "'profile' || 'edit-profile' => const LiveFullProfileScreen()",
+      "'profile' => const LiveFullProfileScreen()",
     ]) {
       expect(shell, contains(contract), reason: 'Missing active route: $contract');
     }
@@ -45,8 +45,11 @@ void main() {
     for (final entry in expectedExports.entries) {
       final source = File(entry.key).readAsStringSync();
       expect(source, contains(entry.value), reason: 'Parity entry drifted: ${entry.key}');
-      expect(source, isNot(contains('_core_screen.dart')),
-          reason: 'Rollback/core implementation became active: ${entry.key}');
+      expect(
+        source,
+        isNot(contains('_core_screen.dart')),
+        reason: 'Rollback/core implementation became active: ${entry.key}',
+      );
     }
   });
 
@@ -75,6 +78,25 @@ void main() {
       'LiveChatRoomScreen(',
     ]) {
       expect(chats, contains(contract));
+    }
+  });
+
+  test('contextual features stay implemented without becoming drawer routes', () {
+    final shell = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
+    final chats = File('lib/screens/live_p0_chats_screen.dart').readAsStringSync();
+
+    expect(chats, contains("value: 'starred'"));
+    expect(chats, contains('LiveStarredMessagesScreen'));
+    expect(chats, contains("value: 'new-group'"));
+    expect(chats, contains('LiveCreateGroupScreen'));
+
+    for (final appOnlyRoute in [
+      "'starred' => const LiveStarredMessagesScreen()",
+      "'requests' => const LiveMessageRequestsScreen()",
+      "'chat-tools' => const LiveChatToolsScreen()",
+      "'room-admin' => const LiveRoomAdminHubScreen()",
+    ]) {
+      expect(shell, isNot(contains(appOnlyRoute)));
     }
   });
 
