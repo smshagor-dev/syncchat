@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 import 'api_client.dart';
 
 class PublicAppConfig {
@@ -45,7 +47,9 @@ class PublicAppConfig {
     final flags = <String, bool>{...fallback.featureFlags};
     if (flagsRaw is Map) {
       for (final entry in flagsRaw.entries) {
-        if (entry.value is bool) flags[entry.key.toString()] = entry.value == true;
+        if (entry.value is bool) {
+          flags[entry.key.toString()] = entry.value == true;
+        }
       }
     }
 
@@ -60,7 +64,9 @@ class PublicAppConfig {
         : const <String, dynamic>{};
 
     int positiveInt(dynamic value, int fallbackValue) {
-      final parsed = value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+      final parsed = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString() ?? '');
       return parsed != null && parsed > 0 ? parsed : fallbackValue;
     }
 
@@ -113,4 +119,26 @@ class PublicAppConfigRepository {
     final response = await _api.get('/app-config', authenticated: false);
     return PublicAppConfig.fromPayload(response.payload);
   }
+}
+
+class PublicAppConfigScope extends InheritedWidget {
+  const PublicAppConfigScope({
+    super.key,
+    required this.config,
+    required super.child,
+  });
+
+  final PublicAppConfig config;
+
+  static PublicAppConfig of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PublicAppConfigScope>()?.config ??
+      PublicAppConfig.fallback;
+
+  @override
+  bool updateShouldNotify(PublicAppConfigScope oldWidget) =>
+      !identical(config, oldWidget.config);
+}
+
+extension PublicAppConfigContext on BuildContext {
+  PublicAppConfig get publicAppConfig => PublicAppConfigScope.of(this);
 }
