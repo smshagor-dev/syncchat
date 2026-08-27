@@ -76,6 +76,7 @@ jobs:
           --target-platform android-arm64
           --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
           --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
+          --dart-define=SYNCCHAT_PUBLIC_ORIGIN=https://syncchat.live
           --dart-define=SYNCCHAT_APP_VERSION=0.1.0
 
       - name: Verify APK signature
@@ -97,6 +98,7 @@ jobs:
           printf 'abi=arm64-v8a\n' >> build/release/BUILD-INFO.txt
           printf 'api=https://api.syncchat.live/api\n' >> build/release/BUILD-INFO.txt
           printf 'socket=https://api.syncchat.live\n' >> build/release/BUILD-INFO.txt
+          printf 'public_origin=https://syncchat.live\n' >> build/release/BUILD-INFO.txt
           printf 'version=0.1.0+4\n' >> build/release/BUILD-INFO.txt
 
       - name: Upload Syncchat release
