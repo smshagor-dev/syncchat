@@ -10,11 +10,17 @@ class TopicSelectionStore {
   static const String _prefix = 'syncchat.topic.v1.';
   static final Map<String, String> _memory = <String, String>{};
 
+  static String? peek(String roomId) {
+    final id = roomId.trim();
+    if (id.isEmpty) return null;
+    final value = _memory[id]?.trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
   static Future<String?> read(String roomId) async {
     final id = roomId.trim();
     if (id.isEmpty) return null;
-    final cached = _memory[id];
-    if (cached != null) return cached.isEmpty ? null : cached;
+    if (_memory.containsKey(id)) return peek(id);
     try {
       final value = (await _storage.read(key: '$_prefix$id'))?.trim() ?? '';
       _memory[id] = value;
