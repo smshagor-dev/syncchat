@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'live_backup_recovery_screen.dart';
 import 'live_collection_screens.dart';
 import 'live_help_screens.dart';
+import 'live_settings_detail_web_parity_screen.dart';
 import 'live_settings_parity_screen.dart';
 import 'live_settings_screen.dart';
 
@@ -207,13 +208,17 @@ class _LiveSettingsHubScreenState extends State<LiveSettingsHubScreen> {
                           Icons.account_circle_outlined,
                           'Account settings',
                           'Security notifications, account info export, password and delete options.',
-                          () => _details('security'),
+                          () => _push(
+                            LiveAccountSettingsDetailScreen(
+                              onThemeChanged: widget.onThemeChanged,
+                            ),
+                          ),
                         ),
                         _item(
                           Icons.devices_outlined,
                           'Devices',
                           'Active devices, remote logout, device details, and suspicious login alerts.',
-                          () => _push(const LiveDeviceSessionsScreen()),
+                          () => _push(const LiveDevicesSettingsDetailScreen()),
                         ),
                       ]),
                       _section('Privacy', [
