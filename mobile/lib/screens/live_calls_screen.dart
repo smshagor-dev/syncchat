@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/calling_repository.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'live_call_screen.dart';
+import 'live_chat_room_screen.dart';
 
 class LiveCallsScreen extends StatefulWidget {
   const LiveCallsScreen({super.key});
@@ -15,7 +17,6 @@ class LiveCallsScreen extends StatefulWidget {
 }
 
 class _LiveCallsScreenState extends State<LiveCallsScreen> {
-  String filter = 'All';
   bool loading = true;
   String? error;
   String currentUserId = '';
@@ -35,13 +36,14 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     });
     try {
       final results = await Future.wait<dynamic>([
-        context.services.calling.currentUser(),
+        context.services.calling.currentUser(refresh: true),
         context.services.calling.history(),
       ]);
       final user = Map<String, dynamic>.from(results[0] as Map);
       final history = (results[1] as List)
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => _callMeta(item) != null)
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
@@ -55,6 +57,266 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
         error = _messageFor(failure);
         loading = false;
       });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SyncDockPage(
+      title: 'Calls',
+      trailing: IconButton(
+        tooltip: 'Start new call',
+        onPressed: _showNewCall,
+        icon: const Icon(Icons.add_call),
+      ),
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            0,
+            0,
+            0,
+            118 + MediaQuery.paddingOf(context).bottom,
+          ),
+          children: [
+            _header(),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 72),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _ErrorCard(message: error!, onRetry: _load),
+              )
+            else if (calls.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 72),
+                child: Column(
+                  children: [
+                    Icon(Icons.call_outlined, size: 50, color: context.muted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No call history yet.',
+                      style: TextStyle(
+                        color: context.muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...calls.map(_callTile),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _header() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+      decoration: BoxDecoration(
+        color: context.panel,
+        border: Border(bottom: BorderSide(color: context.border)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'All Calls',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Incoming, outgoing, rejected and missed',
+                  style: TextStyle(fontSize: 11.5),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filled(
+            tooltip: 'Start new call',
+            onPressed: _showNewCall,
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _callTile(Map<String, dynamic> call) {
+    final meta = _callMeta(call)!;
+    final profile = _privateProfile(call);
+    final name = _roomName(call, profile: profile);
+    final avatar = _avatar(call, profile: profile);
+    final online = call['roomType']?.toString() == 'private' && profile['online'] == true;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: context.panel,
+        border: Border(bottom: BorderSide(color: context.border)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SyncAvatar(
+            name: name,
+            imageUrl: avatar,
+            radius: 24,
+            online: online,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _relativeTime(call['createdAt']),
+                      style: TextStyle(color: context.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      meta.video ? Icons.videocam_outlined : Icons.call_outlined,
+                      size: 16,
+                      color: meta.danger
+                          ? SyncColors.danger
+                          : meta.outgoing
+                              ? SyncColors.sky
+                              : SyncColors.success,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      meta.label,
+                      style: TextStyle(
+                        color: meta.danger
+                            ? SyncColors.danger
+                            : meta.outgoing
+                                ? SyncColors.sky
+                                : SyncColors.success,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _actionButton(
+                      tooltip: 'Audio call',
+                      icon: Icons.call_outlined,
+                      onPressed: () => _redial(call, name: name, video: false),
+                    ),
+                    const SizedBox(width: 7),
+                    _actionButton(
+                      tooltip: 'Video call',
+                      icon: Icons.videocam_outlined,
+                      onPressed: () => _redial(call, name: name, video: true),
+                    ),
+                    const SizedBox(width: 7),
+                    _actionButton(
+                      tooltip: 'Message',
+                      icon: Icons.chat_bubble_outline_rounded,
+                      neutral: true,
+                      onPressed: () => _openMessage(call, name),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool neutral = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onPressed,
+        child: Container(
+          width: 38,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: neutral
+                ? context.softPanel
+                : SyncColors.sky.withValues(alpha: context.isDark ? .18 : .10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: context.border),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: neutral ? context.ink : SyncColors.sky,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _redial(
+    Map<String, dynamic> call, {
+    required String name,
+    required bool video,
+  }) async {
+    final roomId = call['roomId']?.toString().trim() ?? '';
+    if (roomId.isEmpty) return;
+
+    Map<String, dynamic> source = call;
+    try {
+      source = await context.services.inbox.findByRoom(roomId);
+    } on Object {
+      // Web falls back to the call-history row when the inbox is not present.
+    }
+    if (!mounted) return;
+    await _startPermissionedCall(source, name: name, video: video);
+    if (mounted) await _load();
+  }
+
+  Future<void> _openMessage(Map<String, dynamic> call, String name) async {
+    final roomId = call['roomId']?.toString().trim() ?? '';
+    if (roomId.isEmpty) return;
+    try {
+      final inbox = await context.services.inbox.findByRoom(roomId);
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name),
+        ),
+      );
+    } on Object catch (failure) {
+      if (mounted) _snack(_messageFor(failure));
     }
   }
 
@@ -76,350 +338,508 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     );
   }
 
+  Future<void> _showNewCall() async {
+    final draft = await showModalBottomSheet<_CallDraft>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => const _NewCallSheet(),
+    );
+    if (draft == null || !mounted) return;
+    await _startPermissionedCall(
+      draft.inbox,
+      name: draft.name,
+      video: draft.video,
+    );
+    if (mounted) await _load();
+  }
+
+  _CallMeta? _callMeta(Map<String, dynamic> call) {
+    final text = call['text']?.toString().trim() ?? '';
+    final lower = text.toLowerCase();
+    final mentionsCall = lower.contains('call') ||
+        lower.contains('missed') ||
+        lower.contains('reject') ||
+        lower.contains('decline');
+    if (!mentionsCall) return null;
+
+    final video = lower.contains('video');
+    final rejected = lower.contains('reject') || lower.contains('decline');
+    final missed = lower.contains('missed');
+    final outgoing = call['userId']?.toString() == currentUserId;
+    final label = rejected
+        ? 'Rejected'
+        : missed
+            ? 'Missed'
+            : outgoing
+                ? 'Outgoing'
+                : 'Incoming';
+    return _CallMeta(
+      video: video,
+      rejected: rejected,
+      missed: missed,
+      outgoing: outgoing,
+      label: label,
+    );
+  }
+
+  Map<String, dynamic> _privateProfile(Map<String, dynamic> call) {
+    final owners = call['owners'];
+    if (owners is! List) return const {};
+    Map<String, dynamic>? fallback;
+    for (final raw in owners.whereType<Map>()) {
+      final profile = Map<String, dynamic>.from(raw);
+      fallback ??= profile;
+      if (profile['userId']?.toString() != currentUserId) return profile;
+    }
+    return fallback ?? const {};
+  }
+
+  String _roomName(
+    Map<String, dynamic> call, {
+    required Map<String, dynamic> profile,
+  }) {
+    final channel = call['channel'];
+    if (channel is Map && (channel['name']?.toString().trim() ?? '').isNotEmpty) {
+      return channel['name'].toString();
+    }
+    final group = call['group'];
+    if (group is Map && (group['name']?.toString().trim() ?? '').isNotEmpty) {
+      return group['name'].toString();
+    }
+    final fullname = profile['fullname']?.toString().trim() ?? '';
+    if (fullname.isNotEmpty) return fullname;
+    final username = profile['username']?.toString().trim() ?? '';
+    if (username.isNotEmpty) return '@$username';
+    return call['roomType']?.toString() == 'group' ? 'Group' : '[inactive]';
+  }
+
+  String? _avatar(
+    Map<String, dynamic> call, {
+    required Map<String, dynamic> profile,
+  }) {
+    if (call['roomType']?.toString() == 'private') {
+      return profile['avatar']?.toString();
+    }
+    final channel = call['channel'];
+    if (channel is Map && (channel['avatar']?.toString() ?? '').isNotEmpty) {
+      return channel['avatar'].toString();
+    }
+    final group = call['group'];
+    if (group is Map && (group['avatar']?.toString() ?? '').isNotEmpty) {
+      return group['avatar'].toString();
+    }
+    return null;
+  }
+
+  String _relativeTime(dynamic raw) {
+    final time = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (time == null) return 'recently';
+    final diff = DateTime.now().difference(time);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _messageFor(Object failure) {
+    if (failure is ApiException) return failure.message;
+    return failure.toString().replaceFirst('Exception: ', '');
+  }
+}
+
+class _NewCallSheet extends StatefulWidget {
+  const _NewCallSheet();
+
+  @override
+  State<_NewCallSheet> createState() => _NewCallSheetState();
+}
+
+class _NewCallSheetState extends State<_NewCallSheet> {
+  final search = TextEditingController();
+  List<Map<String, dynamic>> contacts = const [];
+  Set<String> selected = const {};
+  CallRuntimeConfig? config;
+  String selfId = '';
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        context.services.contacts.list(),
+        context.services.calling.currentUser(),
+        context.services.calling.runtimeConfig(refresh: true),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        contacts = (results[0] as List)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false);
+        selfId = (results[1] as Map)['_id']?.toString() ?? '';
+        config = results[2] as CallRuntimeConfig;
+        loading = false;
+        error = null;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = _errorText(failure);
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get filtered {
+    final q = search.text.trim().toLowerCase();
+    if (q.isEmpty) return contacts;
+    return contacts.where((contact) {
+      final p = _profile(contact);
+      final dialCode = p['dialCode']?.toString() ?? '';
+      final phone = p['phone']?.toString() ?? '';
+      final hay = [
+        p['fullname'],
+        p['username'],
+        p['email'],
+        phone,
+        '$dialCode$phone',
+      ].whereType<Object>().map((value) => value.toString()).join(' ').toLowerCase();
+      return hay.contains(q);
+    }).toList(growable: false);
+  }
+
+  int get maxSelectable =>
+      ((config?.maxGroupParticipants ?? 4) - 1).clamp(1, 99);
+
+  bool _allowed(bool video) {
+    final runtime = config;
+    if (runtime == null || selected.isEmpty) return false;
+    return runtime.allows(
+      video: video,
+      group: selected.length > 1,
+      participants: selected.length + 1,
+    );
+  }
+
+  String? get _policyMessage {
+    final runtime = config;
+    if (runtime == null) return null;
+    if (!runtime.enabled) return 'Calling is disabled by the administrator';
+    if (selected.length > 1 && !runtime.groupEnabled) {
+      return 'Group calling is disabled by the administrator';
+    }
+    if (selected.length + 1 > runtime.maxGroupParticipants) {
+      return 'Group calls are limited to ${runtime.maxGroupParticipants} participants';
+    }
+    if (!runtime.audioEnabled && !runtime.videoEnabled) {
+      return 'Audio and video calling are disabled by the administrator';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final visible = filter == 'Missed'
-        ? calls.where((item) => _isMissed(item)).toList(growable: false)
-        : calls;
-    return SyncDockPage(
-      title: 'Calls',
-      trailing: IconButton(
-        tooltip: 'New call',
-        onPressed: _showNewCall,
-        icon: const Icon(Icons.add_call),
-      ),
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            14,
-            12,
-            14,
-            118 + MediaQuery.paddingOf(context).bottom,
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * .84,
+      child: Column(
+        children: [
+          ListTile(
+            title: const Text(
+              'Start Call',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
+            ),
+            subtitle: const Text(
+              'Select contacts for an admin-managed audio/video call',
+            ),
+            trailing: IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded),
+            ),
           ),
-          children: [
-            Row(
+          if (error != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: SyncColors.danger.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                error!,
+                style: const TextStyle(
+                  color: SyncColors.danger,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (_policyMessage != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: SyncColors.danger.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _policyMessage!,
+                style: const TextStyle(color: SyncColors.danger),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: TextField(
+              controller: search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Search by username, email, number',
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Max participants: ${config?.maxGroupParticipants ?? 4}',
+                style: TextStyle(color: context.muted, fontSize: 11.5),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: context.border),
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : filtered.isEmpty
+                    ? const Center(child: Text('No contacts found.'))
+                    : ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (_, index) => _contactTile(filtered[index]),
+                      ),
+          ),
+          Divider(height: 1, color: context.border),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            child: Row(
               children: [
-                Expanded(
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'All', label: Text('All')),
-                      ButtonSegment(value: 'Missed', label: Text('Missed')),
-                    ],
-                    selected: {filter},
-                    onSelectionChanged: (value) =>
-                        setState(() => filter = value.first),
-                  ),
+                Text('${selected.length} selected'),
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: _allowed(false) ? () => _finish(false) : null,
+                  style: FilledButton.styleFrom(backgroundColor: SyncColors.success),
+                  icon: const Icon(Icons.call_rounded),
+                  label: const Text('Audio'),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: _showNewCall,
-                  icon: const Icon(Icons.add_call),
-                  label: const Text('New'),
+                  onPressed: _allowed(true) ? () => _finish(true) : null,
+                  icon: const Icon(Icons.videocam_rounded),
+                  label: const Text('Video'),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.only(top: 70),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (error != null)
-              _ErrorCard(message: error!, onRetry: _load)
-            else if (visible.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 70),
-                child: Column(
-                  children: [
-                    Icon(
-                      filter == 'Missed'
-                          ? Icons.call_missed_outgoing_rounded
-                          : Icons.call_outlined,
-                      size: 48,
-                      color: context.muted,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      filter == 'Missed'
-                          ? 'No missed calls.'
-                          : 'No call history yet.',
-                      style: TextStyle(
-                        color: context.muted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _contactTile(Map<String, dynamic> contact) {
+    final id = contact['friendId']?.toString() ?? '';
+    final profile = _profile(contact);
+    final isSelected = selected.contains(id);
+    final name = _profileName(profile);
+    return InkWell(
+      onTap: id.isEmpty ? null : () => _toggle(id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: isSelected ? SyncColors.sky.withValues(alpha: .08) : null,
+          border: Border(bottom: BorderSide(color: context.border)),
+        ),
+        child: Row(
+          children: [
+            SyncAvatar(
+              name: name,
+              imageUrl: profile['avatar']?.toString(),
+              radius: 21,
+              online: profile['online'] == true,
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${profile['username'] ?? ''} · ${profile['email'] ?? '-'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: context.muted, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected ? SyncColors.sky : Colors.transparent,
+                border: Border.all(
+                  color: isSelected ? SyncColors.sky : context.border,
                 ),
-              )
-            else
-              ...visible.map(_callTile),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check_rounded, color: Colors.white, size: 15)
+                  : null,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _callTile(Map<String, dynamic> call) {
-    final name = _roomName(call);
-    final missed = _isMissed(call);
-    final outgoing = call['userId']?.toString() == currentUserId;
-    final text = call['text']?.toString() ?? 'Call';
-    final date = DateTime.tryParse(
-      call['createdAt']?.toString() ?? '',
-    )?.toLocal();
-    final video = text.toLowerCase().contains('video');
+  void _toggle(String id) {
+    setState(() {
+      final next = {...selected};
+      error = null;
+      if (next.contains(id)) {
+        next.remove(id);
+      } else if (next.length >= maxSelectable) {
+        error = 'This server allows up to ${config?.maxGroupParticipants ?? 4} participants per call';
+      } else {
+        next.add(id);
+      }
+      selected = next;
+    });
+  }
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      leading: SyncAvatar(name: name, radius: 23),
-      title: Text(
-        name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          color: missed ? SyncColors.danger : null,
+  void _finish(bool video) {
+    final picked = contacts
+        .where((contact) => selected.contains(contact['friendId']?.toString()))
+        .toList(growable: false);
+    if (picked.isEmpty || selfId.isEmpty || !_allowed(video)) return;
+
+    if (picked.length == 1) {
+      final contact = picked.first;
+      final friendId = contact['friendId']?.toString() ?? '';
+      final roomId = contact['roomId']?.toString().trim() ?? '';
+      if (friendId.isEmpty || roomId.isEmpty) {
+        setState(() => error = 'This contact does not have an available private call room.');
+        return;
+      }
+      final profile = _profile(contact);
+      Navigator.pop(
+        context,
+        _CallDraft(
+          video: video,
+          name: _profileName(profile),
+          inbox: {
+            'roomId': roomId,
+            'roomType': 'private',
+            'ownersId': [selfId, friendId],
+            'owners': [profile],
+            'profile': profile,
+          },
         ),
-      ),
-      subtitle: Row(
-        children: [
-          Icon(
-            missed
-                ? Icons.call_received_rounded
-                : outgoing
-                ? Icons.call_made_rounded
-                : Icons.call_received_rounded,
-            size: 15,
-            color: missed ? SyncColors.danger : SyncColors.success,
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Text(
-              '${video ? 'Video' : 'Voice'} · ${_dateLabel(date)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-      trailing: Wrap(
-        spacing: 2,
-        children: [
-          IconButton(
-            tooltip: 'Voice call',
-            onPressed: () => _redial(call, name: name, video: false),
-            icon: const Icon(Icons.call_outlined, color: SyncColors.sky),
-          ),
-          IconButton(
-            tooltip: 'Video call',
-            onPressed: () => _redial(call, name: name, video: true),
-            icon: const Icon(Icons.videocam_outlined, color: SyncColors.sky),
-          ),
-        ],
+      );
+      return;
+    }
+
+    final friendIds = picked
+        .map((contact) => contact['friendId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    final roomId = 'group-call-$selfId-${DateTime.now().millisecondsSinceEpoch}';
+    Navigator.pop(
+      context,
+      _CallDraft(
+        video: video,
+        name: '${picked.length} participants',
+        inbox: {
+          'roomId': roomId,
+          'roomType': 'group',
+          'ownersId': [selfId, ...friendIds],
+          'group': {'name': '${picked.length} participants'},
+        },
       ),
     );
   }
 
-  Future<void> _redial(
-    Map<String, dynamic> call, {
-    required String name,
-    required bool video,
-  }) async {
-    final roomId = call['roomId']?.toString() ?? '';
-    if (roomId.isEmpty) return;
-    try {
-      final inbox = await context.services.inbox.findByRoom(roomId);
-      if (!mounted) return;
-      await _startPermissionedCall(inbox, name: name, video: video);
-      if (mounted) await _load();
-    } on Object catch (failure) {
-      if (mounted) _snack(_messageFor(failure));
-    }
+  Map<String, dynamic> _profile(Map<String, dynamic> contact) {
+    final raw = contact['profile'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : const {};
   }
 
-  Future<void> _showNewCall() async {
-    try {
-      final results = await Future.wait<dynamic>([
-        context.services.inbox.list(),
-        context.services.calling.currentUser(),
-      ]);
-      final inboxes = (results[0] as List)
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .where((item) => (item['roomId']?.toString() ?? '').isNotEmpty)
-          .toList(growable: false);
-      final user = Map<String, dynamic>.from(results[1] as Map);
-      final self = user['_id']?.toString() ?? currentUserId;
-      if (!mounted) return;
-
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (sheetContext) => SafeArea(
-          child: SizedBox(
-            height: MediaQuery.sizeOf(sheetContext).height * .68,
-            child: Column(
-              children: [
-                const ListTile(
-                  title: Text(
-                    'Start a call',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  subtitle: Text('Choose an existing conversation.'),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: inboxes.isEmpty
-                      ? const Center(child: Text('No conversations available.'))
-                      : ListView.builder(
-                          itemCount: inboxes.length,
-                          itemBuilder: (_, index) {
-                            final inbox = inboxes[index];
-                            final name = _inboxName(inbox, self);
-                            final group =
-                                inbox['roomType']?.toString() == 'group';
-                            return ListTile(
-                              leading: SyncAvatar(name: name, radius: 22),
-                              title: Text(
-                                name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                group
-                                    ? 'Group conversation'
-                                    : 'Private conversation',
-                              ),
-                              trailing: Wrap(
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Voice call',
-                                    onPressed: () async {
-                                      Navigator.pop(sheetContext);
-                                      await _startPermissionedCall(
-                                        inbox,
-                                        name: name,
-                                        video: false,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.call_outlined),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Video call',
-                                    onPressed: () async {
-                                      Navigator.pop(sheetContext);
-                                      await _startPermissionedCall(
-                                        inbox,
-                                        name: name,
-                                        video: true,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.videocam_outlined),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } on Object catch (failure) {
-      if (mounted) _snack(_messageFor(failure));
-    }
-  }
-
-  bool _isMissed(Map<String, dynamic> call) {
-    final text = call['text']?.toString().toLowerCase() ?? '';
-    return text.contains('missed') ||
-        text.contains('rejected') ||
-        text.contains('declined');
-  }
-
-  String _roomName(Map<String, dynamic> call) {
-    final group = call['group'];
-    if (group is Map && (group['name']?.toString() ?? '').isNotEmpty) {
-      return group['name'].toString();
-    }
-    final channel = call['channel'];
-    if (channel is Map && (channel['name']?.toString() ?? '').isNotEmpty) {
-      return channel['name'].toString();
-    }
-    final owners = call['owners'];
-    if (owners is List) {
-      Map? fallback;
-      for (final raw in owners.whereType<Map>()) {
-        fallback ??= raw;
-        if (raw['userId']?.toString() != currentUserId) {
-          return _profileName(raw);
-        }
-      }
-      if (fallback != null) return _profileName(fallback);
-    }
-    return 'SyncChat call';
-  }
-
-  String _inboxName(Map<String, dynamic> inbox, String self) {
-    final group = inbox['group'];
-    if (group is Map && (group['name']?.toString() ?? '').isNotEmpty) {
-      return group['name'].toString();
-    }
-    final channel = inbox['channel'];
-    if (channel is Map && (channel['name']?.toString() ?? '').isNotEmpty) {
-      return channel['name'].toString();
-    }
-    final owners = inbox['owners'];
-    if (owners is List) {
-      Map? fallback;
-      for (final raw in owners.whereType<Map>()) {
-        fallback ??= raw;
-        if (raw['userId']?.toString() != self) return _profileName(raw);
-      }
-      if (fallback != null) return _profileName(fallback);
-    }
-    return 'Conversation';
-  }
-
-  String _profileName(Map profile) {
+  String _profileName(Map<String, dynamic> profile) {
     final fullname = profile['fullname']?.toString().trim() ?? '';
     if (fullname.isNotEmpty) return fullname;
     final username = profile['username']?.toString().trim() ?? '';
-    if (username.isNotEmpty) return '@$username';
-    return 'SyncChat user';
+    return username.isEmpty ? '[inactive]' : '@$username';
   }
 
-  String _dateLabel(DateTime? value) {
-    if (value == null) return 'recently';
-    final now = DateTime.now();
-    final sameDay =
-        value.year == now.year &&
-        value.month == now.month &&
-        value.day == now.day;
-    final time =
-        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
-    if (sameDay) return 'Today, $time';
-    return '${value.day}/${value.month}/${value.year}, $time';
+  String _errorText(Object failure) {
+    if (failure is ApiException) return failure.message;
+    return failure.toString().replaceFirst('Exception: ', '');
   }
+}
 
-  void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
+class _CallDraft {
+  const _CallDraft({
+    required this.video,
+    required this.name,
+    required this.inbox,
+  });
 
-  String _messageFor(Object error) {
-    if (error is ApiException) return error.message;
-    return error.toString().replaceFirst('Exception: ', '');
-  }
+  final bool video;
+  final String name;
+  final Map<String, dynamic> inbox;
+}
+
+class _CallMeta {
+  const _CallMeta({
+    required this.video,
+    required this.rejected,
+    required this.missed,
+    required this.outgoing,
+    required this.label,
+  });
+
+  final bool video;
+  final bool rejected;
+  final bool missed;
+  final bool outgoing;
+  final String label;
+
+  bool get danger => rejected || missed;
 }
 
 class _ErrorCard extends StatelessWidget {
