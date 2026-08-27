@@ -48,18 +48,30 @@ void main() {
   });
 
   test('entity profile router reuses the active web-parity profile surfaces', () {
-    final router = File(
+    final entityRouter = File(
       'lib/screens/live_entity_profile_screen.dart',
     ).readAsStringSync();
-    final profile = File(
+    final roomRouter = File(
       'lib/screens/live_room_profile_screen.dart',
     ).readAsStringSync();
+    final profile = File(
+      'lib/screens/live_channel_profile_web_parity_screen.dart',
+    ).readAsStringSync();
 
-    expect(router, contains("live_room_profile_screen.dart"));
-    expect(router, contains('room_profile.LiveFriendProfileScreen'));
-    expect(router, contains('room_profile.LiveChannelProfileScreen'));
-    expect(router, contains('LiveGroupInfoScreen'));
-    expect(router, isNot(contains('class LiveChannelProfileScreen')));
+    expect(entityRouter, contains("live_room_profile_screen.dart"));
+    expect(entityRouter, contains('room_profile.LiveFriendProfileScreen'));
+    expect(entityRouter, contains('room_profile.LiveChannelProfileScreen'));
+    expect(entityRouter, contains('LiveGroupInfoScreen'));
+    expect(entityRouter, isNot(contains('class LiveChannelProfileScreen')));
+
+    expect(
+      roomRouter,
+      contains("live_room_profile_legacy_screen.dart' show LiveFriendProfileScreen"),
+    );
+    expect(
+      roomRouter,
+      contains("live_channel_profile_web_parity_screen.dart'"),
+    );
 
     for (final contract in [
       "avatar: channel['avatar']?.toString()",
