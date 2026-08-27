@@ -88,9 +88,21 @@ class _LiveStarredMessagesScreenState extends State<LiveStarredMessagesScreen> {
     return null;
   }
 
+  Map<String, dynamic> _roomPayload(Map<String, dynamic> message) {
+    final room = message['room'];
+    return room is Map
+        ? Map<String, dynamic>.from(room)
+        : const <String, dynamic>{};
+  }
+
   String _roomName(Map<String, dynamic> message) {
+    final canonicalTitle = _roomPayload(message)['title']?.toString().trim() ?? '';
+    if (canonicalTitle.isNotEmpty) return canonicalTitle;
+
     final inbox = _inboxFor(message);
-    if (inbox == null) return 'Conversation';
+    if (inbox == null) {
+      return message['roomType']?.toString() == 'group' ? 'Group' : 'Conversation';
+    }
     final channel = inbox['channel'];
     if (channel is Map && channel['name'] != null) {
       return channel['name'].toString();
@@ -109,6 +121,25 @@ class _LiveStarredMessagesScreenState extends State<LiveStarredMessagesScreen> {
       }
     }
     return inbox['roomType']?.toString() == 'group' ? 'Group' : 'Conversation';
+  }
+
+  String? _roomAvatar(Map<String, dynamic> message) {
+    final canonicalAvatar = _roomPayload(message)['avatar']?.toString().trim() ?? '';
+    if (canonicalAvatar.isNotEmpty) return canonicalAvatar;
+
+    final inbox = _inboxFor(message);
+    if (inbox == null) return null;
+    final channel = inbox['channel'];
+    if (channel is Map) {
+      final avatar = channel['avatar']?.toString().trim() ?? '';
+      if (avatar.isNotEmpty) return avatar;
+    }
+    final group = inbox['group'];
+    if (group is Map) {
+      final avatar = group['avatar']?.toString().trim() ?? '';
+      if (avatar.isNotEmpty) return avatar;
+    }
+    return null;
   }
 
   String _senderName(Map<String, dynamic> message) {
@@ -284,7 +315,10 @@ class _LiveStarredMessagesScreenState extends State<LiveStarredMessagesScreen> {
           final roomName = _roomName(message);
           final sender = _senderName(message);
           return ListTile(
-            leading: SyncAvatar(name: roomName),
+            leading: SyncAvatar(
+              name: roomName,
+              imageUrl: _roomAvatar(message),
+            ),
             title: Text(
               roomName,
               maxLines: 1,
