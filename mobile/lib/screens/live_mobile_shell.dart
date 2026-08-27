@@ -14,7 +14,6 @@ import 'live_community_group_search_screen.dart';
 import 'live_device_contacts_screen.dart';
 import 'live_full_profile_screen.dart';
 import 'live_groups_screen.dart';
-import 'live_help_screens.dart';
 import 'live_message_requests_screen.dart';
 import 'live_p0_chats_screen.dart';
 import 'live_p0_contacts_screen.dart';
@@ -171,7 +170,6 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
         ),
       'starred' => const LiveStarredMessagesScreen(),
       'media' => const LiveMediaScreen(),
-      'feedback' => const LiveFeedbackScreen(),
       'settings' => LiveSettingsHubScreen(
           onThemeChanged: widget.onThemeChanged,
           onLogout: widget.onLogout,
@@ -335,20 +333,32 @@ class _FullPageDrawer extends StatelessWidget {
 
   static const primary = [
     ('chats', 'Chats', Icons.chat_bubble_outline_rounded),
+    ('requests', 'Message requests', Icons.mark_unread_chat_alt_outlined),
+    ('chat-tools', 'Chat tools', Icons.tune_rounded),
+    ('rich-attachments', 'Rich attachments', Icons.attach_file_rounded),
+    ('room-security', 'Friend & room security', Icons.shield_outlined),
     ('calls', 'Calls', Icons.call_outlined),
     ('status', 'Status', Icons.donut_large_rounded),
     ('contacts', 'Contacts', Icons.group_outlined),
+    ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
+    ('groups', 'Groups', Icons.groups_rounded),
+    ('community-group', 'New community group', Icons.group_add_outlined),
+    ('room-admin', 'Group & channel admin', Icons.admin_panel_settings_outlined),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
-    ('archive', 'Archive', Icons.archive_outlined),
-    ('lists', 'Lists', Icons.format_list_bulleted_rounded),
   ];
 
-  static const secondary = [
+  static const library = [
+    ('archive', 'Archive', Icons.archive_outlined),
+    ('lists', 'Lists', Icons.format_list_bulleted_rounded),
+    ('starred', 'Starred messages', Icons.star_outline_rounded),
     ('media', 'Media', Icons.image_outlined),
-    ('feedback', 'Feedback', Icons.feedback_outlined),
-    ('settings', 'Settings', Icons.settings_outlined),
+  ];
+
+  static const account = [
     ('profile', 'Profile', Icons.person_outline_rounded),
+    ('edit-profile', 'Edit profile', Icons.edit_outlined),
+    ('settings', 'Settings', Icons.settings_outlined),
   ];
 
   @override
@@ -424,11 +434,28 @@ class _FullPageDrawer extends StatelessWidget {
                 ),
                 children: [
                   ...primary.map((item) => row(item)),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    child: Divider(height: 1, color: Colors.white12),
+                  section('Library'),
+                  ...library.map((item) => row(item)),
+                  section('Account'),
+                  ...account.map((item) => row(item)),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    leading: const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFFF7B86),
+                    ),
+                    title: const Text(
+                      'Log out',
+                      style: TextStyle(
+                        color: Color(0xFFFF7B86),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    onTap: () => onSelected('logout'),
                   ),
-                  ...secondary.map((item) => row(item)),
                 ],
               ),
             ),
@@ -454,5 +481,18 @@ class _FullPageDrawer extends StatelessWidget {
         trailing:
             const Icon(Icons.chevron_right_rounded, color: Colors.white38),
         onTap: () => onSelected(item.$1),
+      );
+
+  Widget section(String label) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 5),
+        child: Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: .8,
+          ),
+        ),
       );
 }
