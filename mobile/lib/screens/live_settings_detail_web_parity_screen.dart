@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../core/app_scope.dart';
 import '../theme.dart';
 import 'live_backup_recovery_screen.dart';
 import 'live_settings_parity_screen.dart';
