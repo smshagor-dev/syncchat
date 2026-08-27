@@ -2,6 +2,7 @@ class SyncChatConfig {
   const SyncChatConfig({
     required this.apiBaseUrl,
     required this.socketUrl,
+    this.publicOrigin = '',
     this.socketPath = '/socket.io',
     this.chatUploadLimitMb = 100,
     this.avatarUploadLimitMb = 10,
@@ -23,6 +24,10 @@ class SyncChatConfig {
     const socketUrl = String.fromEnvironment(
       'SYNCCHAT_SOCKET_URL',
       defaultValue: 'http://127.0.0.1:5599',
+    );
+    const publicOrigin = String.fromEnvironment(
+      'SYNCCHAT_PUBLIC_ORIGIN',
+      defaultValue: '',
     );
     const firebaseApiKey = String.fromEnvironment(
       'SYNCCHAT_FIREBASE_API_KEY',
@@ -60,6 +65,7 @@ class SyncChatConfig {
     return const SyncChatConfig(
       apiBaseUrl: apiBaseUrl,
       socketUrl: socketUrl,
+      publicOrigin: publicOrigin,
       firebaseApiKey: firebaseApiKey,
       firebaseAppId: firebaseAppId,
       firebaseMessagingSenderId: firebaseMessagingSenderId,
@@ -73,6 +79,7 @@ class SyncChatConfig {
 
   final String apiBaseUrl;
   final String socketUrl;
+  final String publicOrigin;
   final String socketPath;
   final int chatUploadLimitMb;
   final int avatarUploadLimitMb;
@@ -86,12 +93,14 @@ class SyncChatConfig {
   final String appVersion;
 
   SyncChatConfig copyWith({
+    String? publicOrigin,
     int? chatUploadLimitMb,
     int? avatarUploadLimitMb,
   }) {
     return SyncChatConfig(
       apiBaseUrl: apiBaseUrl,
       socketUrl: socketUrl,
+      publicOrigin: publicOrigin ?? this.publicOrigin,
       socketPath: socketPath,
       chatUploadLimitMb: chatUploadLimitMb ?? this.chatUploadLimitMb,
       avatarUploadLimitMb: avatarUploadLimitMb ?? this.avatarUploadLimitMb,
@@ -131,6 +140,27 @@ class SyncChatConfig {
         (key, value) => MapEntry(key, value?.toString() ?? ''),
       ),
     );
+  }
+
+  String channelInviteUrl(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return '';
+
+    final marker = '/channel/+';
+    final markerIndex = raw.indexOf(marker);
+    if (markerIndex < 0) return raw;
+    final token = raw.substring(markerIndex + marker.length).split(RegExp(r'[/?#]')).first.trim();
+    if (token.isEmpty) return raw;
+
+    final origin = Uri.tryParse(publicOrigin.trim());
+    if (origin == null || !origin.hasScheme || origin.host.isEmpty) return raw;
+    return origin
+        .replace(
+          path: '/chat',
+          queryParameters: {'c': token},
+          fragment: null,
+        )
+        .toString();
   }
 
   String resolveMediaUrl(String? value) {
