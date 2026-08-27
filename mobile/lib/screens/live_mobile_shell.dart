@@ -116,6 +116,9 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   Widget pageForTab() => switch (selected) {
         LiveHomeTab.chats => LiveP0ChatsScreen(
             onMenu: () => scaffoldKey.currentState?.openDrawer(),
+            onOpenStatus: () => setState(() => selected = LiveHomeTab.status),
+            onThemeChanged: widget.onThemeChanged,
+            onLogout: widget.onLogout,
           ),
         LiveHomeTab.status => const LiveP0StatusScreen(),
         LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
