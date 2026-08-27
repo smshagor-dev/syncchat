@@ -81,9 +81,11 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
 
   Future<PublicAppConfig> _loadPublicAppConfig() async {
     try {
-      return await _services.publicAppConfig.load().timeout(
+      final runtime = await _services.publicAppConfig.load().timeout(
         const Duration(seconds: 5),
       );
+      _services.applyPublicAppConfig(runtime);
+      return runtime;
     } on Object catch (error) {
       debugPrint('SyncChat public app config deferred: $error');
       return PublicAppConfig.fallback;
