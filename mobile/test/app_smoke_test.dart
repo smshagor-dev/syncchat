@@ -17,46 +17,42 @@ void main() {
     services.dispose();
   });
 
-  test('production live shell preserves the approved app drawer unchanged', () {
+  test('production full-page drawer follows the web sidebar order', () {
     final source = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
     final drawerItems = [
       "('chats', 'Chats'",
-      "('requests', 'Message requests'",
-      "('chat-tools', 'Chat tools'",
-      "('rich-attachments', 'Rich attachments'",
-      "('room-security', 'Friend & room security'",
       "('calls', 'Calls'",
       "('status', 'Status'",
       "('contacts', 'Contacts'",
-      "('device-contacts', 'People on SyncChat'",
-      "('groups', 'Groups'",
-      "('community-group', 'New community group'",
-      "('room-admin', 'Group & channel admin'",
       "('communities', 'Communities'",
       "('channels', 'Channels'",
       "('archive', 'Archive'",
       "('lists', 'Lists'",
-      "('starred', 'Starred messages'",
       "('media', 'Media'",
-      "('profile', 'Profile'",
-      "('edit-profile', 'Edit profile'",
+      "('feedback', 'Feedback'",
       "('settings', 'Settings'",
+      "('profile', 'Profile'",
     ];
 
     var previous = -1;
     for (final item in drawerItems) {
       final index = source.indexOf(item);
-      expect(index, greaterThan(previous), reason: 'Drawer item missing or moved: $item');
+      expect(
+        index,
+        greaterThan(previous),
+        reason: 'Drawer item missing or moved: $item',
+      );
       previous = index;
     }
 
-    expect(source, contains("section('Library')"));
+    expect(source, contains("section('More')"));
     expect(source, contains("section('Account')"));
     expect(source, contains("onTap: () => onSelected('logout')"));
-    expect(source, isNot(contains("('feedback', 'Feedback'")));
-    expect(source, isNot(contains("'feedback' => const LiveFeedbackScreen()")));
-    expect(source, isNot(contains("import 'live_help_screens.dart'")));
+    expect(source, contains("'feedback' => const LiveFeedbackScreen()"));
+    expect(source, contains("import 'live_help_screens.dart'"));
+    expect(source, contains('RuntimeBrandLogo('));
+    expect(source, contains('context.publicAppConfig.appName'));
     expect(source, isNot(contains('requestInitialPermissions()')));
   });
 
