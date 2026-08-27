@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/app_scope.dart';
 import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
 import '../theme.dart';
+import '../widgets.dart';
+import 'live_chat_room_screen.dart';
 
 class LiveDeviceContactsScreen extends StatefulWidget {
   const LiveDeviceContactsScreen({super.key});
@@ -14,6 +17,7 @@ class LiveDeviceContactsScreen extends StatefulWidget {
 
 class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
   bool syncing = false;
+  String? openingUserId;
   List<Map<String, dynamic>> registered = const [];
   List<Map<String, dynamic>> unregistered = const [];
   String? error;
@@ -229,6 +233,121 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
     name.dispose();
   }
 
+  Future<void> _openRegisteredChat(Map<String, dynamic> item) async {
+    final profile = item['profile'] is Map
+        ? Map<String, dynamic>.from(item['profile'] as Map)
+        : <String, dynamic>{};
+    final userId = profile['userId']?.toString().trim() ?? '';
+    if (userId.isEmpty || openingUserId != null) return;
+
+    setState(() => openingUserId = userId);
+    try {
+      var roomId = item['roomId']?.toString().trim() ?? '';
+      if (item['isSaved'] != true || roomId.isEmpty) {
+        final identity = [
+          profile['username'],
+          profile['email'],
+          profile['phone'],
+        ]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+        if (identity.isEmpty) {
+          throw StateError('This contact does not expose an identity that can be saved.');
+        }
+
+        try {
+          final saved = await context.services.contacts.add({'identity': identity});
+          roomId = saved['roomId']?.toString().trim() ?? '';
+        } on Object catch (failure) {
+          final message = _failureText(failure);
+          if (!RegExp(r'already saved|have saved this contact', caseSensitive: false)
+              .hasMatch(message)) {
+            rethrow;
+          }
+          final contacts = await context.services.contacts.list();
+          for (final contact in contacts) {
+            if (contact['friendId']?.toString() == userId) {
+              roomId = contact['roomId']?.toString().trim() ?? '';
+              break;
+            }
+          }
+        }
+      }
+
+      if (roomId.isEmpty) {
+        throw StateError('Chat room is unavailable for this contact.');
+      }
+      final inbox = await context.services.inbox.findByRoom(roomId);
+      if (inbox.isEmpty) {
+        throw StateError('Chat room could not be loaded.');
+      }
+
+      final name = _registeredName(item, profile);
+      if (!mounted) return;
+      setState(() {
+        registered = [
+          for (final row in registered)
+            if (_registeredUserId(row) == userId)
+              {...row, 'isSaved': true, 'roomId': roomId}
+            else
+              row,
+        ];
+      });
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name),
+        ),
+      );
+    } on Object catch (failure) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_failureText(failure))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => openingUserId = null);
+    }
+  }
+
+  Future<void> _invite(Map<String, dynamic> item) async {
+    final name = item['name']?.toString().trim();
+    final displayName = name?.isNotEmpty == true ? name! : 'friend';
+    final inviteText = 'Hi $displayName, join me on SyncChat: https://syncchat.live';
+    await Clipboard.setData(ClipboardData(text: inviteText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Invite message copied. Share it with your contact.')),
+    );
+  }
+
+  String _registeredUserId(Map<String, dynamic> item) {
+    final profile = item['profile'];
+    return profile is Map ? profile['userId']?.toString() ?? '' : '';
+  }
+
+  String _registeredName(
+    Map<String, dynamic> item,
+    Map<String, dynamic> profile,
+  ) {
+    final contactName = item['contactName']?.toString().trim() ?? '';
+    if (contactName.isNotEmpty) return contactName;
+    final fullname = profile['fullname']?.toString().trim() ?? '';
+    if (fullname.isNotEmpty) return fullname;
+    final username = profile['username']?.toString().trim() ?? '';
+    return username.isEmpty ? 'SyncChat user' : username;
+  }
+
+  String _firstPhone(Map<String, dynamic> item) {
+    final phones = item['phones'];
+    if (phones is! List || phones.isEmpty) return '';
+    return phones.first?.toString().trim() ?? '';
+  }
+
+  String _failureText(Object failure) => failure
+      .toString()
+      .replaceFirst('Bad state: ', '')
+      .replaceFirst('Exception: ', '');
+
   List<Map<String, dynamic>> mapList(dynamic value) => value is List
       ? value
           .whereType<Map>()
@@ -342,16 +461,12 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
             ...registered.map((item) {
               final profile = item['profile'] is Map
                   ? Map<String, dynamic>.from(item['profile'] as Map)
-                  : item;
-              final name = profile['fullname']?.toString().trim().isNotEmpty == true
-                  ? profile['fullname'].toString()
-                  : item['contactName']?.toString().trim().isNotEmpty == true
-                      ? item['contactName'].toString()
-                      : profile['username']?.toString() ?? 'SyncChat user';
-              final username = profile['username']?.toString() ?? '';
-              final initial = name.trim().isEmpty
-                  ? '?'
-                  : name.characters.first.toUpperCase();
+                  : <String, dynamic>{};
+              final name = _registeredName(item, profile);
+              final username = profile['username']?.toString().trim() ?? '';
+              final phone = item['contactPhone']?.toString().trim() ?? '';
+              final userId = profile['userId']?.toString() ?? '';
+              final opening = openingUserId == userId;
               return Card(
                 color: context.panel,
                 elevation: 0,
@@ -360,24 +475,36 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
                   side: BorderSide(color: context.border),
                 ),
                 child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: SyncColors.sky.withValues(alpha: .14),
-                    child: Text(
-                      initial,
-                      style: const TextStyle(
-                        color: SyncColors.sky,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+                  leading: SyncAvatar(
+                    name: name,
+                    imageUrl: profile['avatar']?.toString(),
+                    radius: 23,
                   ),
                   title: Text(
                     name,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                  subtitle: username.isEmpty ? null : Text('@$username'),
-                  trailing: const Icon(
-                    Icons.check_circle_rounded,
-                    color: SyncColors.sky,
+                  subtitle: Text(
+                    [
+                      if (username.isNotEmpty) '@$username',
+                      if (phone.isNotEmpty) phone,
+                    ].join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: FilledButton(
+                    onPressed: openingUserId == null
+                        ? () => _openRegisteredChat(item)
+                        : null,
+                    child: opening
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Chat now'),
                   ),
                 ),
               );
@@ -393,9 +520,36 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'You can invite these contacts from your phone share sheet.',
+                'Tap Invite to copy a ready-to-share SyncChat invitation.',
                 style: TextStyle(color: context.muted, fontSize: 12),
               ),
+              const SizedBox(height: 8),
+              ...unregistered.map((item) {
+                final name = item['name']?.toString().trim() ?? '';
+                final displayName = name.isEmpty ? 'Phone contact' : name;
+                final phone = _firstPhone(item);
+                return Card(
+                  color: context.panel,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(color: context.border),
+                  ),
+                  child: ListTile(
+                    leading: SyncAvatar(name: displayName, radius: 23),
+                    title: Text(
+                      displayName,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: phone.isEmpty ? null : Text(phone),
+                    trailing: OutlinedButton.icon(
+                      onPressed: () => _invite(item),
+                      icon: const Icon(Icons.ios_share_rounded, size: 17),
+                      label: const Text('Invite'),
+                    ),
+                  ),
+                );
+              }),
             ],
           ],
         ],
