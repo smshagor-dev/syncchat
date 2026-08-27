@@ -163,6 +163,27 @@ class SyncChatConfig {
         .toString();
   }
 
+  String groupInviteUrl(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return '';
+
+    final marker = '/group/+';
+    final markerIndex = raw.indexOf(marker);
+    if (markerIndex < 0) return raw;
+    final token = raw.substring(markerIndex + marker.length).split(RegExp(r'[/?#]')).first.trim();
+    if (token.isEmpty) return raw;
+
+    final origin = Uri.tryParse(publicOrigin.trim());
+    if (origin == null || !origin.hasScheme || origin.host.isEmpty) return raw;
+    return origin
+        .replace(
+          path: '/chat',
+          queryParameters: {'g': token},
+          fragment: null,
+        )
+        .toString();
+  }
+
   String resolveMediaUrl(String? value) {
     final raw = value?.trim() ?? '';
     if (raw.isEmpty) return '';
