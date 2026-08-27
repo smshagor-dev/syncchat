@@ -13,7 +13,8 @@ void main() {
     expect(groups, contains("bool get canInvite => permissions['memberCanInviteViaLink'] == true"));
     expect(groups, contains('context.services.config.groupInviteUrl('));
     expect(groups, contains('if (canInvite && link.isNotEmpty)'));
-    expect(groups, isNot(contains("ClipboardData(text: link)")));
+    expect(groups, contains('ClipboardData(text: link)'));
+    expect(groups, isNot(contains("final link = group?['link']?.toString().trim()")));
   });
 
   test('channel invite visibility follows web permission without admin override', () {
