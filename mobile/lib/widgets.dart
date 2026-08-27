@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
+import 'core/app_scope.dart';
 import 'theme.dart';
 
 class SyncAvatar extends StatelessWidget {
   const SyncAvatar({
     super.key,
     required this.name,
+    this.imageUrl,
     this.radius = 24,
     this.online = false,
   });
 
   final String name;
+  final String? imageUrl;
   final double radius;
   final bool online;
 
@@ -22,11 +25,9 @@ class SyncAvatar extends StatelessWidget {
         .take(2)
         .map((part) => part.trim()[0].toUpperCase())
         .join();
+    final resolvedUrl = context.services.config.resolveMediaUrl(imageUrl);
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        CircleAvatar(
+    Widget fallback() => CircleAvatar(
           radius: radius,
           backgroundColor: SyncColors.sky.withOpacity(.14),
           child: Text(
@@ -37,7 +38,29 @@ class SyncAvatar extends StatelessWidget {
               fontSize: radius * .66,
             ),
           ),
-        ),
+        );
+
+    final avatar = resolvedUrl.isEmpty
+        ? fallback()
+        : ClipOval(
+            child: SizedBox.square(
+              dimension: radius * 2,
+              child: Image.network(
+                resolvedUrl,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.medium,
+                loadingBuilder: (context, child, progress) =>
+                    progress == null ? child : fallback(),
+                errorBuilder: (_, __, ___) => fallback(),
+              ),
+            ),
+          );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
         if (online)
           Positioned(
             right: -1,
@@ -347,10 +370,12 @@ class SyncStatusAvatar extends StatelessWidget {
   const SyncStatusAvatar({
     super.key,
     required this.name,
+    this.imageUrl,
     this.add = false,
   });
 
   final String name;
+  final String? imageUrl;
   final bool add;
 
   @override
@@ -372,7 +397,7 @@ class SyncStatusAvatar extends StatelessWidget {
                     width: 2,
                   ),
                 ),
-                child: SyncAvatar(name: name, radius: 21),
+                child: SyncAvatar(name: name, imageUrl: imageUrl, radius: 21),
               ),
               if (add)
                 const Positioned(
