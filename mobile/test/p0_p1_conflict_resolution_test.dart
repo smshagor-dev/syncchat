@@ -47,14 +47,33 @@ void main() {
     }
   });
 
-  test('live entity profiles keep friend and channel parity surfaces', () {
-    final source = File(
+  test('entity profile router reuses the active web-parity profile surfaces', () {
+    final router = File(
       'lib/screens/live_entity_profile_screen.dart',
     ).readAsStringSync();
+    final profile = File(
+      'lib/screens/live_room_profile_screen.dart',
+    ).readAsStringSync();
 
-    expect(source, contains('class LiveFriendProfileScreen'));
-    expect(source, contains('class LiveChannelProfileScreen'));
-    expect(source, contains('Analytics & reviews'));
-    expect(source, contains('Admin controls'));
+    expect(router, contains("live_room_profile_screen.dart"));
+    expect(router, contains('room_profile.LiveFriendProfileScreen'));
+    expect(router, contains('room_profile.LiveChannelProfileScreen'));
+    expect(router, contains('LiveGroupInfoScreen'));
+    expect(router, isNot(contains('class LiveChannelProfileScreen')));
+
+    for (final contract in [
+      "avatar: channel['avatar']?.toString()",
+      "context.services.api.get('/channels/\$id/analytics')",
+      "context.services.api.get('/channels/\$id/reviews')",
+      '_changePrivacy',
+      '_addParticipants',
+      '_participantActions',
+      '_openAdmin',
+      "_setPreference('mute'",
+      '30-day analytics',
+      'Save review',
+    ]) {
+      expect(profile, contains(contract));
+    }
   });
 }
