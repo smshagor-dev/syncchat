@@ -63,7 +63,8 @@ void main() {
     expect(room, contains('return WebParityChatRoomScreen('));
 
     expect(calls, contains('context.services.calling.history()'));
-    expect(calls, contains('LiveCallScreen'));
+    expect(calls, contains("import 'live_call_screen.dart'"));
+    expect(calls, contains('openOutgoingCall('));
     expect(calls, isNot(contains("import 'live_calls_core_screen.dart'")));
 
     for (final contract in [
