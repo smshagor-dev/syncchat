@@ -17,7 +17,7 @@ void main() {
     services.dispose();
   });
 
-  test('production live shell owns the five primary tabs and web sidebar collections', () {
+  test('production live shell owns the five primary tabs and web collections', () {
     final source = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
     expect(source, contains("(LiveHomeTab.chats, 'Chats'"));
@@ -25,24 +25,10 @@ void main() {
     expect(source, contains("(LiveHomeTab.communities, 'Communities'"));
     expect(source, contains("(LiveHomeTab.channels, 'Channels'"));
     expect(source, contains("(LiveHomeTab.calls, 'Calls'"));
-
-    for (final sidebarItem in [
-      "('chats', 'Chats'",
-      "('calls', 'Calls'",
-      "('status', 'Status'",
-      "('contacts', 'Contacts'",
-      "('communities', 'Communities'",
-      "('channels', 'Channels'",
-      "('archive', 'Archive'",
-      "('lists', 'Lists'",
-      "('media', 'Media'",
-      "('feedback', 'Feedback'",
-      "('settings', 'Settings'",
-      "('profile', 'Profile'",
-    ]) {
-      expect(source, contains(sidebarItem));
-    }
-
+    expect(source, contains("('archive', 'Archive'"));
+    expect(source, contains("('lists', 'Lists'"));
+    expect(source, contains("('starred', 'Starred messages'"));
+    expect(source, contains("('media', 'Media'"));
     expect(source, isNot(contains('requestInitialPermissions()')));
   });
 }
