@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/app_scope.dart';
 import '../core/biometric_service.dart';
 import '../theme.dart';
-import 'live_chat_room_core_screen.dart' as core_room;
+import 'live_chat_room_web_parity_screen.dart';
 
 class LiveChatRoomScreen extends StatefulWidget {
   const LiveChatRoomScreen({
@@ -136,7 +136,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       );
     }
 
-    return core_room.LiveChatRoomScreen(
+    return WebParityChatRoomScreen(
       inbox: widget.inbox,
       name: widget.name,
     );
