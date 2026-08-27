@@ -20,7 +20,6 @@ import 'widgets/notification_navigation_layer.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   runApp(const SyncChatMobileApp());
   unawaited(_bootstrapNativeServices());
 }
@@ -151,8 +150,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       await _services.nativeCallPush
           .unregisterCurrentDevice()
           .timeout(const Duration(seconds: 5));
-    } on Object {
-    }
+    } on Object {}
     _services.realtime.disconnect();
     await _services.auth.logout();
     await _services.chatCache.clear();
@@ -172,25 +170,26 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     );
     if (!hasSession) return false;
 
+    // Render the signed-in UI immediately from local state/cache. Network,
+    // profile refresh, sockets and push registration continue in background.
+    unawaited(_refreshAuthenticatedSession());
+    return true;
+  }
+
+  Future<void> _refreshAuthenticatedSession() async {
     try {
       await _services.chat
           .currentUser(refresh: true)
           .timeout(const Duration(seconds: 10));
       unawaited(_services.api.ensurePersistentSession());
-      unawaited(_startAuthenticatedIntegrations());
-      return true;
     } on ApiException catch (error) {
-      if (error.isOffline) {
-        unawaited(_startAuthenticatedIntegrations());
-        return true;
-      }
       if (error.isUnauthorized) {
-        await _services.auth.logoutLocal();
+        debugPrint('SyncChat session refresh rejected; account gate will reconcile.');
       }
-      return false;
-    } on Exception {
-      return false;
+    } on Object catch (error) {
+      debugPrint('SyncChat background session refresh deferred: $error');
     }
+    unawaited(_startAuthenticatedIntegrations());
   }
 
   @override
@@ -237,8 +236,6 @@ class _BootScreen extends StatelessWidget {
               height: 72,
               filterQuality: FilterQuality.high,
             ),
-            const SizedBox(height: 16),
-            const CircularProgressIndicator(),
             const SizedBox(height: 12),
             const Text(
               'SyncChat',
