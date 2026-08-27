@@ -298,9 +298,7 @@ class ApiClient {
           message = decoded['message']?.toString() ?? message;
           payload = decoded['payload'];
         }
-      } on Object {
-        // Binary/non-JSON error body. Keep the controlled fallback message.
-      }
+      } on Object {}
       throw ApiException(
         statusCode: streamed.statusCode,
         message: message,
@@ -472,18 +470,27 @@ class ApiClient {
     }
 
     try {
-      final decoded = jsonDecode(body);
+      final decoded = _normalizeMediaUrls(jsonDecode(body));
       if (decoded is Map<String, dynamic>) {
         return ApiEnvelope.fromJson(decoded, statusCode);
       }
-    } on FormatException {
-      // Converted to a controlled API exception below.
-    }
+    } on FormatException {}
 
     throw ApiException(
       statusCode: statusCode,
       message: 'SyncChat returned an invalid JSON response.',
     );
+  }
+
+  dynamic _normalizeMediaUrls(dynamic value) {
+    if (value is String) return _config.resolveMediaUrl(value);
+    if (value is List) return value.map(_normalizeMediaUrls).toList(growable: false);
+    if (value is Map) {
+      return value.map(
+        (key, item) => MapEntry(key.toString(), _normalizeMediaUrls(item)),
+      );
+    }
+    return value;
   }
 
   void close() => _httpClient.close();
