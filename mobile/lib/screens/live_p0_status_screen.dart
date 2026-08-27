@@ -7,7 +7,7 @@ import '../core/public_app_config.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'live_p0_status_core_screen.dart' as core;
+import 'live_p0_status_web_parity_screen.dart';
 
 class LiveP0StatusScreen extends StatefulWidget {
   const LiveP0StatusScreen({super.key});
@@ -59,7 +59,7 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
 
     return KeyedSubtree(
       key: ValueKey<int>(_revision),
-      child: const core.LiveP0StatusScreen(),
+      child: const WebParityStatusScreen(),
     );
   }
 }
