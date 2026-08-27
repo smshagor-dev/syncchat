@@ -173,7 +173,6 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     final rows = inboxes
         .where((inbox) {
           final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
-          final pinned = _hasUser(inbox['pinnedBy'], currentUserId);
           final favourite = _hasUser(inbox['favouriteBy'], currentUserId);
           final markedUnread = _hasUser(inbox['markUnreadBy'], currentUserId);
           final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
