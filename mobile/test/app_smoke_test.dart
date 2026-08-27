@@ -29,6 +29,8 @@ void main() {
     expect(source, contains("('lists', 'Lists'"));
     expect(source, contains("('starred', 'Starred messages'"));
     expect(source, contains("('media', 'Media'"));
+    expect(source, contains("('feedback', 'Feedback'"));
+    expect(source, contains("'feedback' => const LiveFeedbackScreen()"));
     expect(source, isNot(contains('requestInitialPermissions()')));
   });
 }
