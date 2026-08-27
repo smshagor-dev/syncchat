@@ -68,8 +68,7 @@ class _LiveChannelProfileScreenState extends State<LiveChannelProfileScreen> {
 
   Map<String, dynamic> get permissions => _map(channel['permissions']);
 
-  bool get canInvite =>
-      isAdmin || permissions['memberCanInviteViaLink'] == true;
+  bool get canInvite => permissions['memberCanInviteViaLink'] == true;
 
   @override
   void initState() {
