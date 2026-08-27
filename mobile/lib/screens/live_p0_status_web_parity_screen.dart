@@ -1313,10 +1313,17 @@ DateTime _createdAt(Map<String, dynamic> status) =>
 String _relativeTime(DateTime time) {
   if (time.millisecondsSinceEpoch == 0) return 'recently';
   final diff = DateTime.now().difference(time.toLocal());
-  if (diff.inSeconds < 60) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  return '${diff.inDays}d ago';
+  if (diff.isNegative || diff.inSeconds < 45) return 'a few seconds ago';
+  if (diff.inMinutes < 2) return 'a minute ago';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
+  if (diff.inHours < 2) return 'an hour ago';
+  if (diff.inHours < 24) return '${diff.inHours} hours ago';
+  if (diff.inDays < 2) return 'a day ago';
+  if (diff.inDays < 30) return '${diff.inDays} days ago';
+  if (diff.inDays < 60) return 'a month ago';
+  if (diff.inDays < 365) return '${diff.inDays ~/ 30} months ago';
+  if (diff.inDays < 730) return 'a year ago';
+  return '${diff.inDays ~/ 365} years ago';
 }
 
 List<String> _extractMentions(String text) => RegExp(r'@[a-z0-9_]{3,24}', caseSensitive: false)
