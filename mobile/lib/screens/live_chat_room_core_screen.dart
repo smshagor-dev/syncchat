@@ -43,7 +43,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   Set<String> pinnedIds = <String>{};
   Map<String, dynamic>? liveInbox;
   Timer? presenceTimer;
-  bool loading = true;
+  Timer? apiFallbackTimer;
+  bool loading = false;
   bool sending = false;
   bool uploading = false;
   String? error;
@@ -87,6 +88,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     }
     connectionSubscription?.cancel();
     presenceTimer?.cancel();
+    apiFallbackTimer?.cancel();
     composer.dispose();
     scroll.dispose();
     super.dispose();
@@ -111,12 +113,30 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     chat.on('e2ee/room', _onE2eeRoom);
     chat.on('e2ee/key-changed', _onE2eeKeyChanged);
 
+    final cachedUser = await services.chatCache.readCurrentUser();
+    final cachedMessages = await services.chatCache.readRoomMessages(roomId);
+    if (mounted) {
+      setState(() {
+        if (cachedUser.isNotEmpty) currentUser = cachedUser;
+        if (cachedMessages.isNotEmpty) _mergeMessages(cachedMessages);
+        loading = false;
+      });
+      if (cachedMessages.isNotEmpty) _scrollToBottom();
+    }
+
     connectionSubscription = services.realtime.states.listen((state) {
       if (state == RealtimeConnectionState.connected) {
-        _catchUp();
-        _refreshPresence();
+        apiFallbackTimer?.cancel();
+        unawaited(_catchUp());
+        unawaited(_refreshPresence());
+      } else if (state == RealtimeConnectionState.disconnected) {
+        _scheduleApiFallback();
       }
     });
+    if (services.realtime.state == RealtimeConnectionState.disconnected) {
+      unawaited(services.realtime.connect());
+      _scheduleApiFallback();
+    }
     presenceTimer = Timer.periodic(
       const Duration(minutes: 1),
       (_) => _refreshPresence(),
@@ -164,10 +184,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   Future<void> _reload() async {
-    setState(() {
-      loading = true;
-      error = null;
-    });
+    setState(() => error = null);
     try {
       final results = await Future.wait<dynamic>([
         chat.listRoom(roomId, limit: 100),
@@ -205,7 +222,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   Future<void> _refreshPresence() async {
-    if (!mounted || roomId.isEmpty ||
+    if (!mounted ||
+        roomId.isEmpty ||
         widget.inbox['roomType']?.toString() != 'private') {
       return;
     }
@@ -215,6 +233,32 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       setState(() => liveInbox = Map<String, dynamic>.from(refreshed));
     } on Object {
       // Presence refresh is intentionally silent and non-blocking.
+    }
+  }
+
+  void _scheduleApiFallback() {
+    apiFallbackTimer?.cancel();
+    apiFallbackTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      if (!context.services.realtime.isConnected) {
+        unawaited(_reconcileRoomFromApi());
+        unawaited(_refreshPresence());
+      }
+    });
+  }
+
+  Future<void> _reconcileRoomFromApi() async {
+    if (!mounted || roomId.isEmpty) return;
+    try {
+      final rows = await chat.listRoom(roomId, limit: 100);
+      if (!mounted) return;
+      setState(() {
+        _mergeMessages(rows);
+        error = null;
+      });
+      _scrollToBottom();
+    } on Object {
+      // Keep cached content visible. Socket reconnect will catch up later.
     }
   }
 
@@ -1463,7 +1507,6 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   }
 
   Widget _body() {
-    if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null && messages.isEmpty) {
       return Center(
         child: Padding(

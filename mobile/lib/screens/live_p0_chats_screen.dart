@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'live_chat_room_screen.dart';
@@ -19,7 +22,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
   final search = TextEditingController();
   List<Map<String, dynamic>> inboxes = const [];
   Map<String, dynamic>? currentUser;
-  bool loading = true;
+  StreamSubscription<RealtimeConnectionState>? connectionSubscription;
+  Timer? apiFallbackTimer;
+  bool loading = false;
   String? error;
   String filter = 'all';
   String? busyRoomId;
@@ -39,26 +44,56 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     realtime?.off('inbox/preferences', _onInboxUpdate);
     realtime?.off('inbox/delete', _onInboxDelete);
     realtime?.off('inbox/chat-lock', _onLockUpdate);
+    connectionSubscription?.cancel();
+    apiFallbackTimer?.cancel();
     search.dispose();
     super.dispose();
   }
 
   Future<void> _start() async {
-    final realtime = context.services.realtime;
+    final services = context.services;
+    final realtime = services.realtime;
     realtime.on('inbox/find', _onInboxUpdate);
     realtime.on('inbox/preferences', _onInboxUpdate);
     realtime.on('inbox/delete', _onInboxDelete);
     realtime.on('inbox/chat-lock', _onLockUpdate);
-    await _load();
+
+    final cachedUser = await services.chatCache.readCurrentUser();
+    final cachedInboxes = await services.chatCache.readInboxes();
+    if (mounted) {
+      setState(() {
+        if (cachedUser.isNotEmpty) currentUser = cachedUser;
+        if (cachedInboxes.isNotEmpty) inboxes = cachedInboxes;
+        loading = false;
+      });
+    }
+
+    connectionSubscription = realtime.states.listen((state) {
+      if (state == RealtimeConnectionState.connected) {
+        apiFallbackTimer?.cancel();
+        unawaited(_load());
+      } else if (state == RealtimeConnectionState.disconnected) {
+        _scheduleApiFallback();
+      }
+    });
+
+    if (realtime.state == RealtimeConnectionState.disconnected) {
+      unawaited(realtime.connect());
+      _scheduleApiFallback();
+    }
+    unawaited(_load());
+  }
+
+  void _scheduleApiFallback() {
+    apiFallbackTimer?.cancel();
+    apiFallbackTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      if (!context.services.realtime.isConnected) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        loading = true;
-        error = null;
-      });
-    }
+    if (mounted) setState(() => error = null);
     try {
       final result = await Future.wait<dynamic>([
         context.services.chat.currentUser(refresh: true),
@@ -89,7 +124,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (roomId.isEmpty) return;
     setState(() {
       final copy = [...inboxes];
-      final index = copy.indexWhere((item) => item['roomId']?.toString() == roomId);
+      final index = copy.indexWhere(
+        (item) => item['roomId']?.toString() == roomId,
+      );
       if (index >= 0) {
         copy[index] = next;
       } else {
@@ -118,34 +155,38 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     final roomId = patch['roomId']?.toString() ?? '';
     if (roomId.isEmpty) return;
     setState(() {
-      inboxes = inboxes.map((item) {
-        if (item['roomId']?.toString() != roomId) return item;
-        return <String, dynamic>{...item, ...patch};
-      }).toList(growable: false);
+      inboxes = inboxes
+          .map((item) {
+            if (item['roomId']?.toString() != roomId) return item;
+            return <String, dynamic>{...item, ...patch};
+          })
+          .toList(growable: false);
     });
   }
 
   List<Map<String, dynamic>> get visibleInboxes {
     final query = search.text.trim().toLowerCase();
-    final rows = inboxes.where((inbox) {
-      final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
-      final pinned = _hasUser(inbox['pinnedBy'], currentUserId);
-      final listed = _hasUser(inbox['listedBy'], currentUserId);
-      final markedUnread = _hasUser(inbox['markUnreadBy'], currentUserId);
-      final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
+    final rows = inboxes
+        .where((inbox) {
+          final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
+          final pinned = _hasUser(inbox['pinnedBy'], currentUserId);
+          final listed = _hasUser(inbox['listedBy'], currentUserId);
+          final markedUnread = _hasUser(inbox['markUnreadBy'], currentUserId);
+          final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
 
-      final matchesFilter = switch (filter) {
-        'unread' => !hidden && (markedUnread || unreadCount > 0),
-        'pinned' => !hidden && pinned,
-        'list' => !hidden && listed,
-        'hidden' => hidden,
-        _ => !hidden,
-      };
-      if (!matchesFilter) return false;
-      if (query.isEmpty) return true;
-      return _inboxName(inbox).toLowerCase().contains(query) ||
-          _preview(inbox).toLowerCase().contains(query);
-    }).toList(growable: false);
+          final matchesFilter = switch (filter) {
+            'unread' => !hidden && (markedUnread || unreadCount > 0),
+            'pinned' => !hidden && pinned,
+            'list' => !hidden && listed,
+            'hidden' => hidden,
+            _ => !hidden,
+          };
+          if (!matchesFilter) return false;
+          if (query.isEmpty) return true;
+          return _inboxName(inbox).toLowerCase().contains(query) ||
+              _preview(inbox).toLowerCase().contains(query);
+        })
+        .toList(growable: false);
 
     rows.sort((left, right) {
       final leftPinned = _hasUser(left['pinnedBy'], currentUserId);
@@ -233,9 +274,6 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
   }
 
   Widget _buildBody() {
-    if (loading && inboxes.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
     if (error != null && inboxes.isEmpty) {
       return _ErrorState(message: error!, onRetry: _load);
     }
@@ -311,15 +349,20 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontWeight:
-                                unread > 0 || markedUnread ? FontWeight.w900 : FontWeight.w700,
+                            fontWeight: unread > 0 || markedUnread
+                                ? FontWeight.w900
+                                : FontWeight.w700,
                           ),
                         ),
                       ),
                       if (locked)
                         const Padding(
                           padding: EdgeInsets.only(left: 5),
-                          child: Icon(Icons.lock_rounded, size: 15, color: SyncColors.sky),
+                          child: Icon(
+                            Icons.lock_rounded,
+                            size: 15,
+                            color: SyncColors.sky,
+                          ),
                         ),
                       if (pinned)
                         const Padding(
@@ -329,7 +372,10 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                       if (listed)
                         const Padding(
                           padding: EdgeInsets.only(left: 5),
-                          child: Icon(Icons.format_list_bulleted_rounded, size: 15),
+                          child: Icon(
+                            Icons.format_list_bulleted_rounded,
+                            size: 15,
+                          ),
                         ),
                       if (hidden)
                         const Padding(
@@ -357,7 +403,10 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                         )
                       else if (unread > 0 || markedUnread)
                         Container(
-                          constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 6),
                           alignment: Alignment.center,
                           decoration: const BoxDecoration(
@@ -413,10 +462,8 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => LiveChatRoomScreen(
-          inbox: inbox,
-          name: _inboxName(inbox),
-        ),
+        builder: (_) =>
+            LiveChatRoomScreen(inbox: inbox, name: _inboxName(inbox)),
       ),
     );
     if (mounted) await _load();
@@ -445,7 +492,8 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
     final locked = _hasUser(inbox['chatLockBy'], currentUserId);
     final shared = locked && inbox['chatLockScope']?.toString() == 'both';
-    final sharedOwner = shared && inbox['chatLockOwnerId']?.toString() == currentUserId;
+    final sharedOwner =
+        shared && inbox['chatLockOwnerId']?.toString() == currentUserId;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -488,7 +536,10 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                   child: Text(
                     _inboxName(inbox),
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
                 action(
@@ -498,7 +549,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                 ),
                 action(
                   label: muted ? 'Unmute notifications' : 'Mute notifications',
-                  icon: muted ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+                  icon: muted
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
                   onTap: () => _preference(inbox, 'mute', !muted),
                 ),
                 action(
@@ -513,7 +566,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                 ),
                 action(
                   label: favourite ? 'Remove favourite' : 'Add favourite',
-                  icon: favourite ? Icons.star_rounded : Icons.star_border_rounded,
+                  icon: favourite
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
                   onTap: () => _preference(inbox, 'favourite', !favourite),
                 ),
                 action(
@@ -523,7 +578,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                 ),
                 action(
                   label: hidden ? 'Unhide chat' : 'Hide chat',
-                  icon: hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  icon: hidden
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   onTap: () => _preference(inbox, 'hide', !hidden),
                 ),
                 if (isPrivate) ...[
@@ -542,7 +599,9 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                     ),
                   if (locked && (!shared || sharedOwner))
                     action(
-                      label: shared ? 'Change shared lock password' : 'Change lock password',
+                      label: shared
+                          ? 'Change shared lock password'
+                          : 'Change lock password',
                       icon: Icons.key_rounded,
                       onTap: () => _changeLock(inbox),
                     ),
@@ -590,7 +649,11 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (roomId.isEmpty) return;
     _setBusy(roomId);
     try {
-      final updated = await context.services.inbox.setPreference(roomId, action, value);
+      final updated = await context.services.inbox.setPreference(
+        roomId,
+        action,
+        value,
+      );
       if (!mounted) return;
       if (updated.isNotEmpty) {
         _onInboxUpdate(updated);
@@ -637,7 +700,11 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       );
       await _refreshRoom(roomId);
       if (!mounted) return;
-      _message(result.scope == 'both' ? 'Shared chat lock enabled.' : 'Chat lock enabled.');
+      _message(
+        result.scope == 'both'
+            ? 'Shared chat lock enabled.'
+            : 'Chat lock enabled.',
+      );
     } on Object catch (failure) {
       if (!mounted) return;
       _message(_errorText(failure));
@@ -748,7 +815,11 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
       await context.services.inbox.deleteRoom(roomId, scope: scope);
       if (!mounted) return;
       _onInboxDelete([roomId]);
-      _message(scope == 'both' ? 'Chat deleted for both participants.' : 'Chat deleted.');
+      _message(
+        scope == 'both'
+            ? 'Chat deleted for both participants.'
+            : 'Chat deleted.',
+      );
     } on Object catch (failure) {
       if (!mounted) return;
       _message(_errorText(failure));
@@ -799,7 +870,8 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
                   labelText: 'Password',
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
-                validator: (value) => (value ?? '').isEmpty ? 'Password is required.' : null,
+                validator: (value) =>
+                    (value ?? '').isEmpty ? 'Password is required.' : null,
               ),
             ],
           ),
@@ -867,15 +939,19 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (inbox['roomType']?.toString() == 'group') {
       final channel = inbox['channel'];
       final group = inbox['group'];
-      if (channel is Map && channel['name'] != null) return channel['name'].toString();
-      if (group is Map && group['name'] != null) return group['name'].toString();
+      if (channel is Map && channel['name'] != null)
+        return channel['name'].toString();
+      if (group is Map && group['name'] != null)
+        return group['name'].toString();
       return 'Group';
     }
     final owners = inbox['owners'];
     if (owners is List) {
       for (final owner in owners.whereType<Map>()) {
         if (owner['userId']?.toString() == currentUserId) continue;
-        return owner['fullname']?.toString() ?? owner['username']?.toString() ?? 'Contact';
+        return owner['fullname']?.toString() ??
+            owner['username']?.toString() ??
+            'Contact';
       }
     }
     return 'Contact';
@@ -929,11 +1005,20 @@ class _CreateLockDialogState extends State<_CreateLockDialog> {
           children: [
             SegmentedButton<String>(
               segments: const [
-                ButtonSegment(value: 'self', label: Text('Only me'), icon: Icon(Icons.person_outline_rounded)),
-                ButtonSegment(value: 'both', label: Text('Both'), icon: Icon(Icons.group_outlined)),
+                ButtonSegment(
+                  value: 'self',
+                  label: Text('Only me'),
+                  icon: Icon(Icons.person_outline_rounded),
+                ),
+                ButtonSegment(
+                  value: 'both',
+                  label: Text('Both'),
+                  icon: Icon(Icons.group_outlined),
+                ),
               ],
               selected: {scope},
-              onSelectionChanged: (value) => setState(() => scope = value.first),
+              onSelectionChanged: (value) =>
+                  setState(() => scope = value.first),
             ),
             const SizedBox(height: 14),
             TextFormField(
@@ -941,13 +1026,18 @@ class _CreateLockDialogState extends State<_CreateLockDialog> {
               autofocus: true,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Password'),
-              validator: (value) => (value ?? '').length < 4 ? 'Use at least 4 characters.' : null,
+              validator: (value) => (value ?? '').length < 4
+                  ? 'Use at least 4 characters.'
+                  : null,
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () {
             if (formKey.currentState?.validate() != true) return;
@@ -993,20 +1083,27 @@ class _ChangeLockDialogState extends State<_ChangeLockDialog> {
               autofocus: true,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Current password'),
-              validator: (value) => (value ?? '').isEmpty ? 'Current password is required.' : null,
+              validator: (value) => (value ?? '').isEmpty
+                  ? 'Current password is required.'
+                  : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: newPassword,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'New password'),
-              validator: (value) => (value ?? '').length < 4 ? 'Use at least 4 characters.' : null,
+              validator: (value) => (value ?? '').length < 4
+                  ? 'Use at least 4 characters.'
+                  : null,
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () {
             if (formKey.currentState?.validate() != true) return;
@@ -1050,7 +1147,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined, size: 46, color: SyncColors.sky),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 46,
+              color: SyncColors.sky,
+            ),
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
@@ -1074,7 +1175,8 @@ bool _hasUser(dynamic value, String userId) {
 DateTime _contentTime(Map<String, dynamic> inbox) {
   final content = inbox['content'];
   final raw = content is Map ? content['time'] : null;
-  return DateTime.tryParse(raw?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+  return DateTime.tryParse(raw?.toString() ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
 }
 
 String _preview(Map<String, dynamic> inbox) {

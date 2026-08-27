@@ -16,26 +16,41 @@ void main() {
     expect(source, contains('rejectPending('));
   });
 
-  test('chat entry keeps the refactored contextual parity layer', () {
-    final source = File('lib/screens/live_chat_room_screen.dart').readAsStringSync();
+  test('chat entry keeps biometric locking separate from the core room', () {
+    final source = File(
+      'lib/screens/live_chat_room_screen.dart',
+    ).readAsStringSync();
 
     expect(source, contains("live_chat_room_core_screen.dart"));
-    expect(source, contains("live_entity_profile_screen.dart"));
-    expect(source, contains("live_room_context_tools.dart"));
-    expect(source, contains('LiveEntityProfileScreen('));
-    expect(source, contains('showLiveRoomContextTools('));
+    expect(source, contains('chatLockBy'));
+    expect(source, contains('BiometricService.authenticate'));
+    expect(source, isNot(contains('showLiveRoomContextTools(')));
   });
 
   test('context tools cover the rich attachment actions from the old PR', () {
-    final source = File('lib/screens/live_room_context_tools.dart').readAsStringSync();
+    final source = File(
+      'lib/screens/live_room_context_tools.dart',
+    ).readAsStringSync();
 
-    for (final label in ['Location', 'Contact', 'Poll / Quiz', 'Event', 'Sticker']) {
-      expect(source, contains(label), reason: '$label must remain reachable from an active room');
+    for (final label in [
+      'Location',
+      'Contact',
+      'Poll / Quiz',
+      'Event',
+      'Sticker',
+    ]) {
+      expect(
+        source,
+        contains(label),
+        reason: '$label must remain reachable from an active room',
+      );
     }
   });
 
   test('live entity profiles keep friend and channel parity surfaces', () {
-    final source = File('lib/screens/live_entity_profile_screen.dart').readAsStringSync();
+    final source = File(
+      'lib/screens/live_entity_profile_screen.dart',
+    ).readAsStringSync();
 
     expect(source, contains('class LiveFriendProfileScreen'));
     expect(source, contains('class LiveChannelProfileScreen'));
