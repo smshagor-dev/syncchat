@@ -1401,8 +1401,10 @@ class _WebParityChatRoomScreenState extends State<WebParityChatRoomScreen> {
     try {
       switch (action) {
         case 'info':
-        case 'security':
           await _openRoomInfo();
+          break;
+        case 'security':
+          await _showE2ee();
           break;
         case 'select':
           setState(() => selectedMessageIds = <String>{});
@@ -2211,7 +2213,7 @@ class _WebParityChatRoomScreenState extends State<WebParityChatRoomScreen> {
                 ),
                 const SizedBox(width: 7),
                 Expanded(
-                  child: SizedBox(
+                  child: ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: 44),
                     child: TextField(
                       controller: composer,
@@ -2266,7 +2268,7 @@ class _WebParityChatRoomScreenState extends State<WebParityChatRoomScreen> {
       padding: EdgeInsets.fromLTRB(10, 8, 10, MediaQuery.paddingOf(context).bottom + 8),
       decoration: BoxDecoration(color: context.panel, border: Border(top: BorderSide(color: context.border))),
       child: Container(
-        minHeight: 44,
+        constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: danger ? SyncColors.danger.withValues(alpha: .07) : SyncColors.sky.withValues(alpha: .07),
