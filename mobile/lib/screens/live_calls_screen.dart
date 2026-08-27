@@ -156,7 +156,9 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     final profile = _privateProfile(call);
     final name = _roomName(call, profile: profile);
     final avatar = _avatar(call, profile: profile);
-    final online = call['roomType']?.toString() == 'private' && profile['online'] == true;
+    final online = call['roomType']?.toString() == 'private' &&
+        profile['canSeeOnline'] != false &&
+        profile['online'] == true;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
@@ -437,10 +439,17 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     final time = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
     if (time == null) return 'recently';
     final diff = DateTime.now().difference(time);
-    if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+    if (diff.isNegative || diff.inSeconds < 45) return 'a few seconds ago';
+    if (diff.inMinutes < 2) return 'a minute ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
+    if (diff.inHours < 2) return 'an hour ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    if (diff.inDays < 2) return 'a day ago';
+    if (diff.inDays < 30) return '${diff.inDays} days ago';
+    if (diff.inDays < 60) return 'a month ago';
+    if (diff.inDays < 365) return '${diff.inDays ~/ 30} months ago';
+    if (diff.inDays < 730) return 'a year ago';
+    return '${diff.inDays ~/ 365} years ago';
   }
 
   void _snack(String message) {
@@ -684,7 +693,7 @@ class _NewCallSheetState extends State<_NewCallSheet> {
               name: name,
               imageUrl: profile['avatar']?.toString(),
               radius: 21,
-              online: profile['online'] == true,
+              online: profile['canSeeOnline'] != false && profile['online'] == true,
             ),
             const SizedBox(width: 11),
             Expanded(

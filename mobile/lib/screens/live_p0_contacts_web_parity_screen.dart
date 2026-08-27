@@ -285,7 +285,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
           leading: SyncAvatar(
             name: name,
             imageUrl: profile['avatar']?.toString(),
-            online: profile['online'] == true,
+            online: profile['canSeeOnline'] != false && profile['online'] == true,
             radius: 27,
           ),
           title: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
@@ -337,7 +337,6 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
           leading: SyncAvatar(
             name: name,
             imageUrl: profile['avatar']?.toString(),
-            online: profile['online'] == true,
             radius: 25,
           ),
           title: Text(name, style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -838,22 +837,34 @@ String _identityLine(Map<String, dynamic> profile) {
   ].join(' · ');
 }
 
-String _bioOrIdentity(Map<String, dynamic> profile) {
-  final bio = profile['bio']?.toString().trim() ?? '';
-  return bio.isNotEmpty ? bio : _identityLine(profile);
-}
+String _bioOrIdentity(Map<String, dynamic> profile) =>
+    profile['bio']?.toString() ?? '';
 
 String _presenceText(Map<String, dynamic> profile) {
-  if (profile['online'] == true) return 'Online';
-  final raw = profile['lastSeenAt']?.toString() ?? profile['updatedAt']?.toString() ?? '';
-  final value = DateTime.tryParse(raw)?.toLocal();
-  if (value == null) return _bioOrIdentity(profile);
-  final delta = DateTime.now().difference(value);
-  if (delta.inMinutes < 1) return 'Last seen just now';
-  if (delta.inMinutes < 60) return 'Last seen ${delta.inMinutes}m ago';
-  if (delta.inHours < 24) return 'Last seen ${delta.inHours}h ago';
-  if (delta.inDays < 7) return 'Last seen ${delta.inDays}d ago';
-  return 'Last seen ${value.day}/${value.month}/${value.year}';
+  final canSeeOnline = profile['canSeeOnline'] != false;
+  if (canSeeOnline && profile['online'] == true) return 'Online';
+
+  final canSeeLastSeen = profile['canSeeLastSeen'] != false;
+  final raw = profile['lastSeenAt']?.toString().trim() ?? '';
+  final value = canSeeLastSeen && raw.isNotEmpty ? DateTime.tryParse(raw)?.toLocal() : null;
+  if (value != null) return 'Last seen ${_relativeTime(value)}';
+
+  return 'Privacy protected';
+}
+
+String _relativeTime(DateTime time) {
+  final diff = DateTime.now().difference(time.toLocal());
+  if (diff.isNegative || diff.inSeconds < 45) return 'a few seconds ago';
+  if (diff.inMinutes < 2) return 'a minute ago';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
+  if (diff.inHours < 2) return 'an hour ago';
+  if (diff.inHours < 24) return '${diff.inHours} hours ago';
+  if (diff.inDays < 2) return 'a day ago';
+  if (diff.inDays < 30) return '${diff.inDays} days ago';
+  if (diff.inDays < 60) return 'a month ago';
+  if (diff.inDays < 365) return '${diff.inDays ~/ 30} months ago';
+  if (diff.inDays < 730) return 'a year ago';
+  return '${diff.inDays ~/ 365} years ago';
 }
 
 String _identity(Map<String, dynamic> profile) {

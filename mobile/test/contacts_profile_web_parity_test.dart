@@ -20,9 +20,18 @@ void main() {
       "'/contacts/labels'",
       "'color': result.\$2",
       'imageUrl:',
+      "profile['canSeeOnline'] != false",
+      "profile['canSeeLastSeen'] != false",
+      'Privacy protected',
+      'Last seen ',
+      'a few seconds ago',
+      'a minute ago',
+      'an hour ago',
+      'a day ago',
     ]) {
       expect(source, contains(contract));
     }
+    expect(source, isNot(contains("profile['updatedAt']")));
   });
 
   test('profile destination uses actual avatar and web editable fields', () {

@@ -38,6 +38,12 @@ void main() {
       'statuses.reply',
       'Status activity',
       'Delete status?',
+      'a few seconds ago',
+      'a minute ago',
+      'an hour ago',
+      'a day ago',
+      'a month ago',
+      'a year ago',
     ]) {
       expect(source, contains(contract));
     }
