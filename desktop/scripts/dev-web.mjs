@@ -5,7 +5,23 @@ import { spawn } from 'node:child_process';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, '..');
 const frontendRoot = path.resolve(desktopRoot, '..', 'frontend');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function npmInvocation(args) {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath) {
+    return {
+      command: process.execPath,
+      args: [npmExecPath, ...args],
+      shell: false,
+    };
+  }
+
+  return {
+    command: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    args,
+    shell: process.platform === 'win32',
+  };
+}
 
 const env = {
   ...process.env,
@@ -27,10 +43,12 @@ env.CLIENT_API_BASE_URL = env.CLIENT_API_BASE_URL || env.API_BASE_URL;
 env.CLIENT_SOCKET_URL = env.CLIENT_SOCKET_URL || env.SOCKET_URL;
 env.CLIENT_PUBLIC_ORIGIN = env.CLIENT_PUBLIC_ORIGIN || env.PUBLIC_ORIGIN;
 
-const child = spawn(npm, ['run', 'dev'], {
+const npm = npmInvocation(['run', 'dev']);
+const child = spawn(npm.command, npm.args, {
   cwd: frontendRoot,
   env,
   stdio: 'inherit',
+  shell: npm.shell,
 });
 
 child.on('error', (error) => {
