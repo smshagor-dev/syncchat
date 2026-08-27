@@ -610,6 +610,7 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
 
   bool get canEditInfo => admin || permissions['memberCanEditInfo'] == true;
   bool get canAddMember => admin || permissions['memberCanAddMember'] == true;
+  bool get canInvite => permissions['memberCanInviteViaLink'] == true;
 
   @override
   void initState() {
@@ -1110,7 +1111,9 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
   }
 
   Future<void> _copyInvite() async {
-    final link = group?['link']?.toString().trim() ?? '';
+    final link = context.services.config.groupInviteUrl(
+      group?['link']?.toString(),
+    );
     if (link.isEmpty) {
       _snack('This group does not have an invite link.');
       return;
@@ -1208,7 +1211,7 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
     final name = source['name']?.toString().trim().isNotEmpty == true ? source['name'].toString() : 'Group';
     final description = source['desc']?.toString().trim() ?? '';
     final private = source['accessType']?.toString() == 'private';
-    final link = source['link']?.toString() ?? '';
+    final link = context.services.config.groupInviteUrl(source['link']?.toString());
     final favourite = _containsUser(inbox['favouriteBy'], userId);
     final muted = _containsUser(inbox['mutedBy'], userId);
     final listed = _containsUser(inbox['listedBy'], userId);
@@ -1309,28 +1312,30 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
               onTap: _clearChat,
             ),
           ]),
-          _section(context, 'Invite & privacy', [
-            ListTile(
-              leading: const Icon(Icons.link_rounded, color: SyncColors.sky),
-              title: const Text('Invite link', style: TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text(link.isEmpty ? 'Invite link unavailable' : link, maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: link.isEmpty ? null : const Icon(Icons.copy_rounded),
-              onTap: link.isEmpty ? null : _copyInvite,
-            ),
-            if (admin)
-              ListTile(
-                leading: Icon(private ? Icons.lock_outline_rounded : Icons.public_rounded, color: SyncColors.sky),
-                title: const Text('Public / Private', style: TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text(private ? 'Private group' : 'Public group'),
-                onTap: _privacy,
-              ),
-            if (admin && private)
-              ListTile(
-                leading: const Icon(Icons.password_rounded, color: SyncColors.sky),
-                title: const Text('Change group password', style: TextStyle(fontWeight: FontWeight.w800)),
-                onTap: _changePassword,
-              ),
-          ]),
+          if (canInvite || admin)
+            _section(context, 'Invite & privacy', [
+              if (canInvite && link.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.link_rounded, color: SyncColors.sky),
+                  title: const Text('Invite link', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(link, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: const Icon(Icons.copy_rounded),
+                  onTap: _copyInvite,
+                ),
+              if (admin)
+                ListTile(
+                  leading: Icon(private ? Icons.lock_outline_rounded : Icons.public_rounded, color: SyncColors.sky),
+                  title: const Text('Public / Private', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(private ? 'Private group' : 'Public group'),
+                  onTap: _privacy,
+                ),
+              if (admin && private)
+                ListTile(
+                  leading: const Icon(Icons.password_rounded, color: SyncColors.sky),
+                  title: const Text('Change group password', style: TextStyle(fontWeight: FontWeight.w800)),
+                  onTap: _changePassword,
+                ),
+            ]),
           if (admin)
             _section(context, 'Admin controls', [
               ListTile(
