@@ -43,8 +43,51 @@ void main() {
     expect(source, contains('WebViewWidget'));
   });
 
+  test('profile editing follows web inline pencil and check interaction', () {
+    final source = File('lib/screens/live_full_profile_web_parity_screen.dart').readAsStringSync();
+    for (final contract in [
+      "editingKey == 'header:fullname'",
+      "key: 'header:fullname'",
+      "final key = 'field:\${field.field}'",
+      'Icons.edit_outlined',
+      'Icons.check_rounded',
+      'TextField(',
+      'FilteringTextInputFormatter.digitsOnly',
+      "RegExp(r'^[a-z0-9_-]{3,24}\$')",
+      'Username is invalid',
+      'context.services.profile.update({field: value})',
+    ]) {
+      expect(source, contains(contract));
+    }
+  });
+
+  test('profile social editor and qr share surface follow web contracts', () {
+    final source = File('lib/screens/live_full_profile_web_parity_screen.dart').readAsStringSync();
+    for (final contract in [
+      'socialEditorOpen',
+      'DropdownButtonFormField<String>',
+      'socialOptions.entries',
+      "'facebook': 'Facebook'",
+      "'instagram': 'Instragram'",
+      "'linkedin': 'Linkdln'",
+      "'youtube': 'Youtube'",
+      "value.replaceFirst(",
+      "RegExp(r'^(https?)//'",
+      'QrImageView(data: shareUrl, size: 220)',
+      'Scan this QR to open your SyncChat profile chat directly.',
+      'https://wa.me/?text=',
+      'https://t.me/share/url?url=',
+      'https://www.facebook.com/sharer/sharer.php?u=',
+      'https://twitter.com/intent/tweet?url=',
+      "ClipboardData(text: shareUrl)",
+    ]) {
+      expect(source, contains(contract));
+    }
+  });
+
   test('pre-audit implementations remain available as rollback references', () {
     expect(File('lib/screens/live_p0_contacts_core_screen.dart').existsSync(), isTrue);
     expect(File('lib/screens/live_full_profile_core_screen.dart').existsSync(), isTrue);
+    expect(File('lib/screens/live_full_profile_web_parity_core_screen.dart').existsSync(), isTrue);
   });
 }
