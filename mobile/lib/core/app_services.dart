@@ -13,6 +13,7 @@ import 'group_repository.dart';
 import 'native_call_push.dart';
 import 'public_app_config.dart';
 import 'realtime_client.dart';
+import 'runtime_upload_policy.dart';
 import 'session_store.dart';
 
 class AppServices {
@@ -21,6 +22,7 @@ class AppServices {
     required this.sessionStore,
     required this.api,
     required this.publicAppConfig,
+    required this.runtimeUploadPolicy,
     required this.auth,
     required this.realtime,
     required this.e2ee,
@@ -56,12 +58,16 @@ class AppServices {
     );
     final e2ee = E2eeService(api: api, sessionStore: resolvedSessionStore);
     final chatCache = ChatCache();
-    final chat = CachedChatRepository(
+    final runtimeUploadPolicy = RuntimeUploadPolicy(
+      chatUploadLimitMb: resolvedConfig.chatUploadLimitMb,
+    );
+    final chat = RuntimePolicyChatRepository(
       api: api,
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
       cache: chatCache,
+      runtimeUploadPolicy: runtimeUploadPolicy,
     );
     final calling = CallingRepository(api: api, auth: auth, realtime: realtime);
     final nativeCallPush = NativeCallPushService(
@@ -76,6 +82,7 @@ class AppServices {
       sessionStore: resolvedSessionStore,
       api: api,
       publicAppConfig: PublicAppConfigRepository(api),
+      runtimeUploadPolicy: runtimeUploadPolicy,
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
@@ -103,6 +110,7 @@ class AppServices {
   final SessionStore sessionStore;
   final ApiClient api;
   final PublicAppConfigRepository publicAppConfig;
+  final RuntimeUploadPolicy runtimeUploadPolicy;
   final AuthRepository auth;
   final RealtimeClient realtime;
   final E2eeService e2ee;
@@ -125,6 +133,7 @@ class AppServices {
       chatUploadLimitMb: runtime.chatUploadLimitMb,
       avatarUploadLimitMb: runtime.avatarUploadLimitMb,
     );
+    runtimeUploadPolicy.apply(runtime);
   }
 
   Future<void> dispose() async {

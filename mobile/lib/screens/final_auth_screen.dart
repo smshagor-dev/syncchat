@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/auth_repository.dart';
+import '../core/public_app_config.dart';
 import '../theme.dart';
+import '../widgets/runtime_brand.dart';
 import 'device_link_qr_screen.dart';
 
 enum _Mode { signIn, signUp, forgot }
@@ -377,7 +379,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   const SizedBox(height: 36),
                   Text(
-                    'By continuing, you agree to SyncChat Terms and Privacy Policy.',
+                    'By continuing, you agree to ${context.publicAppConfig.appName} Terms and Privacy Policy.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: muted, fontSize: 11.5, height: 1.4),
                   ),
@@ -394,18 +396,10 @@ class _AuthScreenState extends State<AuthScreen> {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Image.asset(
-            'assets/syncchat_logo.png',
-            width: 58,
-            height: 58,
-            fit: BoxFit.cover,
-          ),
-        ),
+        const RuntimeBrandLogo(size: 58, borderRadius: 15),
         const SizedBox(height: 10),
         Text(
-          'SyncChat',
+          context.publicAppConfig.appName,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: ink,
@@ -681,12 +675,15 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String get subtitle {
-    if (tempToken != null)
+    if (tempToken != null) {
       return 'Enter your authenticator code or a saved recovery code.';
-    if (mode == _Mode.signUp)
+    }
+    if (mode == _Mode.signUp) {
       return 'Create your account and start secure conversations.';
-    if (mode == _Mode.forgot)
+    }
+    if (mode == _Mode.forgot) {
       return 'Verify your account before changing your password.';
+    }
     return 'Sign in with your password or securely link this device with a QR code.';
   }
 
