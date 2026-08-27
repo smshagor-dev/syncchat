@@ -42,8 +42,11 @@ void main() {
       'LiveChatRoomScreen',
       'LiveEntityProfileScreen',
       "imageUrl: channel['avatar']?.toString()",
-      "realtime.on('channel/create'",
-      "realtime.on('channel/edit'",
+      'realtime = context.services.realtime',
+      "realtime?.on('channel/create'",
+      "realtime?.on('channel/edit'",
+      "realtime?.off('channel/create'",
+      "realtime?.off('channel/edit'",
     ]) {
       expect(source, contains(contract));
     }
