@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
 import '../core/permission_manager.dart';
+import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'live_chat_room_screen.dart';
@@ -34,6 +35,7 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
   String? busyChannelId;
   bool bound = false;
   Timer? reloadTimer;
+  RealtimeClient? realtime;
 
   List<Map<String, dynamic>> get joined =>
       channels.where((item) => item['subscribed'] == true).toList(growable: false);
@@ -51,16 +53,17 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
     super.didChangeDependencies();
     if (bound) return;
     bound = true;
-    context.services.realtime.on('channel/create', _onChannelEvent);
-    context.services.realtime.on('channel/edit', _onChannelEvent);
+    realtime = context.services.realtime;
+    realtime?.on('channel/create', _onChannelEvent);
+    realtime?.on('channel/edit', _onChannelEvent);
   }
 
   @override
   void dispose() {
     reloadTimer?.cancel();
     if (bound) {
-      context.services.realtime.off('channel/create', _onChannelEvent);
-      context.services.realtime.off('channel/edit', _onChannelEvent);
+      realtime?.off('channel/create', _onChannelEvent);
+      realtime?.off('channel/edit', _onChannelEvent);
     }
     name.dispose();
     desc.dispose();
@@ -326,7 +329,7 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
           ),
         );
       } else {
-        final fresh = channels.cast<Map<String, dynamic>>().where((item) => item['_id']?.toString() == id).toList();
+        final fresh = channels.where((item) => item['_id']?.toString() == id).toList(growable: false);
         if (fresh.isNotEmpty) await _openChannelRoom(fresh.first);
       }
     } on Object catch (failure) {
@@ -395,9 +398,7 @@ class _ChannelHubScreenState extends State<ChannelHubScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: context.softPanel,
-        border: Border.symmetric(
-          horizontal: BorderSide(color: context.border),
-        ),
+        border: Border.symmetric(horizontal: BorderSide(color: context.border)),
       ),
       child: Column(
         children: [
