@@ -53,6 +53,7 @@ jobs:
           flutter build apk --debug
           --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
           --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
+          --dart-define=SYNCCHAT_PUBLIC_ORIGIN=https://syncchat.live
           --dart-define=SYNCCHAT_APP_VERSION=${DEBUG_RELEASE_TAG}
 
       - name: Package debug APK
