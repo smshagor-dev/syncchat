@@ -41,6 +41,8 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   Map<String, dynamic>? replyingTo;
   Map<String, dynamic>? editingMessage;
   Set<String> pinnedIds = <String>{};
+  Map<String, dynamic>? liveInbox;
+  Timer? presenceTimer;
   bool loading = true;
   bool sending = false;
   bool uploading = false;
@@ -52,13 +54,14 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   String get roomId => widget.inbox['roomId']?.toString() ?? '';
   String get currentUserId => currentUser?['_id']?.toString() ?? '';
   Map<String, dynamic> get effectiveInbox => {
-    ...widget.inbox,
+    ...(liveInbox ?? widget.inbox),
     'e2eeEnabled': e2eeEnabled,
   };
 
   @override
   void initState() {
     super.initState();
+    liveInbox = Map<String, dynamic>.from(widget.inbox);
     e2eeEnabled =
         widget.inbox['roomType']?.toString() == 'private' &&
         widget.inbox['e2eeEnabled'] == true;
@@ -83,6 +86,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
       chat.off('e2ee/key-changed', _onE2eeKeyChanged);
     }
     connectionSubscription?.cancel();
+    presenceTimer?.cancel();
     composer.dispose();
     scroll.dispose();
     super.dispose();
@@ -108,8 +112,16 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
     chat.on('e2ee/key-changed', _onE2eeKeyChanged);
 
     connectionSubscription = services.realtime.states.listen((state) {
-      if (state == RealtimeConnectionState.connected) _catchUp();
+      if (state == RealtimeConnectionState.connected) {
+        _catchUp();
+        _refreshPresence();
+      }
     });
+    presenceTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _refreshPresence(),
+    );
+    unawaited(_refreshPresence());
 
     try {
       final results = await Future.wait<dynamic>([
@@ -189,6 +201,20 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
         loading = false;
         error = _messageFor(failure);
       });
+    }
+  }
+
+  Future<void> _refreshPresence() async {
+    if (!mounted || roomId.isEmpty ||
+        widget.inbox['roomType']?.toString() != 'private') {
+      return;
+    }
+    try {
+      final refreshed = await context.services.inbox.findByRoom(roomId);
+      if (!mounted || refreshed.isEmpty) return;
+      setState(() => liveInbox = Map<String, dynamic>.from(refreshed));
+    } on Object {
+      // Presence refresh is intentionally silent and non-blocking.
     }
   }
 
@@ -1345,6 +1371,7 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
             _RoomHeader(
               name: widget.name,
               inbox: effectiveInbox,
+              currentUserId: currentUserId,
               typingText: typingText,
               e2eeEnabled: e2eeEnabled,
               onAudioCall: () {
@@ -1712,6 +1739,7 @@ class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
     required this.name,
     required this.inbox,
+    required this.currentUserId,
     required this.typingText,
     required this.e2eeEnabled,
     required this.onAudioCall,
@@ -1721,15 +1749,61 @@ class _RoomHeader extends StatelessWidget {
 
   final String name;
   final Map<String, dynamic> inbox;
+  final String currentUserId;
   final String typingText;
   final bool e2eeEnabled;
   final VoidCallback onAudioCall;
   final VoidCallback onVideoCall;
   final VoidCallback onSecurity;
 
+  Map<String, dynamic>? get _oppositeProfile {
+    if (inbox['roomType']?.toString() != 'private') return null;
+    final owners = inbox['owners'];
+    if (owners is! List) return null;
+    for (final raw in owners.whereType<Map>()) {
+      final owner = Map<String, dynamic>.from(raw);
+      if (currentUserId.isNotEmpty &&
+          owner['userId']?.toString() == currentUserId) {
+        continue;
+      }
+      return owner;
+    }
+    return null;
+  }
+
+  String _relativeLastSeen(dynamic raw) {
+    final parsed = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (parsed == null) return '';
+    final delta = DateTime.now().difference(parsed);
+    if (delta.isNegative || delta.inMinutes < 1) return 'last seen just now';
+    if (delta.inMinutes < 60) {
+      final n = delta.inMinutes;
+      return 'last seen $n min${n == 1 ? '' : 's'} ago';
+    }
+    if (delta.inHours < 24) {
+      final n = delta.inHours;
+      return 'last seen $n hour${n == 1 ? '' : 's'} ago';
+    }
+    final n = delta.inDays;
+    return 'last seen $n day${n == 1 ? '' : 's'} ago';
+  }
+
+  ({String text, bool online}) get _presence {
+    final profile = _oppositeProfile;
+    if (profile == null) return (text: '', online: false);
+    if (profile['canSeeOnline'] == true && profile['online'] == true) {
+      return (text: 'Online', online: true);
+    }
+    if (profile['canSeeLastSeen'] == true && profile['lastSeenAt'] != null) {
+      return (text: _relativeLastSeen(profile['lastSeenAt']), online: false);
+    }
+    return (text: '', online: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final group = inbox['roomType']?.toString() == 'group';
+    final presence = _presence;
     return Container(
       constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
@@ -1743,7 +1817,7 @@ class _RoomHeader extends StatelessWidget {
             onPressed: () => Navigator.maybePop(context),
             icon: const Icon(Icons.arrow_back_rounded),
           ),
-          SyncAvatar(name: name, online: !group, radius: 20),
+          SyncAvatar(name: name, online: presence.online, radius: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1756,24 +1830,45 @@ class _RoomHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                Text(
-                  typingText.isNotEmpty
-                      ? typingText
-                      : e2eeEnabled
-                      ? 'End-to-end encrypted'
-                      : group
-                      ? 'Group conversation'
-                      : 'SyncChat contact',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: typingText.isNotEmpty
-                        ? SyncColors.sky
-                        : context.muted,
-                    fontWeight: typingText.isNotEmpty
-                        ? FontWeight.w700
-                        : FontWeight.w400,
+                if (typingText.isNotEmpty || group || presence.text.isNotEmpty)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (typingText.isEmpty && presence.online) ...[
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: SyncColors.success,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                      ],
+                      Flexible(
+                        child: Text(
+                          typingText.isNotEmpty
+                              ? typingText
+                              : group
+                              ? 'Group conversation'
+                              : presence.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: typingText.isNotEmpty
+                                ? SyncColors.sky
+                                : presence.online
+                                ? SyncColors.success
+                                : context.muted,
+                            fontWeight: typingText.isNotEmpty || presence.online
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
               ],
             ),
           ),
