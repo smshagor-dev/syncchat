@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore(chatroom): apply compile patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,8 +17,8 @@ jobs:
           ref: fix/mobile-chatroom-exact-web-parity
           fetch-depth: 0
       - name: Patch Dart source
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
           path = Path('mobile/lib/screens/live_chat_room_web_parity_screen.dart')
           text = path.read_text()
@@ -36,6 +35,7 @@ jobs:
               "case 'info':\n          await _openRoomInfo();\n          break;\n        case 'security':\n          await _showE2ee();\n          break;",
           )
           path.write_text(text)
+          PY
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
