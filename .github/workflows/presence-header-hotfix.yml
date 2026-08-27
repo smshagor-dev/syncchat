@@ -1,0 +1,98 @@
+name: Apply Mobile Presence Header Hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/presence-header-hotfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch privacy-aware room presence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('mobile/lib/screens/live_chat_room_core_screen.dart')
+          text = path.read_text()
+
+          old = """  Set<String> pinnedIds = <String>{};\n  bool loading = true;"""
+          new = """  Set<String> pinnedIds = <String>{};\n  Map<String, dynamic>? liveInbox;\n  Timer? presenceTimer;\n  bool loading = true;"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """  Map<String, dynamic> get effectiveInbox => {\n    ...widget.inbox,\n    'e2eeEnabled': e2eeEnabled,\n  };"""
+          new = """  Map<String, dynamic> get effectiveInbox => {\n    ...(liveInbox ?? widget.inbox),\n    'e2eeEnabled': e2eeEnabled,\n  };"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """    e2eeEnabled =\n        widget.inbox['roomType']?.toString() == 'private' &&\n        widget.inbox['e2eeEnabled'] == true;\n    WidgetsBinding.instance.addPostFrameCallback((_) => _start());"""
+          new = """    liveInbox = Map<String, dynamic>.from(widget.inbox);\n    e2eeEnabled =\n        widget.inbox['roomType']?.toString() == 'private' &&\n        widget.inbox['e2eeEnabled'] == true;\n    WidgetsBinding.instance.addPostFrameCallback((_) => _start());"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """    connectionSubscription?.cancel();\n    composer.dispose();"""
+          new = """    connectionSubscription?.cancel();\n    presenceTimer?.cancel();\n    composer.dispose();"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """    connectionSubscription = services.realtime.states.listen((state) {\n      if (state == RealtimeConnectionState.connected) _catchUp();\n    });\n\n    try {"""
+          new = """    connectionSubscription = services.realtime.states.listen((state) {\n      if (state == RealtimeConnectionState.connected) {\n        _catchUp();\n        _refreshPresence();\n      }\n    });\n    presenceTimer = Timer.periodic(\n      const Duration(minutes: 1),\n      (_) => _refreshPresence(),\n    );\n    unawaited(_refreshPresence());\n\n    try {"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          anchor = """  Future<void> _catchUp() async {"""
+          addition = """  Future<void> _refreshPresence() async {\n    if (!mounted || roomId.isEmpty ||\n        widget.inbox['roomType']?.toString() != 'private') {\n      return;\n    }\n    try {\n      final refreshed = await context.services.inbox.findByRoom(roomId);\n      if (!mounted || refreshed.isEmpty) return;\n      setState(() => liveInbox = Map<String, dynamic>.from(refreshed));\n    } on Object {\n      // Presence refresh is intentionally silent and non-blocking.\n    }\n  }\n\n"""
+          assert anchor in text
+          text = text.replace(anchor, addition + anchor, 1)
+
+          old = """              inbox: effectiveInbox,\n              typingText: typingText,\n              e2eeEnabled: e2eeEnabled,"""
+          new = """              inbox: effectiveInbox,\n              currentUserId: currentUserId,\n              typingText: typingText,\n              e2eeEnabled: e2eeEnabled,"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """    required this.inbox,\n    required this.typingText,"""
+          new = """    required this.inbox,\n    required this.currentUserId,\n    required this.typingText,"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """  final Map<String, dynamic> inbox;\n  final String typingText;"""
+          new = """  final Map<String, dynamic> inbox;\n  final String currentUserId;\n  final String typingText;"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """  @override\n  Widget build(BuildContext context) {\n    final group = inbox['roomType']?.toString() == 'group';\n    return Container("""
+          new = """  Map<String, dynamic>? get _oppositeProfile {\n    if (inbox['roomType']?.toString() != 'private') return null;\n    final owners = inbox['owners'];\n    if (owners is! List) return null;\n    for (final raw in owners.whereType<Map>()) {\n      final owner = Map<String, dynamic>.from(raw);\n      if (currentUserId.isNotEmpty &&\n          owner['userId']?.toString() == currentUserId) {\n        continue;\n      }\n      return owner;\n    }\n    return null;\n  }\n\n  String _relativeLastSeen(dynamic raw) {\n    final parsed = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();\n    if (parsed == null) return '';\n    final delta = DateTime.now().difference(parsed);\n    if (delta.isNegative || delta.inMinutes < 1) return 'last seen just now';\n    if (delta.inMinutes < 60) {\n      final n = delta.inMinutes;\n      return 'last seen $n min${n == 1 ? '' : 's'} ago';\n    }\n    if (delta.inHours < 24) {\n      final n = delta.inHours;\n      return 'last seen $n hour${n == 1 ? '' : 's'} ago';\n    }\n    final n = delta.inDays;\n    return 'last seen $n day${n == 1 ? '' : 's'} ago';\n  }\n\n  ({String text, bool online}) get _presence {\n    final profile = _oppositeProfile;\n    if (profile == null) return (text: '', online: false);\n    if (profile['canSeeOnline'] == true && profile['online'] == true) {\n      return (text: 'Online', online: true);\n    }\n    if (profile['canSeeLastSeen'] == true && profile['lastSeenAt'] != null) {\n      return (text: _relativeLastSeen(profile['lastSeenAt']), online: false);\n    }\n    return (text: '', online: false);\n  }\n\n  @override\n  Widget build(BuildContext context) {\n    final group = inbox['roomType']?.toString() == 'group';\n    final presence = _presence;\n    return Container("""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """          SyncAvatar(name: name, online: !group, radius: 20),"""
+          new = """          SyncAvatar(name: name, online: presence.online, radius: 20),"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = """                Text(\n                  typingText.isNotEmpty\n                      ? typingText\n                      : e2eeEnabled\n                      ? 'End-to-end encrypted'\n                      : group\n                      ? 'Group conversation'\n                      : 'SyncChat contact',\n                  style: TextStyle(\n                    fontSize: 12,\n                    color: typingText.isNotEmpty\n                        ? SyncColors.sky\n                        : context.muted,\n                    fontWeight: typingText.isNotEmpty\n                        ? FontWeight.w700\n                        : FontWeight.w400,\n                  ),\n                ),"""
+          new = """                if (typingText.isNotEmpty || group || presence.text.isNotEmpty)\n                  Row(\n                    mainAxisSize: MainAxisSize.min,\n                    children: [\n                      if (typingText.isEmpty && presence.online) ...[\n                        Container(\n                          width: 7,\n                          height: 7,\n                          decoration: const BoxDecoration(\n                            color: SyncColors.success,\n                            shape: BoxShape.circle,\n                          ),\n                        ),\n                        const SizedBox(width: 5),\n                      ],\n                      Flexible(\n                        child: Text(\n                          typingText.isNotEmpty\n                              ? typingText\n                              : group\n                              ? 'Group conversation'\n                              : presence.text,\n                          maxLines: 1,\n                          overflow: TextOverflow.ellipsis,\n                          style: TextStyle(\n                            fontSize: 12,\n                            color: typingText.isNotEmpty\n                                ? SyncColors.sky\n                                : presence.online\n                                ? SyncColors.success\n                                : context.muted,\n                            fontWeight: typingText.isNotEmpty || presence.online\n                                ? FontWeight.w700\n                                : FontWeight.w400,\n                          ),\n                        ),\n                      ),\n                    ],\n                  ),"""
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit hotfix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/lib/screens/live_chat_room_core_screen.dart
+          git diff --cached --check
+          git commit -m "fix(mobile): privacy-aware online and last seen header"
+          git push origin HEAD:main
