@@ -9,6 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
 import '../core/permission_manager.dart';
+import '../core/public_app_config.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -67,9 +68,19 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
   String get username =>
       (profile['username'] ?? user['username'] ?? '').toString();
   String get email => (profile['email'] ?? user['email'] ?? '').toString();
-  String get shareUrl => username.trim().isEmpty
-      ? 'https://syncchat.live/chat'
-      : 'https://syncchat.live/chat?u=${Uri.encodeQueryComponent(username.trim())}';
+  String get shareUrl {
+    final origin = Uri.tryParse(context.services.config.publicOrigin.trim());
+    if (origin == null || !origin.hasScheme || origin.host.isEmpty) return '';
+    return Uri(
+      scheme: origin.scheme,
+      host: origin.host,
+      port: origin.hasPort ? origin.port : null,
+      path: '/chat',
+      queryParameters: username.trim().isEmpty
+          ? null
+          : {'u': username.trim()},
+    ).toString();
+  }
 
   List<Map<String, dynamic>> get socialAccounts => profile['socialAccounts'] is List
       ? (profile['socialAccounts'] as List)
@@ -747,7 +758,13 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
 
   Future<void> _showQr() async {
     final bio = profile['bio']?.toString() ?? '';
-    final shareText = 'Chat with me on SyncChat: $shareUrl';
+    final url = shareUrl;
+    if (url.isEmpty) {
+      _snack('Public sharing is not configured.');
+      return;
+    }
+    final appName = context.publicAppConfig.appName;
+    final shareText = 'Chat with me on $appName: $url';
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -803,7 +820,7 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
                   child: Container(
                     color: Colors.white,
                     padding: const EdgeInsets.all(5),
-                    child: QrImageView(data: shareUrl, size: 220),
+                    child: QrImageView(data: url, size: 220),
                   ),
                 ),
                 Padding(
@@ -811,9 +828,9 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Scan this QR to open your SyncChat profile chat directly.',
-                        style: TextStyle(fontSize: 14),
+                      Text(
+                        'Scan this QR to open your $appName profile chat directly.',
+                        style: const TextStyle(fontSize: 14),
                       ),
                       const SizedBox(height: 12),
                       Wrap(
@@ -828,17 +845,17 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
                           _shareButton(
                             'Telegram',
                             Icons.send_rounded,
-                            'https://t.me/share/url?url=${Uri.encodeComponent(shareUrl)}&text=${Uri.encodeComponent('Chat with me on SyncChat')}',
+                            'https://t.me/share/url?url=${Uri.encodeComponent(url)}&text=${Uri.encodeComponent('Chat with me on $appName')}',
                           ),
                           _shareButton(
                             'Facebook',
                             Icons.facebook,
-                            'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(shareUrl)}',
+                            'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(url)}',
                           ),
                           _shareButton(
                             'X',
                             Icons.alternate_email_rounded,
-                            'https://twitter.com/intent/tweet?url=${Uri.encodeComponent(shareUrl)}&text=${Uri.encodeComponent('Chat with me on SyncChat')}',
+                            'https://twitter.com/intent/tweet?url=${Uri.encodeComponent(url)}&text=${Uri.encodeComponent('Chat with me on $appName')}',
                           ),
                         ],
                       ),
@@ -856,7 +873,7 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
                                 borderRadius: BorderRadius.circular(7),
                               ),
                               child: SelectableText(
-                                shareUrl,
+                                url,
                                 maxLines: 1,
                                 style: const TextStyle(fontSize: 12),
                               ),
@@ -865,7 +882,7 @@ class _LiveFullProfileScreenState extends State<LiveFullProfileScreen> {
                           const SizedBox(width: 8),
                           FilledButton.icon(
                             onPressed: () async {
-                              await Clipboard.setData(ClipboardData(text: shareUrl));
+                              await Clipboard.setData(ClipboardData(text: url));
                               if (!dialogContext.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Copied')),
