@@ -27,7 +27,6 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
   List<Map<String, dynamic>> labels = const [];
   List<Map<String, dynamic>> phoneRegistered = const [];
   List<Map<String, dynamic>> phoneInvite = const [];
-
   bool loading = true;
   bool searching = false;
   bool syncingPhone = false;
@@ -59,8 +58,8 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
         context.services.contacts.labels(),
         context.services.api.get('/settings'),
       ]);
-      final settingResponse = values[2];
-      final settingPayload = settingResponse is ApiResponse && settingResponse.payload is Map
+      final settingResponse = values[2] as ApiEnvelope;
+      final settingPayload = settingResponse.payload is Map
           ? Map<String, dynamic>.from(settingResponse.payload as Map)
           : <String, dynamic>{};
       if (!mounted) return;
@@ -85,9 +84,9 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     }
   }
 
-  void _onSearchChanged(String value) {
+  void _onSearchChanged(String raw) {
     debounce?.cancel();
-    final query = value.trim();
+    final query = raw.trim();
     if (query.length < 2) {
       setState(() {
         results = const [];
@@ -144,7 +143,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
         children: [
           Container(
             color: context.panel,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
             child: Column(
               children: [
                 TextField(
@@ -172,7 +171,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                             : null,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 7),
                 Row(
                   children: [
                     Expanded(
@@ -203,14 +202,14 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                     ? _ErrorState(message: error!, onRetry: _load)
                     : showingSearch
                         ? _searchResults()
-                        : _contactsContent(),
+                        : _savedContent(),
           ),
         ],
       ),
     );
   }
 
-  Widget _contactsContent() {
+  Widget _savedContent() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -219,21 +218,21 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
         children: [
           if (phoneRegistered.isNotEmpty || phoneInvite.isNotEmpty) _phoneSection(),
           _labelsSection(),
-          _quickAction(
+          _actionTile(
             icon: Icons.group_add_outlined,
             title: 'Create a new Group',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const LiveGroupsScreen()),
             ),
           ),
-          _quickAction(
+          _actionTile(
             icon: Icons.person_add_alt_1_rounded,
             title: 'New Contact',
             onTap: _addByIdentity,
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: context.softPanel,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             child: Row(
               children: [
                 Expanded(
@@ -258,21 +257,19 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
               ),
             )
           else
-            for (var index = 0; index < contacts.length; index++)
-              _savedContactTile(index),
+            for (var index = 0; index < contacts.length; index++) _contactTile(index),
         ],
       ),
     );
   }
 
-  Widget _savedContactTile(int index) {
+  Widget _contactTile(int index) {
     final contact = contacts[index];
     final profile = _profile(contact);
     final name = _profileName(profile);
     final assigned = _stringSet(contact['labels']);
     final showLetter = sortByName &&
-        (index == 0 ||
-            _firstLetter(_profileName(_profile(contacts[index - 1]))) != _firstLetter(name));
+        (index == 0 || _firstLetter(_profileName(_profile(contacts[index - 1]))) != _firstLetter(name));
     return Column(
       children: [
         if (showLetter)
@@ -280,10 +277,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-              child: Text(
-                _firstLetter(name),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-              ),
+              child: Text(_firstLetter(name), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             ),
           ),
         ListTile(
@@ -317,7 +311,10 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
             onPressed: () => _assignLabels(contact),
             icon: const Icon(Icons.label_outline_rounded),
           ),
-          onTap: () => _openContactChat(contact),
+          onTap: () => _openChat(
+            contact['roomId']?.toString() ?? '',
+            name,
+          ),
         ),
         Divider(height: 1, indent: 80, color: context.border),
       ],
@@ -325,12 +322,8 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
   }
 
   Widget _searchResults() {
-    if (searching && results.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (results.isEmpty) {
-      return const Center(child: Text('No users found.'));
-    }
+    if (searching && results.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (results.isEmpty) return const Center(child: Text('No users found.'));
     return ListView.separated(
       padding: EdgeInsets.only(bottom: 116 + MediaQuery.paddingOf(context).bottom),
       itemCount: results.length,
@@ -348,13 +341,10 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
             radius: 25,
           ),
           title: Text(name, style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text(_searchSubtitle(profile)),
+          subtitle: Text(_identityLine(profile)),
           trailing: saved
               ? FilledButton(
-                  onPressed: () => _openChat(
-                    profile['roomId']?.toString() ?? '',
-                    name,
-                  ),
+                  onPressed: () => _openChat(profile['roomId']?.toString() ?? '', name),
                   child: const Text('Chat now'),
                 )
               : FilledButton.tonal(
@@ -368,11 +358,11 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
 
   Widget _phoneSection() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
           color: context.softPanel,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          alignment: Alignment.centerLeft,
           child: const Text('From Phone Contacts', style: TextStyle(fontWeight: FontWeight.w800)),
         ),
         for (final item in phoneRegistered)
@@ -383,9 +373,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
               radius: 24,
             ),
             title: Text(item['contactName']?.toString() ?? _profileName(_profile(item))),
-            subtitle: Text(
-              '@${_profile(item)['username'] ?? ''} · ${item['contactPhone'] ?? ''}',
-            ),
+            subtitle: Text('@${_profile(item)['username'] ?? ''} · ${item['contactPhone'] ?? ''}'),
             trailing: FilledButton(
               onPressed: () => _openPhoneMatch(item),
               child: const Text('Chat now'),
@@ -394,14 +382,12 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
         for (final item in phoneInvite)
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)),
-            title: Text(item['name']?.toString().trim().isNotEmpty == true
-                ? item['name'].toString()
-                : '[Unknown]'),
-            subtitle: Text(
-              item['phones'] is List ? (item['phones'] as List).join(', ') : '',
+            title: Text(
+              item['name']?.toString().trim().isNotEmpty == true ? item['name'].toString() : '[Unknown]',
             ),
+            subtitle: Text(item['phones'] is List ? (item['phones'] as List).join(', ') : ''),
             trailing: FilledButton.tonal(
-              onPressed: () => _invitePhoneContact(item),
+              onPressed: () => _invite(item),
               child: const Text('Invite'),
             ),
           ),
@@ -416,41 +402,27 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
         ListTile(
           title: const Text('Labels', style: TextStyle(fontWeight: FontWeight.w900)),
           subtitle: const Text('Work, family, or custom folders'),
-          trailing: FilledButton.tonal(
-            onPressed: _openLabels,
-            child: const Text('Manage'),
+          trailing: FilledButton.tonal(onPressed: _openLabels, child: const Text('Manage')),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: labels.isEmpty
+                ? Text('No labels yet.', style: TextStyle(fontSize: 12, color: context.muted))
+                : Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: labels.map(_labelChip).toList(growable: false),
+                  ),
           ),
         ),
-        if (labels.isEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('No labels yet.', style: TextStyle(fontSize: 12, color: context.muted)),
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 7,
-                runSpacing: 7,
-                children: labels.map(_labelChip).toList(growable: false),
-              ),
-            ),
-          ),
         Divider(height: 1, color: context.border),
       ],
     );
   }
 
-  Widget _quickAction({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
+  Widget _actionTile({required IconData icon, required String title, required VoidCallback onTap}) {
     return Column(
       children: [
         ListTile(
@@ -482,27 +454,13 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     if (syncingPhone) return;
     setState(() => syncingPhone = true);
     try {
-      final payload = await DeviceIntegrationService.syncAddressBook(
-        context.services.contacts,
-      );
+      final payload = await DeviceIntegrationService.syncAddressBook(context.services.contacts);
       if (!mounted) return;
       setState(() {
-        phoneRegistered = payload['registered'] is List
-            ? (payload['registered'] as List)
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList(growable: false)
-            : const [];
-        phoneInvite = payload['unregistered'] is List
-            ? (payload['unregistered'] as List)
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList(growable: false)
-            : const [];
+        phoneRegistered = _mapList(payload['registered']);
+        phoneInvite = _mapList(payload['unregistered']);
       });
-      _snack(
-        '${phoneRegistered.length} SyncChat contact${phoneRegistered.length == 1 ? '' : 's'} found.',
-      );
+      _snack('${phoneRegistered.length} SyncChat contact${phoneRegistered.length == 1 ? '' : 's'} found.');
     } on Object catch (failure) {
       if (mounted) _snack(_errorText(failure));
     } finally {
@@ -510,10 +468,12 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     }
   }
 
-  Future<void> _invitePhoneContact(Map<String, dynamic> item) async {
-    final name = item['name']?.toString().trim();
-    final text = 'Hi ${name?.isNotEmpty == true ? name : 'friend'}, join me on SyncChat: https://syncchat.live';
-    await Clipboard.setData(ClipboardData(text: text));
+  Future<void> _invite(Map<String, dynamic> item) async {
+    final rawName = item['name']?.toString().trim() ?? '';
+    final name = rawName.isEmpty ? 'friend' : rawName;
+    await Clipboard.setData(
+      ClipboardData(text: 'Hi $name, join me on SyncChat: https://syncchat.live'),
+    );
     if (mounted) _snack('Invite link copied to clipboard.');
   }
 
@@ -536,23 +496,13 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     }
   }
 
-  Future<void> _openContactChat(Map<String, dynamic> contact) async {
-    final profile = _profile(contact);
-    await _openChat(
-      contact['roomId']?.toString() ?? '',
-      _profileName(profile),
-    );
-  }
-
   Future<void> _openChat(String roomId, String name) async {
     if (roomId.isEmpty) return;
     try {
       final inbox = await context.services.inbox.findByRoom(roomId);
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name),
-        ),
+        MaterialPageRoute<void>(builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name)),
       );
     } on Object catch (failure) {
       if (mounted) _snack(_errorText(failure));
@@ -613,50 +563,49 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
   Future<void> _assignLabels(Map<String, dynamic> contact) async {
     final friendId = contact['friendId']?.toString() ?? _profile(contact)['userId']?.toString() ?? '';
     if (friendId.isEmpty) return;
-    final selected = _stringSet(contact['labels']);
+    final working = _stringSet(contact['labels']);
     final result = await showDialog<List<String>>(
       context: context,
-      builder: (dialogContext) {
-        final working = <String>{...selected};
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Labels'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: labels.isEmpty
-                  ? const Text('No labels yet. Create one from Labels.')
-                  : ListView(
-                      shrinkWrap: true,
-                      children: labels.map((label) {
-                        final id = label['_id']?.toString() ?? '';
-                        final tone = _hexColor(label['color']?.toString() ?? '#2563eb');
-                        return CheckboxListTile(
-                          value: working.contains(id),
-                          secondary: CircleAvatar(radius: 6, backgroundColor: tone),
-                          title: Text(label['name']?.toString() ?? 'Label'),
-                          onChanged: id.isEmpty
-                              ? null
-                              : (value) => setDialogState(() {
-                                    if (value == true) {
-                                      working.add(id);
-                                    } else {
-                                      working.remove(id);
-                                    }
-                                  }),
-                        );
-                      }).toList(growable: false),
-                    ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, working.toList(growable: false)),
-                child: const Text('Save'),
-              ),
-            ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Labels'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: labels.isEmpty
+                ? const Text('No labels yet. Create one from Labels.')
+                : ListView(
+                    shrinkWrap: true,
+                    children: labels.map((label) {
+                      final id = label['_id']?.toString() ?? '';
+                      return CheckboxListTile(
+                        value: working.contains(id),
+                        secondary: CircleAvatar(
+                          radius: 6,
+                          backgroundColor: _hexColor(label['color']?.toString() ?? '#2563eb'),
+                        ),
+                        title: Text(label['name']?.toString() ?? 'Label'),
+                        onChanged: id.isEmpty
+                            ? null
+                            : (value) => setDialogState(() {
+                                  if (value == true) {
+                                    working.add(id);
+                                  } else {
+                                    working.remove(id);
+                                  }
+                                }),
+                      );
+                    }).toList(growable: false),
+                  ),
           ),
-        );
-      },
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, working.toList(growable: false)),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
     );
     if (result == null || !mounted) return;
     try {
@@ -733,11 +682,7 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
     return SyncStandardPage(
       title: 'Labels',
       actions: [
-        IconButton(
-          tooltip: 'New label',
-          onPressed: _createLabel,
-          icon: const Icon(Icons.add_rounded),
-        ),
+        IconButton(tooltip: 'New label', onPressed: _createLabel, icon: const Icon(Icons.add_rounded)),
       ],
       child: loading
           ? const Center(child: CircularProgressIndicator())
@@ -785,11 +730,7 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Label name'),
-              ),
+              TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'Label name')),
               const SizedBox(height: 14),
               const Text('Color', style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
@@ -807,10 +748,7 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _hexColor(value),
-                        border: Border.all(
-                          color: selected ? context.ink : Colors.transparent,
-                          width: 2,
-                        ),
+                        border: Border.all(color: selected ? context.ink : Colors.transparent, width: 2),
                       ),
                     ),
                   );
@@ -835,10 +773,7 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
     controller.dispose();
     if (result == null || !mounted) return;
     try {
-      await context.services.api.post(
-        '/contacts/labels',
-        body: {'name': result.$1, 'color': result.$2},
-      );
+      await context.services.api.post('/contacts/labels', body: {'name': result.$1, 'color': result.$2});
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
@@ -871,9 +806,17 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
   }
 }
 
-Map<String, dynamic> _profile(Map<String, dynamic> contact) {
-  final value = contact['profile'];
-  return value is Map ? Map<String, dynamic>.from(value) : contact;
+List<Map<String, dynamic>> _mapList(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList(growable: false);
+}
+
+Map<String, dynamic> _profile(Map<String, dynamic> item) {
+  final value = item['profile'];
+  return value is Map ? Map<String, dynamic>.from(value) : item;
 }
 
 String _profileName(Map<String, dynamic> profile) {
@@ -884,7 +827,7 @@ String _profileName(Map<String, dynamic> profile) {
   return 'Contact';
 }
 
-String _searchSubtitle(Map<String, dynamic> profile) {
+String _identityLine(Map<String, dynamic> profile) {
   final username = profile['username']?.toString().trim() ?? '';
   final email = profile['email']?.toString().trim() ?? '';
   final phone = profile['phone']?.toString().trim() ?? '';
@@ -897,8 +840,7 @@ String _searchSubtitle(Map<String, dynamic> profile) {
 
 String _bioOrIdentity(Map<String, dynamic> profile) {
   final bio = profile['bio']?.toString().trim() ?? '';
-  if (bio.isNotEmpty) return bio;
-  return _searchSubtitle(profile);
+  return bio.isNotEmpty ? bio : _identityLine(profile);
 }
 
 String _presenceText(Map<String, dynamic> profile) {
@@ -926,7 +868,7 @@ String _firstLetter(String value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return '#';
   final letter = trimmed[0].toUpperCase();
-  return RegExp(r'[A-Z]').hasMatch(letter) ? letter : '#';
+  return RegExp(r'^[A-Z]$').hasMatch(letter) ? letter : '#';
 }
 
 Set<String> _stringSet(dynamic value) {
