@@ -267,7 +267,11 @@ class _LiveCommunityGroupSearchScreenState extends State<LiveCommunityGroupSearc
                             final checked = selected.containsKey(id);
                             return CheckboxListTile(
                               value: checked,
-                              secondary: SyncAvatar(name: _name(item), radius: 20),
+                              secondary: SyncAvatar(
+                                name: _name(item),
+                                imageUrl: item['avatar']?.toString(),
+                                radius: 20,
+                              ),
                               title: Text(_name(item)),
                               subtitle: Text([
                                 if ((item['username']?.toString() ?? '').isNotEmpty) '@${item['username']}',
