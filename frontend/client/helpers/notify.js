@@ -1,4 +1,12 @@
 export function showLocalNotification(title, body) {
+  const desktopNotify = window.SyncChatDesktop?.notify;
+  if (typeof desktopNotify === "function") {
+    desktopNotify(title, body).catch((error) => {
+      console.error(error?.message || error);
+    });
+    return;
+  }
+
   if (!("Notification" in window)) return;
 
   if (Notification.permission === "granted") {

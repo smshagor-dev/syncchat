@@ -1,5 +1,13 @@
 export default async ({ title, body, icon }) => {
   try {
+    const desktopNotify = window.SyncChatDesktop?.notify;
+    if (typeof desktopNotify === 'function') {
+      if (document.visibilityState === 'hidden') {
+        await desktopNotify(title, body);
+      }
+      return;
+    }
+
     const errData = {};
 
     if (!('Notification' in window)) {

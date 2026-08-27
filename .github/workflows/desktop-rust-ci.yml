@@ -1,0 +1,56 @@
+name: Desktop Rust CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'mobile/assets/syncchat_logo.png'
+      - '.github/workflows/desktop-rust-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'mobile/assets/syncchat_logo.png'
+      - '.github/workflows/desktop-rust-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-check:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Install desktop dependencies
+        run: npm --prefix desktop install --ignore-scripts
+
+      - name: Generate desktop icons from mobile logo
+        run: npm --prefix desktop run icons
+
+      - name: Build bundled web client
+        run: npm --prefix desktop run web:build
+
+      - name: Cargo check
+        run: cargo check --manifest-path desktop/src-tauri/Cargo.toml
