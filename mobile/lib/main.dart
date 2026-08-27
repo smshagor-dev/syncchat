@@ -9,12 +9,14 @@ import 'core/background_message_handler.dart';
 import 'core/biometric_service.dart';
 import 'core/device_integration_service.dart';
 import 'core/native_call_push.dart';
+import 'core/public_app_config.dart';
 import 'core/standard_push_registration.dart';
 import 'screens/global_call_layer.dart';
 import 'screens/live_mobile_shell.dart';
 import 'screens/mobile_social_auth_screen.dart';
 import 'theme.dart';
 import 'widgets/authenticated_account_gate.dart';
+import 'widgets/authenticated_app_lock_gate.dart';
 import 'widgets/connection_resilience_layer.dart';
 import 'widgets/notification_navigation_layer.dart';
 
@@ -60,12 +62,14 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   ThemeMode _themeMode = ThemeMode.system;
   late final AppServices _services;
   late final Future<bool> _sessionFuture;
+  late final Future<PublicAppConfig> _publicConfigFuture;
 
   @override
   void initState() {
     super.initState();
     _services = widget.services ?? AppServices.create();
     _sessionFuture = _restoreSession();
+    _publicConfigFuture = _loadPublicAppConfig();
   }
 
   @override
@@ -73,6 +77,17 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     DeviceIntegrationService.dispose();
     _services.dispose();
     super.dispose();
+  }
+
+  Future<PublicAppConfig> _loadPublicAppConfig() async {
+    try {
+      return await _services.publicAppConfig.load().timeout(
+        const Duration(seconds: 5),
+      );
+    } on Object catch (error) {
+      debugPrint('SyncChat public app config deferred: $error');
+      return PublicAppConfig.fallback;
+    }
   }
 
   void _setDarkMode(bool enabled) {
@@ -84,12 +99,15 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   Widget _authenticatedHome() {
     return AuthenticatedAccountGate(
       onLogout: _logout,
-      child: ConnectionResilienceLayer(
-        child: NotificationNavigationLayer(
-          child: GlobalCallLayer(
-            child: LiveMobileShell(
-              onThemeChanged: _setDarkMode,
-              onLogout: _logout,
+      child: AuthenticatedAppLockGate(
+        onLogout: _logout,
+        child: ConnectionResilienceLayer(
+          child: NotificationNavigationLayer(
+            child: GlobalCallLayer(
+              child: LiveMobileShell(
+                onThemeChanged: _setDarkMode,
+                onLogout: _logout,
+              ),
             ),
           ),
         ),
@@ -184,7 +202,9 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       unawaited(_services.api.ensurePersistentSession());
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
-        debugPrint('SyncChat session refresh rejected; account gate will reconcile.');
+        debugPrint(
+          'SyncChat session refresh rejected; account gate will reconcile.',
+        );
       }
     } on Object catch (error) {
       debugPrint('SyncChat background session refresh deferred: $error');
@@ -196,23 +216,111 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   Widget build(BuildContext context) {
     return AppServicesScope(
       services: _services,
-      child: MaterialApp(
-        title: 'SyncChat',
-        debugShowCheckedModeBanner: false,
-        theme: SyncChatTheme.light(),
-        darkTheme: SyncChatTheme.dark(),
-        themeMode: _themeMode,
-        home: FutureBuilder<bool>(
-          future: _sessionFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const _BootScreen();
-            }
-            if (snapshot.data == true) {
-              return _authenticatedHome();
-            }
-            return _authScreen();
-          },
+      child: FutureBuilder<PublicAppConfig>(
+        future: _publicConfigFuture,
+        builder: (context, configSnapshot) {
+          final runtimeConfig =
+              configSnapshot.data ?? PublicAppConfig.fallback;
+          final configReady =
+              configSnapshot.connectionState == ConnectionState.done;
+
+          return PublicAppConfigScope(
+            config: runtimeConfig,
+            child: MaterialApp(
+              title: runtimeConfig.appName,
+              debugShowCheckedModeBanner: false,
+              theme: SyncChatTheme.light(),
+              darkTheme: SyncChatTheme.dark(),
+              themeMode: _themeMode,
+              home: !configReady
+                  ? const _BootScreen()
+                  : runtimeConfig.maintenanceEnabled
+                      ? _MaintenanceScreen(config: runtimeConfig)
+                      : FutureBuilder<bool>(
+                          future: _sessionFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState !=
+                                ConnectionState.done) {
+                              return const _BootScreen();
+                            }
+                            if (snapshot.data == true) {
+                              return _authenticatedHome();
+                            }
+                            return _authScreen();
+                          },
+                        ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MaintenanceScreen extends StatelessWidget {
+  const _MaintenanceScreen({required this.config});
+
+  final PublicAppConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = config.maintenanceMessage.isNotEmpty
+        ? config.maintenanceMessage
+        : 'We are performing scheduled maintenance.';
+    return Scaffold(
+      backgroundColor: SyncColors.slate950,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                padding: const EdgeInsets.all(26),
+                decoration: BoxDecoration(
+                  color: SyncColors.slate900,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: SyncColors.slate800),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.construction_rounded,
+                      color: SyncColors.sky,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      config.appName,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: SyncColors.slate300,
+                        fontSize: 15,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Please try again later.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: SyncColors.slate500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -237,9 +345,9 @@ class _BootScreen extends StatelessWidget {
               filterQuality: FilterQuality.high,
             ),
             const SizedBox(height: 12),
-            const Text(
-              'SyncChat',
-              style: TextStyle(
+            Text(
+              context.publicAppConfig.appName,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
