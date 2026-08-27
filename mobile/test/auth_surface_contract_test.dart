@@ -27,13 +27,23 @@ void main() {
     expect(social, contains('verifySocialTwoFactor'));
 
     expect(repository, contains("'/users/device-link/info'"));
+    expect(repository, contains("'token': token!.trim()"));
     expect(repository, contains("'shortCode': shortCode!.trim()"));
-    expect(deviceLink, contains('Device link short code'));
+
+    expect(deviceLink, contains('MobileScanner('));
+    expect(deviceLink, contains('QR token or link'));
+    expect(deviceLink, contains('Continue with QR token'));
+    expect(deviceLink, contains('6-digit device link code'));
     expect(deviceLink, contains('Continue with short code'));
     expect(
       deviceLink,
+      contains('deviceLinkInfo(token: nextToken)'),
+      reason: 'Web supports scanning or pasting the QR device-link token.',
+    );
+    expect(
+      deviceLink,
       contains('deviceLinkInfo(shortCode: code)'),
-      reason: 'Web supports linking a device by QR or short code.',
+      reason: 'Web supports linking a device with a 6-digit short code.',
     );
   });
 }
