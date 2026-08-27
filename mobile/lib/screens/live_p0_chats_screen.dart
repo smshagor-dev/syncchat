@@ -7,7 +7,9 @@ import '../core/app_scope.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'live_calls_screen.dart';
 import 'live_chat_room_screen.dart';
+import 'live_p0_contacts_screen.dart';
 
 class LiveP0ChatsScreen extends StatefulWidget {
   const LiveP0ChatsScreen({super.key, required this.onMenu});
@@ -20,6 +22,7 @@ class LiveP0ChatsScreen extends StatefulWidget {
 
 class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
   final search = TextEditingController();
+  final searchFocus = FocusNode();
   List<Map<String, dynamic>> inboxes = const [];
   Map<String, dynamic>? currentUser;
   StreamSubscription<RealtimeConnectionState>? connectionSubscription;
@@ -47,6 +50,7 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     connectionSubscription?.cancel();
     apiFallbackTimer?.cancel();
     search.dispose();
+    searchFocus.dispose();
     super.dispose();
   }
 
@@ -169,16 +173,15 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     final rows = inboxes
         .where((inbox) {
           final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
-          final pinned = _hasUser(inbox['pinnedBy'], currentUserId);
-          final listed = _hasUser(inbox['listedBy'], currentUserId);
+          final favourite = _hasUser(inbox['favouriteBy'], currentUserId);
           final markedUnread = _hasUser(inbox['markUnreadBy'], currentUserId);
           final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
+          final isGroup = inbox['roomType']?.toString() == 'group';
 
           final matchesFilter = switch (filter) {
             'unread' => !hidden && (markedUnread || unreadCount > 0),
-            'pinned' => !hidden && pinned,
-            'list' => !hidden && listed,
-            'hidden' => hidden,
+            'favourite' => !hidden && favourite,
+            'group' => !hidden && isGroup,
             _ => !hidden,
           };
           if (!matchesFilter) return false;
@@ -197,65 +200,227 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     return rows;
   }
 
+  int _countFilter(String target) {
+    return inboxes.where((inbox) {
+      final hidden = _hasUser(inbox['hiddenBy'], currentUserId);
+      if (hidden) return false;
+      if (target == 'unread') {
+        final markedUnread = _hasUser(inbox['markUnreadBy'], currentUserId);
+        final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
+        return markedUnread || unreadCount > 0;
+      }
+      if (target == 'favourite') {
+        return _hasUser(inbox['favouriteBy'], currentUserId);
+      }
+      if (target == 'group') {
+        return inbox['roomType']?.toString() == 'group';
+      }
+      return true;
+    }).length;
+  }
+
+  Future<void> _openUtility(Widget screen) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => screen),
+    );
+    if (mounted) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
-    const filters = <(String, String)>[
+    final filters = <(String, String)>[
       ('all', 'All'),
-      ('unread', 'Unread'),
-      ('pinned', 'Pinned'),
-      ('list', 'List'),
-      ('hidden', 'Hidden'),
+      ('unread', 'Unread (${_countFilter('unread')})'),
+      ('favourite', 'Favourites (${_countFilter('favourite')})'),
+      ('group', 'Groups (${_countFilter('group')})'),
     ];
 
-    return SyncStandardPage(
-      title: 'Chats',
-      actions: [
-        IconButton(
-          tooltip: 'Menu',
-          onPressed: widget.onMenu,
-          icon: const Icon(Icons.menu_rounded),
-        ),
-        IconButton(
-          tooltip: 'Mark all read',
-          onPressed: _markAllRead,
-          icon: const Icon(Icons.done_all_rounded),
-        ),
-        IconButton(
-          tooltip: 'Refresh',
-          onPressed: _load,
-          icon: const Icon(Icons.refresh_rounded),
-        ),
-      ],
-      child: Column(
-        children: [
-          Container(
-            color: context.panel,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
-            child: Column(
-              children: [
-                TextField(
-                  controller: search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Search chats…',
-                    prefixIcon: Icon(Icons.search_rounded),
+    return Scaffold(
+      backgroundColor: context.page,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              height: 64,
+              padding: const EdgeInsets.fromLTRB(8, 0, 6, 0),
+              color: context.panel,
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Menu',
+                    onPressed: widget.onMenu,
+                    icon: const Icon(Icons.menu_rounded, size: 27),
                   ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 34,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: filters
-                        .map(_buildFilterChip)
-                        .toList(growable: false),
+                  const SizedBox(width: 2),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: Image.asset(
+                      'assets/syncchat_logo.png',
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'SyncChat',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -.3,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Search chats',
+                    onPressed: () => searchFocus.requestFocus(),
+                    icon: const Icon(Icons.search_rounded, size: 26),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_vert_rounded, size: 26),
+                    onSelected: (value) {
+                      if (value == 'mark-read') {
+                        unawaited(_markAllRead());
+                      } else if (value == 'new-chat') {
+                        unawaited(_openUtility(const LiveP0ContactsScreen()));
+                      } else if (value == 'refresh') {
+                        unawaited(_load());
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'new-chat',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('New chat'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'mark-read',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.done_all_rounded),
+                          title: Text('Mark all read'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'refresh',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.refresh_rounded),
+                          title: Text('Refresh'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+            Divider(height: 1, color: context.border),
+            Container(
+              color: context.panel,
+              padding: const EdgeInsets.fromLTRB(12, 10, 6, 9),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 42,
+                      child: TextField(
+                        controller: search,
+                        focusNode: searchFocus,
+                        onChanged: (_) => setState(() {}),
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: 'Search chats...',
+                          hintStyle: TextStyle(
+                            color: context.muted,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 21,
+                            color: context.muted,
+                          ),
+                          suffixIcon: search.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Clear search',
+                                  onPressed: () {
+                                    search.clear();
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.close_rounded, size: 18),
+                                ),
+                          filled: true,
+                          fillColor: context.softPanel,
+                          contentPadding: EdgeInsets.zero,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: BorderSide(color: context.border),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: BorderSide(color: context.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: const BorderSide(
+                              color: SyncColors.sky,
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  IconButton(
+                    tooltip: 'Calls',
+                    onPressed: () => _openUtility(const LiveCallsScreen()),
+                    icon: const Icon(Icons.video_call_outlined, size: 25),
+                  ),
+                  IconButton(
+                    tooltip: 'New chat',
+                    onPressed: () => _openUtility(const LiveP0ContactsScreen()),
+                    icon: const Icon(Icons.edit_outlined, size: 22),
+                  ),
+                  IconButton(
+                    tooltip: 'Refresh',
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded, size: 23),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              color: context.panel,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 9),
+              child: SizedBox(
+                height: 34,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: filters
+                      .map(_buildFilterChip)
+                      .toList(growable: false),
+                ),
+              ),
+            ),
+            Divider(height: 1, color: context.border),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
@@ -264,11 +429,31 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     final active = filter == entry.$1;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(entry.$2),
-        selected: active,
-        showCheckmark: false,
-        onSelected: (_) => setState(() => filter = entry.$1),
+      child: Material(
+        color: active ? SyncColors.sky600 : context.softPanel,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => setState(() => filter = entry.$1),
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: active ? SyncColors.sky600 : context.border,
+              ),
+            ),
+            child: Text(
+              entry.$2,
+              style: TextStyle(
+                color: active ? Colors.white : context.muted,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -285,20 +470,14 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: 120),
-              children: [
+              children: const [
                 Icon(
-                  filter == 'hidden'
-                      ? Icons.visibility_off_outlined
-                      : Icons.chat_bubble_outline_rounded,
+                  Icons.chat_bubble_outline_rounded,
                   size: 50,
                   color: SyncColors.sky,
                 ),
-                const SizedBox(height: 10),
-                Center(
-                  child: Text(
-                    filter == 'hidden' ? 'No hidden chats.' : 'No chats found.',
-                  ),
-                ),
+                SizedBox(height: 10),
+                Center(child: Text('No chats found.')),
               ],
             )
           : ListView.separated(
@@ -939,10 +1118,12 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
     if (inbox['roomType']?.toString() == 'group') {
       final channel = inbox['channel'];
       final group = inbox['group'];
-      if (channel is Map && channel['name'] != null)
+      if (channel is Map && channel['name'] != null) {
         return channel['name'].toString();
-      if (group is Map && group['name'] != null)
+      }
+      if (group is Map && group['name'] != null) {
         return group['name'].toString();
+      }
       return 'Group';
     }
     final owners = inbox['owners'];
