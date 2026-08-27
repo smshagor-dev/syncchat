@@ -49,24 +49,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Configure production signing when available
+      - name: Configure required production signing
         env:
           KEYSTORE_B64: ${{ secrets.SYNCCHAT_ANDROID_KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.SYNCCHAT_ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.SYNCCHAT_ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.SYNCCHAT_ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
-            KEYSTORE_PATH="$RUNNER_TEMP/syncchat-release.jks"
-            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
-            echo "SYNCCHAT_ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-            echo "SYNCCHAT_ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "SYNCCHAT_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "SYNCCHAT_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "SYNCCHAT_RELEASE_SIGNED=true" >> "$GITHUB_ENV"
-          else
-            echo "SYNCCHAT_RELEASE_SIGNED=false" >> "$GITHUB_ENV"
-          fi
+          test -n "$KEYSTORE_B64" || { echo "Missing SYNCCHAT_ANDROID_KEYSTORE_B64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "Missing SYNCCHAT_ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Missing SYNCCHAT_ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing SYNCCHAT_ANDROID_KEY_PASSWORD"; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/syncchat-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "SYNCCHAT_ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "SYNCCHAT_ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "SYNCCHAT_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "SYNCCHAT_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "SYNCCHAT_RELEASE_SIGNED=true" >> "$GITHUB_ENV"
 
       - name: Build Syncchat release APK
         run: >-
@@ -76,6 +78,14 @@ jobs:
           --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
           --dart-define=SYNCCHAT_APP_VERSION=0.1.0
 
+      - name: Verify APK signature
+        run: |
+          APK="$(find build/app/outputs -type f -name '*release*.apk' | head -n 1)"
+          test -n "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
       - name: Package Syncchat release artifact
         run: |
           mkdir -p build/release
@@ -83,7 +93,7 @@ jobs:
           test -n "$APK"
           cp "$APK" build/release/Syncchat-release.apk
           sha256sum build/release/Syncchat-release.apk > build/release/SHA256SUMS.txt
-          printf 'signed=%s\n' "$SYNCCHAT_RELEASE_SIGNED" > build/release/BUILD-INFO.txt
+          printf 'signed=true\n' > build/release/BUILD-INFO.txt
           printf 'abi=arm64-v8a\n' >> build/release/BUILD-INFO.txt
           printf 'api=https://api.syncchat.live/api\n' >> build/release/BUILD-INFO.txt
           printf 'socket=https://api.syncchat.live\n' >> build/release/BUILD-INFO.txt
