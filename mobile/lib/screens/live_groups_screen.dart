@@ -197,7 +197,11 @@ class _LiveGroupsScreenState extends State<LiveGroupsScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-        leading: SyncAvatar(name: name, radius: 23),
+        leading: SyncAvatar(
+          name: name,
+          imageUrl: group['avatar']?.toString(),
+          radius: 23,
+        ),
         title: Text(
           name,
           maxLines: 1,
@@ -524,7 +528,11 @@ class _LiveCreateGroupScreenState extends State<LiveCreateGroupScreen> {
           else
             ...visibleCandidates.take(30).map((person) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: SyncAvatar(name: _personName(person), radius: 20),
+                  leading: SyncAvatar(
+                    name: _personName(person),
+                    imageUrl: person['avatar']?.toString(),
+                    radius: 20,
+                  ),
                   title: Text(_personName(person), style: const TextStyle(fontWeight: FontWeight.w800)),
                   subtitle: Text(_personSubtitle(person)),
                   trailing: IconButton(
@@ -1006,7 +1014,11 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
                               final id = person['userId']?.toString() ?? '';
                               return CheckboxListTile(
                                 value: selected.contains(id),
-                                secondary: SyncAvatar(name: _personName(person), radius: 19),
+                                secondary: SyncAvatar(
+                                  name: _personName(person),
+                                  imageUrl: person['avatar']?.toString(),
+                                  radius: 19,
+                                ),
                                 title: Text(_personName(person), style: const TextStyle(fontWeight: FontWeight.w800)),
                                 subtitle: Text(_personSubtitle(person)),
                                 onChanged: (value) => setSheetState(() {
@@ -1228,7 +1240,11 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
                   borderRadius: BorderRadius.circular(32),
                   child: Stack(
                     children: [
-                      SyncAvatar(name: name, radius: 47),
+                      SyncAvatar(
+                        name: name,
+                        imageUrl: source['avatar']?.toString(),
+                        radius: 47,
+                      ),
                       if (admin)
                         const Positioned(
                           right: 0,
@@ -1341,7 +1357,11 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
               final id = person['userId']?.toString() ?? '';
               final targetAdmin = _ids(source['adminsId']).contains(id) || source['adminId']?.toString() == id;
               return ListTile(
-                leading: SyncAvatar(name: _personName(person), radius: 20),
+                leading: SyncAvatar(
+                  name: _personName(person),
+                  imageUrl: person['avatar']?.toString(),
+                  radius: 20,
+                ),
                 title: Text(_personName(person), style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text(targetAdmin ? 'Admin' : _personSubtitle(person)),
                 trailing: admin && id != userId ? const Icon(Icons.more_vert_rounded) : null,
@@ -1351,7 +1371,11 @@ class _LiveGroupInfoScreenState extends State<LiveGroupInfoScreen> {
           ]),
           if (admin && pending.isNotEmpty)
             _section(context, 'Pending join requests', pending.map((person) => ListTile(
-                  leading: SyncAvatar(name: _personName(person), radius: 20),
+                  leading: SyncAvatar(
+                    name: _personName(person),
+                    imageUrl: person['avatar']?.toString(),
+                    radius: 20,
+                  ),
                   title: Text(_personName(person), style: const TextStyle(fontWeight: FontWeight.w800)),
                   subtitle: Text(_personSubtitle(person)),
                   trailing: Wrap(
