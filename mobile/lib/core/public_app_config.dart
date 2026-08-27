@@ -92,9 +92,7 @@ class PublicAppConfig {
         limits['avatarMb'],
         fallback.avatarUploadLimitMb,
       ),
-      allowedUploadTypes: List.unmodifiable(
-        allowed.isEmpty ? fallback.allowedUploadTypes : allowed,
-      ),
+      allowedUploadTypes: List.unmodifiable(allowed),
       defaultMediaQuality: quality == 'hd' ? 'hd' : 'standard',
       hdEnabled: media['hdEnabled'] is bool
           ? media['hdEnabled'] == true
