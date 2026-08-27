@@ -112,6 +112,35 @@ class SyncChatConfig {
     );
   }
 
+  String resolveMediaUrl(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return '';
+
+    final parsed = Uri.tryParse(raw);
+    if (parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
+      final localHost = parsed.host == 'localhost' ||
+          parsed.host == '127.0.0.1' ||
+          parsed.host == '::1';
+      if (!localHost || !parsed.path.startsWith('/uploads/')) return raw;
+      return _socketOrigin().replace(
+        path: parsed.path,
+        query: parsed.hasQuery ? parsed.query : null,
+        fragment: parsed.hasFragment ? parsed.fragment : null,
+      ).toString();
+    }
+
+    if (raw.startsWith('/uploads/')) {
+      return _socketOrigin().replace(path: raw).toString();
+    }
+
+    return raw;
+  }
+
+  Uri _socketOrigin() {
+    final base = _validatedBase(socketUrl, name: 'SYNCCHAT_SOCKET_URL');
+    return base.replace(path: '', query: null, fragment: null);
+  }
+
   String get validatedSocketUrl =>
       _validatedBase(socketUrl, name: 'SYNCCHAT_SOCKET_URL').toString();
 
