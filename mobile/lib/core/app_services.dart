@@ -11,6 +11,7 @@ import 'e2ee_service.dart';
 import 'feature_repositories.dart';
 import 'group_repository.dart';
 import 'native_call_push.dart';
+import 'public_app_config.dart';
 import 'realtime_client.dart';
 import 'session_store.dart';
 
@@ -19,6 +20,7 @@ class AppServices {
     required this.config,
     required this.sessionStore,
     required this.api,
+    required this.publicAppConfig,
     required this.auth,
     required this.realtime,
     required this.e2ee,
@@ -73,6 +75,7 @@ class AppServices {
       config: resolvedConfig,
       sessionStore: resolvedSessionStore,
       api: api,
+      publicAppConfig: PublicAppConfigRepository(api),
       auth: auth,
       realtime: realtime,
       e2ee: e2ee,
@@ -99,6 +102,7 @@ class AppServices {
   final SyncChatConfig config;
   final SessionStore sessionStore;
   final ApiClient api;
+  final PublicAppConfigRepository publicAppConfig;
   final AuthRepository auth;
   final RealtimeClient realtime;
   final E2eeService e2ee;
