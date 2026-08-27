@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'core/app_scope.dart';
 import 'theme.dart';
+import 'widgets/runtime_brand.dart';
+
+const _supportDisplayName = 'SyncChat Support';
 
 class SyncAvatar extends StatelessWidget {
   const SyncAvatar({
@@ -25,6 +28,7 @@ class SyncAvatar extends StatelessWidget {
         .take(2)
         .map((part) => part.trim()[0].toUpperCase())
         .join();
+    final supportIdentity = name.trim() == _supportDisplayName;
     final resolvedUrl = context.services.config.resolveMediaUrl(imageUrl);
 
     Widget fallback() => CircleAvatar(
@@ -40,22 +44,29 @@ class SyncAvatar extends StatelessWidget {
           ),
         );
 
-    final avatar = resolvedUrl.isEmpty
-        ? fallback()
-        : ClipOval(
-            child: SizedBox.square(
-              dimension: radius * 2,
-              child: Image.network(
-                resolvedUrl,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                filterQuality: FilterQuality.medium,
-                loadingBuilder: (context, child, progress) =>
-                    progress == null ? child : fallback(),
-                errorBuilder: (_, __, ___) => fallback(),
-              ),
+    final avatar = supportIdentity
+        ? ClipOval(
+            child: RuntimeBrandLogo(
+              size: radius * 2,
+              borderRadius: radius * 2,
             ),
-          );
+          )
+        : resolvedUrl.isEmpty
+            ? fallback()
+            : ClipOval(
+                child: SizedBox.square(
+                  dimension: radius * 2,
+                  child: Image.network(
+                    resolvedUrl,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.medium,
+                    loadingBuilder: (context, child, progress) =>
+                        progress == null ? child : fallback(),
+                    errorBuilder: (_, __, ___) => fallback(),
+                  ),
+                ),
+              );
 
     return Stack(
       clipBehavior: Clip.none,
