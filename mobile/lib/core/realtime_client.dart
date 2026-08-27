@@ -34,6 +34,10 @@ class RealtimeClient {
     sync: true,
   );
   final Map<String, Set<void Function(dynamic)>> _listeners = {};
+  final Map<
+    String,
+    Map<void Function(dynamic), void Function(dynamic)>
+  > _wrappedListeners = {};
 
   io.Socket? _socket;
   RealtimeConnectionState _state = RealtimeConnectionState.disconnected;
@@ -74,7 +78,7 @@ class RealtimeClient {
 
     for (final entry in _listeners.entries) {
       for (final handler in entry.value) {
-        socket.on(entry.key, handler);
+        socket.on(entry.key, _wrappedHandler(entry.key, handler));
       }
     }
 
@@ -104,14 +108,18 @@ class RealtimeClient {
   }
 
   void on(String event, void Function(dynamic data) handler) {
-    final handlers = _listeners.putIfAbsent(event, () => <void Function(dynamic)>{});
+    final handlers = _listeners.putIfAbsent(
+      event,
+      () => <void Function(dynamic)>{},
+    );
     if (!handlers.add(handler)) return;
-    _socket?.on(event, handler);
+    _socket?.on(event, _wrappedHandler(event, handler));
   }
 
   void off(String event, [void Function(dynamic data)? handler]) {
     if (handler == null) {
       _listeners.remove(event);
+      _wrappedListeners.remove(event);
       _socket?.off(event);
       return;
     }
@@ -119,7 +127,12 @@ class RealtimeClient {
     final handlers = _listeners[event];
     handlers?.remove(handler);
     if (handlers?.isEmpty == true) _listeners.remove(event);
-    _socket?.off(event, handler);
+
+    final wrapped = _wrappedListeners[event]?.remove(handler);
+    if (_wrappedListeners[event]?.isEmpty == true) {
+      _wrappedListeners.remove(event);
+    }
+    _socket?.off(event, wrapped ?? handler);
   }
 
   void emit(String event, [dynamic payload]) {
@@ -155,7 +168,9 @@ class RealtimeClient {
       payload,
       ack: (data) {
         timer?.cancel();
-        if (!completer.isCompleted) completer.complete(data);
+        if (!completer.isCompleted) {
+          completer.complete(_normalizeMediaUrls(data));
+        }
       },
     );
 
@@ -171,8 +186,36 @@ class RealtimeClient {
     _socket?.dispose();
     _socket = null;
     _listeners.clear();
+    _wrappedListeners.clear();
     _setState(RealtimeConnectionState.disconnected);
     await _stateController.close();
+  }
+
+  void Function(dynamic) _wrappedHandler(
+    String event,
+    void Function(dynamic) handler,
+  ) {
+    final eventHandlers = _wrappedListeners.putIfAbsent(
+      event,
+      () => <void Function(dynamic), void Function(dynamic)>{},
+    );
+    return eventHandlers.putIfAbsent(
+      handler,
+      () => (data) => handler(_normalizeMediaUrls(data)),
+    );
+  }
+
+  dynamic _normalizeMediaUrls(dynamic value) {
+    if (value is String) return _config.resolveMediaUrl(value);
+    if (value is List) {
+      return value.map(_normalizeMediaUrls).toList(growable: false);
+    }
+    if (value is Map) {
+      return value.map(
+        (key, item) => MapEntry(key.toString(), _normalizeMediaUrls(item)),
+      );
+    }
+    return value;
   }
 
   String? _socketErrorCode(dynamic error) {
