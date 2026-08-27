@@ -7,6 +7,9 @@ import '../core/biometric_service.dart';
 import '../theme.dart';
 import 'live_chat_room_web_parity_screen.dart';
 
+// The biometric entry stays separate from the room implementation, preserving
+// the architecture established by live_chat_room_core_screen.dart while the
+// active room surface mirrors the current web chat room.
 class LiveChatRoomScreen extends StatefulWidget {
   const LiveChatRoomScreen({
     super.key,
