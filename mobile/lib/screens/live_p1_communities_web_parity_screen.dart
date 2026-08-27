@@ -273,6 +273,7 @@ class _LiveP1CommunitiesScreenState extends State<LiveP1CommunitiesScreen> {
               final content = _map(chat['content']);
               final sender = (content['senderName'] ?? chat['senderName'] ?? '').toString();
               final text = content['text']?.toString() ?? '';
+              final relativeTime = _relativeTime(content['time']);
               final unread = chat['unreadRooms'] == true;
               final unreadCount = (chat['unreadMessage'] as num?)?.toInt() ?? 0;
               return ListTile(
@@ -288,16 +289,32 @@ class _LiveP1CommunitiesScreenState extends State<LiveP1CommunitiesScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: unread
-                    ? CircleAvatar(
+                trailing: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (relativeTime.isNotEmpty)
+                      Text(
+                        relativeTime,
+                        style: TextStyle(fontSize: 11, color: context.muted),
+                      ),
+                    if (unread) ...[
+                      if (relativeTime.isNotEmpty) const SizedBox(height: 4),
+                      CircleAvatar(
                         radius: 10,
                         backgroundColor: SyncColors.sky,
                         child: Text(
                           '${unreadCount > 0 ? unreadCount : 1}',
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      )
-                    : const Icon(Icons.chevron_right_rounded),
+                      ),
+                    ],
+                  ],
+                ),
                 onTap: () => _openCommunityChat(chat),
               );
             }),
@@ -754,6 +771,25 @@ List<Map<String, dynamic>> _list(dynamic value) {
 
 Map<String, dynamic> _map(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+
+String _relativeTime(dynamic value) {
+  final raw = value?.toString().trim() ?? '';
+  final parsed = raw.isEmpty ? null : DateTime.tryParse(raw);
+  if (parsed == null) return '';
+
+  final delta = DateTime.now().difference(parsed.toLocal());
+  if (delta.isNegative || delta.inSeconds < 45) return 'a few seconds ago';
+  if (delta.inMinutes < 2) return 'a minute ago';
+  if (delta.inMinutes < 60) return '${delta.inMinutes} minutes ago';
+  if (delta.inHours < 2) return 'an hour ago';
+  if (delta.inHours < 24) return '${delta.inHours} hours ago';
+  if (delta.inDays < 2) return 'a day ago';
+  if (delta.inDays < 30) return '${delta.inDays} days ago';
+  if (delta.inDays < 60) return 'a month ago';
+  if (delta.inDays < 365) return '${delta.inDays ~/ 30} months ago';
+  if (delta.inDays < 730) return 'a year ago';
+  return '${delta.inDays ~/ 365} years ago';
+}
 
 String _imageMime(String filename) {
   final lower = filename.toLowerCase();
