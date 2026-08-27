@@ -19,6 +19,11 @@ void main() {
       'LiveChatRoomScreen',
       'SyncAvatar(',
       'online: online',
+      "profile['canSeeOnline'] != false",
+      'a few seconds ago',
+      'a minute ago',
+      'an hour ago',
+      'a day ago',
     ]) {
       expect(source, contains(contract));
     }
@@ -40,6 +45,7 @@ void main() {
       "label: const Text('Audio')",
       "label: const Text('Video')",
       'ensureCallPermissions',
+      "profile['canSeeOnline'] != false && profile['online'] == true",
     ]) {
       expect(source, contains(contract));
     }
