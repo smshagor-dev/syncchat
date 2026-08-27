@@ -41,8 +41,8 @@ fn show_main(app: &AppHandle) {
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
-    // Single-instance must be registered before the other desktop plugins so
-    // protocol/deep-link launches are forwarded into the running app.
+    // Register single-instance first so protocol/deep-link launches are
+    // forwarded into the already-running desktop process.
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(
@@ -53,10 +53,7 @@ pub fn run() {
     builder = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_store::Builder::new().build());
+        .plugin(tauri_plugin_opener::init());
 
     #[cfg(desktop)]
     {
