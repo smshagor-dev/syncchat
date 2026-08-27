@@ -99,7 +99,7 @@ class AppServices {
     );
   }
 
-  final SyncChatConfig config;
+  SyncChatConfig config;
   final SessionStore sessionStore;
   final ApiClient api;
   final PublicAppConfigRepository publicAppConfig;
@@ -119,6 +119,13 @@ class AppServices {
   final ProfileRepository profile;
   final SettingsRepository settings;
   final AccountStorageRepository accountStorage;
+
+  void applyPublicAppConfig(PublicAppConfig runtime) {
+    config = config.copyWith(
+      chatUploadLimitMb: runtime.chatUploadLimitMb,
+      avatarUploadLimitMb: runtime.avatarUploadLimitMb,
+    );
+  }
 
   Future<void> dispose() async {
     await nativeCallPush.dispose();
