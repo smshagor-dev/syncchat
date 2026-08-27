@@ -1,0 +1,49 @@
+name: Temporary Chat Room Parity Patch
+
+on:
+  push:
+    branches:
+      - fix/mobile-chatroom-exact-web-parity
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(chatroom): apply compile patch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/mobile-chatroom-exact-web-parity
+          fetch-depth: 0
+      - name: Patch Dart source
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('mobile/lib/screens/live_chat_room_web_parity_screen.dart')
+          text = path.read_text()
+          text = text.replace(
+              "child: SizedBox(\n                    constraints: const BoxConstraints(minHeight: 44),\n                    child: TextField(",
+              "child: ConstrainedBox(\n                    constraints: const BoxConstraints(minHeight: 44),\n                    child: TextField(",
+          )
+          text = text.replace(
+              "child: Container(\n        minHeight: 44,\n        padding: const EdgeInsets.symmetric(horizontal: 12),",
+              "child: Container(\n        constraints: const BoxConstraints(minHeight: 44),\n        padding: const EdgeInsets.symmetric(horizontal: 12),",
+          )
+          text = text.replace(
+              "case 'info':\n        case 'security':\n          await _openRoomInfo();\n          break;",
+              "case 'info':\n          await _openRoomInfo();\n          break;\n        case 'security':\n          await _showE2ee();\n          break;",
+          )
+          path.write_text(text)
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git add mobile/lib/screens/live_chat_room_web_parity_screen.dart
+          git commit -m "chore(chatroom): apply compile patch"
+          git push origin HEAD:fix/mobile-chatroom-exact-web-parity
