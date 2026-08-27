@@ -174,7 +174,8 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
     if (busy || stage != _LinkStage.scan) return;
     final code = shortCodeInput.text.trim();
     if (code.length != 6) {
-      setState(() => error = 'Enter the 6-digit short code from your signed-in device.');
+      setState(() => error =
+          'Enter the 6-digit short code from your signed-in device.');
       return;
     }
 
@@ -509,7 +510,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
           controller: shortCodeInput,
           enabled: !busy,
           keyboardType: TextInputType.number,
-          inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           maxLength: 6,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _lookupShortCode(),
@@ -636,7 +637,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
           TextField(
             controller: emailCode,
             keyboardType: TextInputType.number,
-            inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: 6,
             decoration: const InputDecoration(
               labelText: 'Email verification code',
@@ -648,7 +649,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
           TextField(
             controller: supportCode,
             keyboardType: TextInputType.number,
-            inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: 6,
             decoration: const InputDecoration(
               labelText: 'SyncChat Support chat code',
