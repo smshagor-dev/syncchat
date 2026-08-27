@@ -85,6 +85,27 @@ class SyncChatConfig {
   final String firebaseIosBundleId;
   final String appVersion;
 
+  SyncChatConfig copyWith({
+    int? chatUploadLimitMb,
+    int? avatarUploadLimitMb,
+  }) {
+    return SyncChatConfig(
+      apiBaseUrl: apiBaseUrl,
+      socketUrl: socketUrl,
+      socketPath: socketPath,
+      chatUploadLimitMb: chatUploadLimitMb ?? this.chatUploadLimitMb,
+      avatarUploadLimitMb: avatarUploadLimitMb ?? this.avatarUploadLimitMb,
+      firebaseApiKey: firebaseApiKey,
+      firebaseAppId: firebaseAppId,
+      firebaseMessagingSenderId: firebaseMessagingSenderId,
+      firebaseProjectId: firebaseProjectId,
+      firebaseIosApiKey: firebaseIosApiKey,
+      firebaseIosAppId: firebaseIosAppId,
+      firebaseIosBundleId: firebaseIosBundleId,
+      appVersion: appVersion,
+    );
+  }
+
   bool get hasAndroidFirebaseConfig =>
       firebaseApiKey.trim().isNotEmpty &&
       firebaseAppId.trim().isNotEmpty &&
