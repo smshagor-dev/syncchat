@@ -5,25 +5,19 @@ import 'package:flutter/material.dart';
 import '../core/app_scope.dart';
 import '../core/device_integration_service.dart';
 import '../core/permission_manager.dart';
+import '../core/public_app_config.dart';
 import '../theme.dart';
+import '../widgets/runtime_brand.dart';
 import 'live_calls_screen.dart';
 import 'live_channels_screen.dart';
-import 'live_chat_tools_screen.dart';
 import 'live_collection_screens.dart';
-import 'live_community_group_search_screen.dart';
-import 'live_device_contacts_screen.dart';
 import 'live_full_profile_screen.dart';
-import 'live_groups_screen.dart';
-import 'live_message_requests_screen.dart';
+import 'live_help_screens.dart';
 import 'live_p0_chats_screen.dart';
 import 'live_p0_contacts_screen.dart';
 import 'live_p0_status_screen.dart';
 import 'live_p1_communities_screen.dart';
-import 'live_p1_rich_attachments_screen.dart';
-import 'live_p1_room_admin_screen.dart';
-import 'live_p1_room_security_screen.dart';
 import 'live_settings_hub_screen.dart';
-import 'live_starred_messages_screen.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
 
@@ -154,27 +148,19 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
 
     final Widget screen = switch (target) {
       'contacts' => const LiveP0ContactsScreen(),
-      'device-contacts' => const LiveDeviceContactsScreen(),
-      'groups' => const LiveGroupsScreen(),
-      'community-group' => const LiveCommunityGroupSearchScreen(),
-      'room-admin' => const LiveRoomAdminHubScreen(),
-      'room-security' => const LiveRoomSecurityHubScreen(),
-      'rich-attachments' => const LiveRichAttachmentsHubScreen(),
-      'requests' => const LiveMessageRequestsScreen(),
-      'chat-tools' => const LiveChatToolsScreen(),
       'archive' => const LiveInboxCollectionScreen(
           kind: LiveInboxCollectionKind.archive,
         ),
       'lists' => const LiveInboxCollectionScreen(
           kind: LiveInboxCollectionKind.lists,
         ),
-      'starred' => const LiveStarredMessagesScreen(),
       'media' => const LiveMediaScreen(),
+      'feedback' => const LiveFeedbackScreen(),
       'settings' => LiveSettingsHubScreen(
           onThemeChanged: widget.onThemeChanged,
           onLogout: widget.onLogout,
         ),
-      'profile' || 'edit-profile' => const LiveFullProfileScreen(),
+      'profile' => const LiveFullProfileScreen(),
       _ => const LiveP0ContactsScreen(),
     };
 
@@ -331,38 +317,34 @@ class _FullPageDrawer extends StatelessWidget {
 
   final ValueChanged<String> onSelected;
 
+  // Keep the user's requested full-page drawer presentation, but mirror the
+  // actual Web sidebar information architecture. Feature-specific engineering
+  // tools remain reachable from their normal contextual surfaces, not as
+  // App-only primary navigation entries.
   static const primary = [
     ('chats', 'Chats', Icons.chat_bubble_outline_rounded),
-    ('requests', 'Message requests', Icons.mark_unread_chat_alt_outlined),
-    ('chat-tools', 'Chat tools', Icons.tune_rounded),
-    ('rich-attachments', 'Rich attachments', Icons.attach_file_rounded),
-    ('room-security', 'Friend & room security', Icons.shield_outlined),
     ('calls', 'Calls', Icons.call_outlined),
     ('status', 'Status', Icons.donut_large_rounded),
     ('contacts', 'Contacts', Icons.group_outlined),
-    ('device-contacts', 'People on SyncChat', Icons.contacts_rounded),
-    ('groups', 'Groups', Icons.groups_rounded),
-    ('community-group', 'New community group', Icons.group_add_outlined),
-    ('room-admin', 'Group & channel admin', Icons.admin_panel_settings_outlined),
     ('communities', 'Communities', Icons.groups_2_outlined),
     ('channels', 'Channels', Icons.podcasts_rounded),
-  ];
-
-  static const library = [
     ('archive', 'Archive', Icons.archive_outlined),
     ('lists', 'Lists', Icons.format_list_bulleted_rounded),
-    ('starred', 'Starred messages', Icons.star_outline_rounded),
+  ];
+
+  static const more = [
     ('media', 'Media', Icons.image_outlined),
+    ('feedback', 'Feedback', Icons.feedback_outlined),
   ];
 
   static const account = [
-    ('profile', 'Profile', Icons.person_outline_rounded),
-    ('edit-profile', 'Edit profile', Icons.edit_outlined),
     ('settings', 'Settings', Icons.settings_outlined),
+    ('profile', 'Profile', Icons.person_outline_rounded),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final appName = context.publicAppConfig.appName;
     return Drawer(
       width: MediaQuery.sizeOf(context).width,
       shape: const RoundedRectangleBorder(),
@@ -375,33 +357,26 @@ class _FullPageDrawer extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(18, 10, 10, 12),
               child: Row(
                 children: [
-                  Container(
-                    width: 45,
-                    height: 45,
-                    decoration: BoxDecoration(
-                      color: SyncColors.sky,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.forum_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
+                  const RuntimeBrandLogo(
+                    size: 45,
+                    borderRadius: 14,
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'SyncChat',
-                          style: TextStyle(
+                          appName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 21,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        Text(
+                        const Text(
                           'Menu',
                           style: TextStyle(
                             color: Colors.white60,
@@ -434,8 +409,8 @@ class _FullPageDrawer extends StatelessWidget {
                 ),
                 children: [
                   ...primary.map((item) => row(item)),
-                  section('Library'),
-                  ...library.map((item) => row(item)),
+                  section('More'),
+                  ...more.map((item) => row(item)),
                   section('Account'),
                   ...account.map((item) => row(item)),
                   const SizedBox(height: 8),
