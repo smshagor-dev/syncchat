@@ -14,7 +14,6 @@ import 'live_community_group_search_screen.dart';
 import 'live_device_contacts_screen.dart';
 import 'live_full_profile_screen.dart';
 import 'live_groups_screen.dart';
-import 'live_help_screens.dart';
 import 'live_message_requests_screen.dart';
 import 'live_p0_chats_screen.dart';
 import 'live_p0_contacts_screen.dart';
@@ -171,7 +170,6 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
         ),
       'starred' => const LiveStarredMessagesScreen(),
       'media' => const LiveMediaScreen(),
-      'feedback' => const LiveFeedbackScreen(),
       'settings' => LiveSettingsHubScreen(
           onThemeChanged: widget.onThemeChanged,
           onLogout: widget.onLogout,
@@ -361,7 +359,6 @@ class _FullPageDrawer extends StatelessWidget {
     ('profile', 'Profile', Icons.person_outline_rounded),
     ('edit-profile', 'Edit profile', Icons.edit_outlined),
     ('settings', 'Settings', Icons.settings_outlined),
-    ('feedback', 'Feedback', Icons.feedback_outlined),
   ];
 
   @override
