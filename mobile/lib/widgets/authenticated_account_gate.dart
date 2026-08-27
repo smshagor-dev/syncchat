@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/public_app_config.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
+import 'runtime_brand.dart';
 
 class AuthenticatedAccountGate extends StatefulWidget {
   const AuthenticatedAccountGate({
@@ -64,6 +66,8 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
 
   @override
   Widget build(BuildContext context) {
+    final appName = context.publicAppConfig.appName;
+
     if (_sessionInactive) {
       return _SessionInactiveScreen(onLogout: widget.onLogout, onRetry: _reload);
     }
@@ -80,23 +84,24 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
           return _AccountUnavailableScreen(
             message: error is ApiException
                 ? error.message
-                : 'Unable to load this SyncChat account.',
+                : 'Unable to load this $appName account.',
             onRetry: _reload,
             onLogout: widget.onLogout,
           );
         }
 
         final account = snapshot.data ?? const <String, dynamic>{};
-        final status = account['status']?.toString().trim().toLowerCase() ?? 'active';
+        final status =
+            account['status']?.toString().trim().toLowerCase() ?? 'active';
         if (status != 'active') {
           return _AccountUnavailableScreen(
             message: status == 'blocked'
-                ? 'This SyncChat account is blocked.'
+                ? 'This $appName account is blocked.'
                 : status == 'banned'
-                    ? 'This SyncChat account is banned.'
+                    ? 'This $appName account is banned.'
                     : status == 'deleted'
-                        ? 'This SyncChat account is no longer available.'
-                        : 'This SyncChat account is inactive.',
+                        ? 'This $appName account is no longer available.'
+                        : 'This $appName account is inactive.',
             onRetry: _reload,
             onLogout: widget.onLogout,
           );
@@ -202,6 +207,7 @@ class _AccountVerificationScreenState extends State<AccountVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final email = widget.account['email']?.toString().trim() ?? '';
+    final appName = context.publicAppConfig.appName;
     return Scaffold(
       backgroundColor: context.page,
       body: SafeArea(
@@ -213,18 +219,28 @@ class _AccountVerificationScreenState extends State<AccountVerificationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
-                    child: Image.asset(
-                      'assets/syncchat_logo.png',
-                      width: 72,
-                      height: 72,
+                  const Center(
+                    child: RuntimeBrandLogo(size: 72, borderRadius: 18),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Welcome to $appName',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 6),
                   const Text(
                     'Verify your account',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -315,12 +331,13 @@ class _SessionInactiveScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appName = context.publicAppConfig.appName;
     return _GateMessageScreen(
       icon: Icons.phonelink_erase_rounded,
       title: 'Session changed',
       body:
-          'This SyncChat session was superseded by another active session for the same account.',
-      primaryLabel: 'Reconnect here',
+          '$appName is active in another session. Tap "Use Here" to use $appName on this device.',
+      primaryLabel: 'Use Here',
       onPrimary: onRetry,
       onLogout: onLogout,
     );
