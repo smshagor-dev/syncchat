@@ -82,16 +82,20 @@ void main() {
       "'youtube': 'Youtube'",
       "value.replaceFirst(",
       "RegExp(r'^(https?)//'",
-      'QrImageView(data: shareUrl, size: 220)',
-      'Scan this QR to open your SyncChat profile chat directly.',
+      'context.services.config.publicOrigin',
+      'context.publicAppConfig.appName',
+      'QrImageView(data: url, size: 220)',
+      'Scan this QR to open your \$appName profile chat directly.',
       'https://wa.me/?text=',
       'https://t.me/share/url?url=',
       'https://www.facebook.com/sharer/sharer.php?u=',
       'https://twitter.com/intent/tweet?url=',
-      "ClipboardData(text: shareUrl)",
+      "ClipboardData(text: url)",
     ]) {
       expect(source, contains(contract));
     }
+    expect(source, isNot(contains("'https://syncchat.live/chat'")));
+    expect(source, isNot(contains('Chat with me on SyncChat')));
   });
 
   test('pre-audit implementations remain available as rollback references', () {
