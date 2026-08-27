@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/public_app_config.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../widgets/runtime_brand.dart';
 import 'live_chat_room_screen.dart';
 import 'live_groups_screen.dart';
 import 'live_p0_contacts_screen.dart';
@@ -401,23 +403,17 @@ class _LiveP0ChatsScreenState extends State<LiveP0ChatsScreen> {
           icon: Icon(Icons.menu_rounded, size: 22, color: context.muted),
         ),
         const SizedBox(width: 1),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.asset(
-            'assets/syncchat_logo.png',
-            width: 32,
-            height: 32,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.high,
-          ),
+        const RuntimeBrandLogo(
+          size: 32,
+          borderRadius: 8,
         ),
         const SizedBox(width: 8),
-        const Expanded(
+        Expanded(
           child: Text(
-            'SyncChat',
+            context.publicAppConfig.appName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
         ),
         IconButton(
