@@ -48,7 +48,8 @@ void main() {
       'context.services.settings.removeAppLock(password)',
       "'/settings/app-lock/password'",
       "LiveBackupRecoveryScreen(initialSection: 'recovery')",
-      'LiveDeviceSessionsScreen()',
+      'LiveAccountSettingsDetailScreen(',
+      'LiveDevicesSettingsDetailScreen()',
       'LiveMediaScreen()',
       'LiveFeedbackScreen()',
       'LivePolicyScreen()',
@@ -78,6 +79,28 @@ void main() {
       "'Analytics & reviews'",
     ]) {
       expect(source, isNot(contains(extra)), reason: 'App-only top-level entry leaked into parity hub: $extra');
+    }
+  });
+
+  test('web account and devices destinations expose nested parity actions', () {
+    final source = File('lib/screens/live_settings_detail_web_parity_screen.dart').readAsStringSync();
+
+    for (final contract in [
+      'LiveAccountSettingsDetailScreen',
+      "title: const Text('Account settings')",
+      "title: 'Security & account'",
+      "title: 'Encrypted backup & restore'",
+      'LiveBackupRecoveryScreen(initialSection: \'backup\')',
+      "title: 'Google Drive backup'",
+      'LiveGoogleDriveBackupScreen()',
+      'LiveDevicesSettingsDetailScreen',
+      "title: const Text('Devices')",
+      "title: 'Active devices'",
+      'LiveDeviceSessionsScreen()',
+      "title: 'Link a device'",
+      'LiveDeviceLinkSettingsScreen()',
+    ]) {
+      expect(source, contains(contract));
     }
   });
 }
