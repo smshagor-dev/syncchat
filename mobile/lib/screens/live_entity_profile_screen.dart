@@ -4,7 +4,7 @@ import 'live_groups_screen.dart';
 import 'live_room_profile_screen.dart' as room_profile;
 
 /// Compatibility router for room/entity profile entry points outside the chat
-/// room. The active profile UI lives in [live_room_profile_screen.dart], so
+/// room. The active profile UI lives in live_room_profile_screen.dart, so
 /// Channels/Contacts opened from hubs and the chat-room header cannot drift
 /// into separate implementations.
 class LiveEntityProfileScreen extends StatelessWidget {
