@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'device_link_qr_screen.dart';
 
 enum _Mode { signIn, signUp, forgot }
+
 enum _Reset { email, code, password }
 
 class AuthScreen extends StatefulWidget {
@@ -95,7 +96,10 @@ class _AuthScreenState extends State<AuthScreen> {
       AuthResult result;
       if (mode == _Mode.signUp) {
         if (password.text != confirm.text) {
-          throw const ApiException(statusCode: 400, message: 'Passwords do not match.');
+          throw const ApiException(
+            statusCode: 400,
+            message: 'Passwords do not match.',
+          );
         }
         result = await widget.authRepository.register(
           fullName: fullName.text,
@@ -159,9 +163,14 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       if (reset == _Reset.email) {
         if (email.text.trim().isEmpty) {
-          throw const ApiException(statusCode: 400, message: 'Email is required.');
+          throw const ApiException(
+            statusCode: 400,
+            message: 'Email is required.',
+          );
         }
-        final message = await widget.authRepository.requestPasswordReset(email.text);
+        final message = await widget.authRepository.requestPasswordReset(
+          email.text,
+        );
         if (!mounted) return;
         setState(() {
           busy = false;
@@ -187,10 +196,16 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       if (password.text.length < 8) {
-        throw const ApiException(statusCode: 400, message: 'Use at least 8 characters.');
+        throw const ApiException(
+          statusCode: 400,
+          message: 'Use at least 8 characters.',
+        );
       }
       if (password.text != confirm.text) {
-        throw const ApiException(statusCode: 400, message: 'Passwords do not match.');
+        throw const ApiException(
+          statusCode: 400,
+          message: 'Passwords do not match.',
+        );
       }
       final message = await widget.authRepository.resetPassword(
         email: email.text,
@@ -240,8 +255,16 @@ class _AuthScreenState extends State<AuthScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: dark
-                ? const [Color(0xFF071018), Color(0xFF0A2430), Color(0xFF071018)]
-                : const [Color(0xFFF8FAFC), Color(0xFFE8F7FD), Color(0xFFF8FAFC)],
+                ? const [
+                    Color(0xFF071018),
+                    Color(0xFF0A2430),
+                    Color(0xFF071018),
+                  ]
+                : const [
+                    Color(0xFFF8FAFC),
+                    Color(0xFFE8F7FD),
+                    Color(0xFFF8FAFC),
+                  ],
           ),
         ),
         child: SafeArea(
@@ -255,9 +278,21 @@ class _AuthScreenState extends State<AuthScreen> {
                 children: [
                   _brand(ink, muted),
                   const SizedBox(height: 46),
-                  Text(title, style: TextStyle(color: ink, fontSize: 32, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: ink,
+                      fontSize: 32,
+                      height: 1.08,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+                  ),
                   const SizedBox(height: 9),
-                  Text(subtitle, style: TextStyle(color: muted, fontSize: 15, height: 1.45)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: muted, fontSize: 15, height: 1.45),
+                  ),
                   const SizedBox(height: 26),
                   if (mode != _Mode.forgot && tempToken == null) ...[
                     _tabs(muted),
@@ -273,11 +308,19 @@ class _AuthScreenState extends State<AuthScreen> {
                       child: OutlinedButton.icon(
                         onPressed: busy ? null : openQrLogin,
                         icon: const Icon(Icons.qr_code_scanner_rounded),
-                        label: const Text('Scan QR code to sign in', style: TextStyle(fontWeight: FontWeight.w900)),
+                        label: const Text(
+                          'Scan QR code to sign in',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: SyncColors.sky600,
-                          side: const BorderSide(color: SyncColors.sky, width: 1.4),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          side: const BorderSide(
+                            color: SyncColors.sky,
+                            width: 1.4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
                         ),
                       ),
                     ),
@@ -290,18 +333,39 @@ class _AuthScreenState extends State<AuthScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: SyncColors.sky,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
                       ),
                       child: busy
-                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.3, color: Colors.white))
-                          : Text(buttonLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.3,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              buttonLabel,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   if (mode == _Mode.signIn && tempToken == null)
-                    TextButton(onPressed: () => switchMode(_Mode.forgot), child: const Text('Forgot your password?')),
+                    TextButton(
+                      onPressed: () => switchMode(_Mode.forgot),
+                      child: const Text('Forgot your password?'),
+                    ),
                   if (mode == _Mode.forgot)
-                    TextButton(onPressed: () => switchMode(_Mode.signIn), child: const Text('Back to sign in')),
+                    TextButton(
+                      onPressed: () => switchMode(_Mode.signIn),
+                      child: const Text('Back to sign in'),
+                    ),
                   if (tempToken != null)
                     TextButton(
                       onPressed: () => setState(() {
@@ -312,7 +376,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       child: const Text('Back to sign in'),
                     ),
                   const SizedBox(height: 36),
-                  Text('By continuing, you agree to SyncChat Terms and Privacy Policy.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.4)),
+                  Text(
+                    'By continuing, you agree to SyncChat Terms and Privacy Policy.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted, fontSize: 11.5, height: 1.4),
+                  ),
                 ],
               ),
             ),
@@ -322,30 +390,56 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _brand(Color ink, Color muted) => Row(
-    children: [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: Image.asset('assets/syncchat_logo.png', width: 52, height: 52, fit: BoxFit.cover),
-      ),
-      const SizedBox(width: 12),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('SyncChat', style: TextStyle(color: ink, fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.6)),
-          Text('Private. Fast. Connected.', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    ],
+  Widget _brand(Color ink, Color muted) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Image.asset(
+            'assets/syncchat_logo.png',
+            width: 58,
+            height: 58,
+            fit: BoxFit.cover,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'SyncChat',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: ink,
+            fontSize: 29,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Private. Fast. Connected.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _tabs(Color muted) => Container(
     height: 48,
     padding: const EdgeInsets.all(4),
     decoration: BoxDecoration(
-      color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .055) : Colors.white,
+      color: Theme.of(context).brightness == Brightness.dark
+          ? Colors.white.withValues(alpha: .055)
+          : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFE2E8F0)),
+      border: Border.all(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white.withValues(alpha: .08)
+            : const Color(0xFFE2E8F0),
+      ),
     ),
     child: Row(
       children: [
@@ -363,8 +457,18 @@ class _AuthScreenState extends State<AuthScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: selected ? SyncColors.sky : Colors.transparent, borderRadius: BorderRadius.circular(11)),
-        child: Text(label, style: TextStyle(color: selected ? Colors.white : muted, fontSize: 13, fontWeight: FontWeight.w800)),
+        decoration: BoxDecoration(
+          color: selected ? SyncColors.sky : Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
     );
   }
@@ -372,7 +476,12 @@ class _AuthScreenState extends State<AuthScreen> {
   List<Widget> get fields {
     if (tempToken != null) {
       return [
-        field(otp, recovery ? 'Recovery code' : '6-digit authenticator code', Icons.verified_user_outlined, keyboardType: recovery ? TextInputType.text : TextInputType.number),
+        field(
+          otp,
+          recovery ? 'Recovery code' : '6-digit authenticator code',
+          Icons.verified_user_outlined,
+          keyboardType: recovery ? TextInputType.text : TextInputType.number,
+        ),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -381,7 +490,10 @@ class _AuthScreenState extends State<AuthScreen> {
             recovery = value;
             otp.clear();
           }),
-          title: const Text('Use a recovery code', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          title: const Text(
+            'Use a recovery code',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
         ),
       ];
     }
@@ -391,7 +503,13 @@ class _AuthScreenState extends State<AuthScreen> {
         gap,
         field(username, 'Username', Icons.alternate_email_rounded),
         gap,
-        field(email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: emailValidator),
+        field(
+          email,
+          'Email address',
+          Icons.mail_outline_rounded,
+          keyboardType: TextInputType.emailAddress,
+          validator: emailValidator,
+        ),
         gap,
         passwordField(password, 'Password', false),
         gap,
@@ -400,16 +518,39 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     if (mode == _Mode.forgot) {
       if (reset == _Reset.email) {
-        return [field(email, 'Email address', Icons.mail_outline_rounded, keyboardType: TextInputType.emailAddress, validator: emailValidator)];
+        return [
+          field(
+            email,
+            'Email address',
+            Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: emailValidator,
+          ),
+        ];
       }
       if (reset == _Reset.code) {
         return [
-          field(otp, 'Verification code', Icons.pin_outlined, keyboardType: TextInputType.number),
+          field(
+            otp,
+            'Verification code',
+            Icons.pin_outlined,
+            keyboardType: TextInputType.number,
+          ),
           const SizedBox(height: 10),
-          Text('Code sent to ${email.text.trim()}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+          Text(
+            'Code sent to ${email.text.trim()}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
         ];
       }
-      return [passwordField(password, 'New password', false), gap, passwordField(confirm, 'Confirm new password', true)];
+      return [
+        passwordField(password, 'New password', false),
+        gap,
+        passwordField(confirm, 'Confirm new password', true),
+      ];
     }
     return [
       field(username, 'Username or email', Icons.person_outline_rounded),
@@ -422,21 +563,29 @@ class _AuthScreenState extends State<AuthScreen> {
         dense: true,
         value: remember,
         onChanged: (value) => setState(() => remember = value == true),
-        title: const Text('Remember me', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        title: const Text(
+          'Remember me',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
       ),
     ];
   }
 
   Widget get gap => const SizedBox(height: 13);
 
-  Widget passwordField(TextEditingController controller, String label, bool confirmation) {
+  Widget passwordField(
+    TextEditingController controller,
+    String label,
+    bool confirmation,
+  ) {
     final visible = confirmation ? showConfirm : showPassword;
     return field(
       controller,
       label,
       confirmation ? Icons.lock_reset_rounded : Icons.lock_outline_rounded,
       obscure: !visible,
-      validator: (value) => (value ?? '').length < 8 ? 'Use at least 8 characters.' : null,
+      validator: (value) =>
+          (value ?? '').length < 8 ? 'Use at least 8 characters.' : null,
       suffix: IconButton(
         onPressed: () => setState(() {
           if (confirmation) {
@@ -445,7 +594,9 @@ class _AuthScreenState extends State<AuthScreen> {
             showPassword = !showPassword;
           }
         }),
-        icon: Icon(visible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+        icon: Icon(
+          visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+        ),
       ),
     );
   }
@@ -468,10 +619,25 @@ class _AuthScreenState extends State<AuthScreen> {
       prefixIcon: Icon(icon),
       suffixIcon: suffix,
       filled: true,
-      fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .055) : Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withValues(alpha: .08) : const Color(0xFFDDE5ED))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: SyncColors.sky, width: 1.6)),
+      fillColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.white.withValues(alpha: .055)
+          : Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white.withValues(alpha: .08)
+              : const Color(0xFFDDE5ED),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: SyncColors.sky, width: 1.6),
+      ),
     ),
   );
 
@@ -482,15 +648,25 @@ class _AuthScreenState extends State<AuthScreen> {
       color: (danger ? Colors.red : Colors.green).withValues(alpha: .09),
       borderRadius: BorderRadius.circular(13),
     ),
-    child: Text(text, style: TextStyle(color: danger ? Colors.red.shade400 : Colors.green.shade600, fontWeight: FontWeight.w700, fontSize: 13)),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: danger ? Colors.red.shade400 : Colors.green.shade600,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+    ),
   );
 
-  String? requiredValidator(String? value) => (value?.trim().isEmpty ?? true) ? 'This field is required.' : null;
+  String? requiredValidator(String? value) =>
+      (value?.trim().isEmpty ?? true) ? 'This field is required.' : null;
 
   String? emailValidator(String? value) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Email is required.';
-    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text) ? null : 'Enter a valid email address.';
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)
+        ? null
+        : 'Enter a valid email address.';
   }
 
   String get title {
@@ -505,9 +681,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String get subtitle {
-    if (tempToken != null) return 'Enter your authenticator code or a saved recovery code.';
-    if (mode == _Mode.signUp) return 'Create your account and start secure conversations.';
-    if (mode == _Mode.forgot) return 'Verify your account before changing your password.';
+    if (tempToken != null)
+      return 'Enter your authenticator code or a saved recovery code.';
+    if (mode == _Mode.signUp)
+      return 'Create your account and start secure conversations.';
+    if (mode == _Mode.forgot)
+      return 'Verify your account before changing your password.';
     return 'Sign in with your password or securely link this device with a QR code.';
   }
 

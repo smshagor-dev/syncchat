@@ -157,14 +157,15 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Widget _header() {
-    return Row(
+    return Column(
       children: [
-        const Expanded(
+        const Center(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'WELCOME TO',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   letterSpacing: 2.4,
                   fontSize: 11,
@@ -175,16 +176,31 @@ class _AuthScreenState extends State<AuthScreen> {
               SizedBox(height: 3),
               Text(
                 'SyncChat',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w900,
                   color: SyncColors.slate900,
                 ),
               ),
+              SizedBox(height: 2),
+              Text(
+                'Private. Fast. Connected.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: SyncColors.slate500,
+                ),
+              ),
             ],
           ),
         ),
-        _AuthBadge(label: _badgeLabel),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.center,
+          child: _AuthBadge(label: _badgeLabel),
+        ),
       ],
     );
   }
@@ -205,9 +221,9 @@ class _AuthScreenState extends State<AuthScreen> {
               onTap: loading
                   ? null
                   : () => setState(() {
-                        signIn = true;
-                        _clearStatus();
-                      }),
+                      signIn = true;
+                      _clearStatus();
+                    }),
             ),
           ),
           Expanded(
@@ -217,9 +233,9 @@ class _AuthScreenState extends State<AuthScreen> {
               onTap: loading
                   ? null
                   : () => setState(() {
-                        signIn = false;
-                        _clearStatus();
-                      }),
+                      signIn = false;
+                      _clearStatus();
+                    }),
             ),
           ),
         ],
@@ -228,12 +244,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String get _title => switch (mode) {
-        'forgot' => 'Forgot password',
-        'link' => 'Link device',
-        'scan' => 'Scan QR code',
-        _ when twoFactorRequired => 'Two-factor verification',
-        _ => signIn ? 'Sign in' : 'Sign up',
-      };
+    'forgot' => 'Forgot password',
+    'link' => 'Link device',
+    'scan' => 'Scan QR code',
+    _ when twoFactorRequired => 'Two-factor verification',
+    _ => signIn ? 'Sign in' : 'Sign up',
+  };
 
   String get _badgeLabel {
     if (twoFactorRequired) return '2FA';
@@ -273,8 +289,9 @@ class _AuthScreenState extends State<AuthScreen> {
         TextField(
           controller: twoFactorController,
           enabled: !loading,
-          keyboardType:
-              useRecoveryCode ? TextInputType.text : TextInputType.number,
+          keyboardType: useRecoveryCode
+              ? TextInputType.text
+              : TextInputType.number,
           textCapitalization: useRecoveryCode
               ? TextCapitalization.characters
               : TextCapitalization.none,
@@ -308,26 +325,24 @@ class _AuthScreenState extends State<AuthScreen> {
           onPressed: loading
               ? null
               : () => setState(() {
-                    useRecoveryCode = !useRecoveryCode;
-                    twoFactorController.clear();
-                    _clearStatus();
-                  }),
+                  useRecoveryCode = !useRecoveryCode;
+                  twoFactorController.clear();
+                  _clearStatus();
+                }),
           child: Text(
-            useRecoveryCode
-                ? 'Use authenticator code'
-                : 'Use recovery code',
+            useRecoveryCode ? 'Use authenticator code' : 'Use recovery code',
           ),
         ),
         TextButton(
           onPressed: loading
               ? null
               : () => setState(() {
-                    twoFactorRequired = false;
-                    twoFactorTempToken = '';
-                    twoFactorController.clear();
-                    useRecoveryCode = false;
-                    _clearStatus();
-                  }),
+                  twoFactorRequired = false;
+                  twoFactorTempToken = '';
+                  twoFactorController.clear();
+                  useRecoveryCode = false;
+                  _clearStatus();
+                }),
           child: const Text('Back'),
         ),
       ],
@@ -612,8 +627,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: loading
                       ? null
                       : () => setState(
-                            () => showConfirmPassword = !showConfirmPassword,
-                          ),
+                          () => showConfirmPassword = !showConfirmPassword,
+                        ),
                   icon: Icon(
                     showConfirmPassword
                         ? Icons.visibility_off_outlined
@@ -634,9 +649,7 @@ class _AuthScreenState extends State<AuthScreen> {
               borderRadius: BorderRadius.circular(12),
               onTap: loading
                   ? null
-                  : () => setState(
-                        () => rememberUsername = !rememberUsername,
-                      ),
+                  : () => setState(() => rememberUsername = !rememberUsername),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
@@ -646,8 +659,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       onChanged: loading
                           ? null
                           : (value) => setState(
-                                () => rememberUsername = value ?? false,
-                              ),
+                              () => rememberUsername = value ?? false,
+                            ),
                     ),
                     const SizedBox(width: 2),
                     const Expanded(
@@ -666,9 +679,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 onPressed: loading
                     ? null
                     : () => setState(() {
-                          mode = 'forgot';
-                          _clearStatus();
-                        }),
+                        mode = 'forgot';
+                        _clearStatus();
+                      }),
                 child: const Text('Forgot password?'),
               ),
             ),
@@ -678,8 +691,8 @@ class _AuthScreenState extends State<AuthScreen> {
             label: loading
                 ? 'Please wait…'
                 : signIn
-                    ? 'Sign in'
-                    : 'Create account',
+                ? 'Sign in'
+                : 'Create account',
             icon: signIn ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
             onPressed: loading ? null : _submitAuth,
           ),
@@ -688,8 +701,8 @@ class _AuthScreenState extends State<AuthScreen> {
             onPressed: loading
                 ? null
                 : () => _setNotice(
-                      'Google sign-in will use the server social-auth configuration.',
-                    ),
+                    'Google sign-in will use the server social-auth configuration.',
+                  ),
             icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
             label: const Text('Continue with Google'),
           ),
@@ -698,8 +711,8 @@ class _AuthScreenState extends State<AuthScreen> {
             onPressed: loading
                 ? null
                 : () => _setNotice(
-                      'Facebook sign-in will use the server social-auth configuration.',
-                    ),
+                    'Facebook sign-in will use the server social-auth configuration.',
+                  ),
             icon: const Icon(Icons.facebook_rounded),
             label: const Text('Continue with Facebook'),
           ),
@@ -708,9 +721,9 @@ class _AuthScreenState extends State<AuthScreen> {
             onPressed: loading
                 ? null
                 : () => setState(() {
-                      mode = 'link';
-                      _clearStatus();
-                    }),
+                    mode = 'link';
+                    _clearStatus();
+                  }),
             icon: const Icon(Icons.devices_other_rounded),
             label: const Text('Link a device with QR or code'),
           ),
@@ -797,8 +810,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submitTwoFactor() async {
     final code = twoFactorController.text.trim();
     if (useRecoveryCode) {
-      if (!RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$')
-          .hasMatch(code.toUpperCase())) {
+      if (!RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(code.toUpperCase())) {
         _setError('Enter a recovery code in ABCD-EFGH format.');
         return;
       }
@@ -812,8 +824,9 @@ class _AuthScreenState extends State<AuthScreen> {
         tempToken: twoFactorTempToken,
         code: code,
         recoveryCode: useRecoveryCode,
-        rememberedUsername:
-            rememberUsername ? usernameController.text.trim() : null,
+        rememberedUsername: rememberUsername
+            ? usernameController.text.trim()
+            : null,
       );
       _setNotice(result.message);
       await widget.onAuthenticated(context);
@@ -828,8 +841,7 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       await _guarded(() async {
-        final message =
-            await widget.authRepository.requestPasswordReset(email);
+        final message = await widget.authRepository.requestPasswordReset(email);
         if (!mounted) return;
         setState(() {
           recoveryStep = 2;
@@ -847,8 +859,7 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       await _guarded(() async {
-        final challenge =
-            await widget.authRepository.verifyPasswordResetCode(
+        final challenge = await widget.authRepository.verifyPasswordResetCode(
           email: recoveryEmailController.text.trim(),
           otp: otp,
         );
@@ -969,11 +980,7 @@ class _AuthScreenState extends State<AuthScreen> {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.label,
-    this.icon,
-    this.onPressed,
-  });
+  const _PrimaryButton({required this.label, this.icon, this.onPressed});
 
   final String label;
   final IconData? icon;
@@ -986,10 +993,7 @@ class _PrimaryButton extends StatelessWidget {
       icon: Icon(icon ?? Icons.arrow_forward_rounded),
       label: Padding(
         padding: const EdgeInsets.symmetric(vertical: 13),
-        child: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
       ),
     );
   }

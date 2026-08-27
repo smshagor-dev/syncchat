@@ -1,13 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
 
-val releaseKeystorePath = System.getenv("SYNCCHAT_ANDROID_KEYSTORE_PATH")
-val releaseKeystorePassword = System.getenv("SYNCCHAT_ANDROID_KEYSTORE_PASSWORD")
-val releaseKeyAlias = System.getenv("SYNCCHAT_ANDROID_KEY_ALIAS")
-val releaseKeyPassword = System.getenv("SYNCCHAT_ANDROID_KEY_PASSWORD")
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { input ->
+            load(input)
+        }
+    }
+}
+
+fun releaseSigningValue(propertyName: String, environmentName: String): String? {
+    return keystoreProperties.getProperty(propertyName) ?: System.getenv(environmentName)
+}
+
+val releaseKeystorePath = releaseSigningValue("storeFile", "SYNCCHAT_ANDROID_KEYSTORE_PATH")
+val releaseKeystorePassword = releaseSigningValue("storePassword", "SYNCCHAT_ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("keyAlias", "SYNCCHAT_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("keyPassword", "SYNCCHAT_ANDROID_KEY_PASSWORD")
 val hasReleaseSigning = listOf(
     releaseKeystorePath,
     releaseKeystorePassword,
