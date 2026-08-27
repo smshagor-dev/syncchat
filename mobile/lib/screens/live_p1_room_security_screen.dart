@@ -254,7 +254,6 @@ class _LiveFriendRoomSecurityScreenState
   Widget build(BuildContext context) {
     final shield = _hasUser(room['privacyShieldBy'], widget.currentUserId);
     final secret = room['secretChatEnabled'] == true;
-    final screenshotAlerts = room['secretScreenshotAlerts'] != false;
     final timer = (room['secretDisappearSeconds'] as num?)?.toInt() ?? 0;
     final blocked = blockState['youBlocked'] == true;
     final blockedYou = blockState['blockedYou'] == true;
@@ -316,14 +315,16 @@ class _LiveFriendRoomSecurityScreenState
                           SwitchListTile(
                             secondary: const Icon(Icons.lock_person_outlined, color: SyncColors.sky),
                             title: const Text('Secret chat'),
-                            subtitle: const Text('Server-enforced disappearing-message protections.'),
+                            subtitle: const Text(
+                              'Uses a separate protected session with disappearing messages and blocked forward, save, and export actions.',
+                            ),
                             value: secret,
                             onChanged: saving
                                 ? null
                                 : (value) => _setPreference('secretChat', {
                                       'enabled': value,
-                                      'disappearSeconds': value ? (timer == 0 ? 3600 : timer) : 0,
-                                      'screenshotAlerts': screenshotAlerts,
+                                      'disappearSeconds': value ? (timer == 0 ? 30 : timer) : 0,
+                                      'screenshotAlerts': true,
                                     }),
                           ),
                           if (secret) ...[
@@ -333,9 +334,10 @@ class _LiveFriendRoomSecurityScreenState
                               title: const Text('Disappearing timer'),
                               subtitle: Text(_timerLabel(timer)),
                               trailing: DropdownButton<int>(
-                                value: const [0, 30, 60, 300, 3600, 86400].contains(timer) ? timer : 3600,
+                                value: const [0, 10, 30, 60, 300, 3600, 86400].contains(timer) ? timer : 30,
                                 items: const [
                                   DropdownMenuItem(value: 0, child: Text('Off')),
+                                  DropdownMenuItem(value: 10, child: Text('10 sec')),
                                   DropdownMenuItem(value: 30, child: Text('30 sec')),
                                   DropdownMenuItem(value: 60, child: Text('1 min')),
                                   DropdownMenuItem(value: 300, child: Text('5 min')),
@@ -350,15 +352,6 @@ class _LiveFriendRoomSecurityScreenState
                                         }
                                       },
                               ),
-                            ),
-                            Divider(height: 1, color: context.border),
-                            SwitchListTile(
-                              secondary: const Icon(Icons.screenshot_monitor_outlined, color: SyncColors.sky),
-                              title: const Text('Screenshot alerts'),
-                              value: screenshotAlerts,
-                              onChanged: saving
-                                  ? null
-                                  : (value) => _setPreference('secretScreenshotAlerts', value),
                             ),
                           ],
                           Divider(height: 1, color: context.border),
