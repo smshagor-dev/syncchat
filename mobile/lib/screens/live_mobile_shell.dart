@@ -91,6 +91,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       key: scaffoldKey,
       drawerScrimColor: Colors.black.withValues(alpha: .48),
@@ -102,7 +103,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
           Positioned(
             left: 12,
             right: 12,
-            bottom: MediaQuery.paddingOf(context).bottom + 8,
+            bottom: safeBottom < 8 ? 8 : safeBottom,
             child: _BottomDock(
               selected: selected,
               onSelect: (tab) => setState(() => selected = tab),
@@ -116,6 +117,9 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   Widget pageForTab() => switch (selected) {
         LiveHomeTab.chats => LiveP0ChatsScreen(
             onMenu: () => scaffoldKey.currentState?.openDrawer(),
+            onOpenStatus: () => setState(() => selected = LiveHomeTab.status),
+            onThemeChanged: widget.onThemeChanged,
+            onLogout: widget.onLogout,
           ),
         LiveHomeTab.status => const LiveP0StatusScreen(),
         LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
@@ -188,87 +192,135 @@ class _BottomDock extends StatelessWidget {
   final ValueChanged<LiveHomeTab> onSelect;
 
   static const items = [
-    (LiveHomeTab.chats, 'Chats', Icons.chat_bubble_outline_rounded),
-    (LiveHomeTab.status, 'Status', Icons.donut_large_rounded),
-    (LiveHomeTab.communities, 'Communities', Icons.groups_2_outlined),
+    (LiveHomeTab.chats, 'Chats', Icons.message_outlined),
+    (LiveHomeTab.status, 'Status', Icons.monitor_heart_outlined),
+    (LiveHomeTab.communities, 'Communities', Icons.group_outlined),
     (LiveHomeTab.channels, 'Channels', Icons.podcasts_rounded),
     (LiveHomeTab.calls, 'Calls', Icons.call_outlined),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final dark = context.isDark;
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: context.panel.withValues(alpha: .96),
-        borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: context.border),
-        boxShadow: const [
+        color: context.panel.withValues(alpha: .95),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: context.border.withValues(alpha: .80)),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x500F172A),
-            blurRadius: 30,
-            offset: Offset(0, 12),
+            color: dark
+                ? const Color(0xC7020617)
+                : const Color(0x7A0F172A),
+            blurRadius: 44,
+            spreadRadius: -14,
+            offset: const Offset(0, 18),
           ),
         ],
       ),
       child: Row(
-        children: items.map((item) {
-          final active = selected == item.$1;
-          return Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(19),
-              onTap: () => onSelect(item.$1),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
-                decoration: BoxDecoration(
-                  color: active
-                      ? SyncColors.sky.withValues(alpha: .12)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(19),
+        children: [
+          for (var index = 0; index < items.length; index++) ...[
+            if (index > 0) const SizedBox(width: 6),
+            Expanded(child: _item(context, items[index])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _item(BuildContext context, (LiveHomeTab, String, IconData) item) {
+    final active = selected == item.$1;
+    final dark = context.isDark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => onSelect(item.$1),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: active
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: dark
+                          ? [
+                              SyncColors.sky.withValues(alpha: .25),
+                              SyncColors.sky.withValues(alpha: .10),
+                            ]
+                          : [
+                              SyncColors.sky.withValues(alpha: .20),
+                              SyncColors.sky600.withValues(alpha: .10),
+                            ],
+                    )
+                  : null,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: active ? SyncColors.sky : context.softPanel,
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: SyncColors.sky.withValues(alpha: .90),
+                              blurRadius: 20,
+                              spreadRadius: -8,
+                              offset: const Offset(0, 8),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    item.$3,
+                    size: 16,
+                    color: active
+                        ? Colors.white
+                        : (dark ? SyncColors.spill300 : SyncColors.slate500),
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 29,
-                      height: 29,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: active ? SyncColors.sky : context.softPanel,
-                        boxShadow: active
-                            ? [
-                                BoxShadow(
-                                  color: SyncColors.sky.withValues(alpha: .38),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Icon(
-                        item.$3,
-                        size: 17,
-                        color: active ? Colors.white : context.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: active ? SyncColors.sky : context.muted,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  item.$2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: active
+                        ? (dark ? const Color(0xFF7DD3FC) : SyncColors.sky700)
+                        : (dark ? SyncColors.spill300 : SyncColors.slate500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (active)
+            Positioned(
+              top: -4,
+              child: Container(
+                width: 32,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: dark
+                      ? const Color(0xE65AC8FA)
+                      : SyncColors.sky.withValues(alpha: .90),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }

@@ -12,6 +12,7 @@ abstract final class SyncColors {
   static const slate200 = Color(0xFFE2E8F0);
   static const slate300 = Color(0xFFCBD5E1);
   static const slate500 = Color(0xFF64748B);
+  static const slate600 = Color(0xFF475569);
   static const slate700 = Color(0xFF334155);
   static const slate900 = Color(0xFF0F172A);
   static const slate950 = Color(0xFF020617);
