@@ -17,6 +17,7 @@ on:
       - 'frontend/**'
       - 'mobile/assets/syncchat_logo.png'
       - '.github/workflows/desktop-rust-ci.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,7 +25,7 @@ permissions:
 jobs:
   windows-check:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -54,3 +55,62 @@ jobs:
 
       - name: Cargo check
         run: cargo check --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Build Windows production installers
+        run: npm --prefix desktop run build
+
+      - name: Verify and package Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseRoot = 'desktop/src-tauri/target/release'
+          $exe = Join-Path $releaseRoot 'syncchat-desktop.exe'
+          if (-not (Test-Path $exe)) {
+            throw "Missing production executable: $exe"
+          }
+
+          $nsis = @(Get-ChildItem (Join-Path $releaseRoot 'bundle/nsis') -Filter '*-setup.exe' -File -ErrorAction Stop)
+          if ($nsis.Count -lt 1) {
+            throw 'No NSIS installer was produced.'
+          }
+
+          $msi = @(Get-ChildItem (Join-Path $releaseRoot 'bundle/msi') -Filter '*.msi' -File -ErrorAction Stop)
+          if ($msi.Count -lt 1) {
+            throw 'No MSI installer was produced.'
+          }
+
+          $artifactRoot = 'desktop/artifacts/windows-x64'
+          New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+
+          $releaseFiles = @((Get-Item $exe)) + $nsis + $msi
+          foreach ($file in $releaseFiles) {
+            Copy-Item $file.FullName -Destination $artifactRoot -Force
+          }
+          Copy-Item 'desktop/LICENSE' -Destination $artifactRoot -Force
+
+          $checksums = foreach ($file in (Get-ChildItem $artifactRoot -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' })) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $checksums | Set-Content (Join-Path $artifactRoot 'SHA256SUMS.txt') -Encoding ascii
+
+          @(
+            'SyncChat Desktop Windows x64',
+            "Commit: $env:GITHUB_SHA",
+            'API: https://api.syncchat.live/api',
+            'Socket: https://api.syncchat.live',
+            'Public origin: https://syncchat.live',
+            'Runtime: Rust + Tauri 2',
+            'License: MIT'
+          ) | Set-Content (Join-Path $artifactRoot 'BUILD-INFO.txt') -Encoding utf8
+
+          Write-Host 'Verified production artifacts:'
+          Get-ChildItem $artifactRoot -File | Format-Table Name, Length
+
+      - name: Upload Windows production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncChat-Windows-x64-${{ github.sha }}
+          path: desktop/artifacts/windows-x64/*
+          if-no-files-found: error
+          retention-days: 30
