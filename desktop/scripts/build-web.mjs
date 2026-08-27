@@ -9,7 +9,23 @@ const repoRoot = path.resolve(desktopRoot, '..');
 const frontendRoot = path.join(repoRoot, 'frontend');
 const publicRoot = path.join(frontendRoot, 'client', 'public');
 const distRoot = path.join(desktopRoot, 'dist');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function npmInvocation(args) {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath) {
+    return {
+      command: process.execPath,
+      args: [npmExecPath, ...args],
+      shell: false,
+    };
+  }
+
+  return {
+    command: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    args,
+    shell: process.platform === 'win32',
+  };
+}
 
 const env = {
   ...process.env,
@@ -32,10 +48,12 @@ env.CLIENT_SOCKET_URL = env.CLIENT_SOCKET_URL || env.SOCKET_URL;
 env.CLIENT_PUBLIC_ORIGIN = env.CLIENT_PUBLIC_ORIGIN || env.PUBLIC_ORIGIN;
 
 console.log('[desktop:web] Building SyncChat web client for the native bundle...');
-const build = spawnSync(npm, ['run', 'build'], {
+const npm = npmInvocation(['run', 'build']);
+const build = spawnSync(npm.command, npm.args, {
   cwd: frontendRoot,
   env,
   stdio: 'inherit',
+  shell: npm.shell,
 });
 
 if (build.error) throw build.error;
