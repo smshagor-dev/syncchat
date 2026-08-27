@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../core/api_client.dart';
@@ -27,6 +28,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
     autoStart: false,
     formats: const [BarcodeFormat.qrCode],
   );
+  final qrTokenInput = TextEditingController();
   final shortCodeInput = TextEditingController();
   final emailCode = TextEditingController();
   final supportCode = TextEditingController();
@@ -52,6 +54,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   @override
   void dispose() {
     scanner.dispose();
+    qrTokenInput.dispose();
     shortCodeInput.dispose();
     emailCode.dispose();
     supportCode.dispose();
@@ -76,7 +79,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         requestingCamera = false;
         cameraReady = false;
         error =
-            'Camera permission is required to scan a QR code. You can still enter the short code below.';
+            'Camera permission is required to scan a QR code. You can still paste the QR token or enter the short code below.';
       });
       return;
     }
@@ -95,7 +98,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         requestingCamera = false;
         cameraReady = false;
         error =
-            'Camera could not start. ${_message(failure)} You can still enter the short code below.';
+            'Camera could not start. ${_message(failure)} You can still paste the QR token or enter the short code below.';
       });
     }
   }
@@ -119,9 +122,25 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         .firstWhere((value) => value.isNotEmpty, orElse: () => '');
     final nextToken = _extractToken(raw);
     if (nextToken.isEmpty) return;
+    await _lookupByToken(nextToken, fromScanner: true);
+  }
 
+  Future<void> _lookupPastedToken() async {
+    final nextToken = _extractToken(qrTokenInput.text);
+    if (nextToken.isEmpty) {
+      setState(() => error = 'Paste the QR link or device-link token.');
+      return;
+    }
+    await _lookupByToken(nextToken);
+  }
+
+  Future<void> _lookupByToken(
+    String nextToken, {
+    bool fromScanner = false,
+  }) async {
+    if (busy || stage != _LinkStage.scan) return;
     detected = true;
-    await scanner.stop();
+    if (cameraReady) await scanner.stop();
     if (!mounted) return;
     setState(() {
       busy = true;
@@ -147,23 +166,26 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         error = _message(failure);
       });
       if (cameraReady) await scanner.start();
+      if (fromScanner) qrTokenInput.clear();
     }
   }
 
   Future<void> _lookupShortCode() async {
     if (busy || stage != _LinkStage.scan) return;
     final code = shortCodeInput.text.trim();
-    if (code.isEmpty) {
-      setState(() => error = 'Enter the short code from your signed-in device.');
+    if (code.length != 6) {
+      setState(() => error = 'Enter the 6-digit short code from your signed-in device.');
       return;
     }
 
+    detected = true;
+    if (cameraReady) await scanner.stop();
+    if (!mounted) return;
     setState(() {
       busy = true;
       error = null;
     });
     try {
-      if (cameraReady) await scanner.stop();
       final value =
           await widget.authRepository.deviceLinkInfo(shortCode: code);
       final resolvedToken = value['token']?.toString().trim() ?? '';
@@ -178,7 +200,6 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         token = resolvedToken;
         info = value;
         stage = _LinkStage.verify;
-        detected = true;
         busy = false;
       });
     } on Object catch (failure) {
@@ -256,6 +277,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
   }
 
   Future<void> _scanAgain() async {
+    qrTokenInput.clear();
     shortCodeInput.clear();
     emailCode.clear();
     supportCode.clear();
@@ -319,14 +341,14 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
               ),
               const SizedBox(height: 18),
               const Text(
-                'Scan QR or enter short code',
+                'Scan QR, paste token, or enter code',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               Text(
                 error ??
-                    'Allow Camera permission to scan the QR code, or enter the short code from your signed-in SyncChat device.',
+                    'Allow Camera permission to scan the QR code, or use the same QR token / 6-digit short-code options available on SyncChat Web.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: context.muted, height: 1.45),
               ),
@@ -345,7 +367,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
                 label: Text(requestingCamera ? 'Requesting…' : 'Allow camera'),
               ),
               const SizedBox(height: 22),
-              _shortCodeEntry(),
+              _manualLinkEntry(),
             ],
           ),
         ),
@@ -384,40 +406,45 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         Positioned(
           left: 20,
           right: 20,
-          bottom: 28,
+          bottom: 20,
           child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * .42,
+            ),
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
               color: const Color(0xE60F172A),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Point the camera at the QR code, or enter the short code from your signed-in SyncChat device.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _shortCodeEntry(onDark: true),
-                if (busy) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(),
-                ],
-                if (error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    error!,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Scan the QR code, paste its token, or enter the 6-digit short code.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Color(0xFFFFB4B4)),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
                   ),
+                  const SizedBox(height: 12),
+                  _manualLinkEntry(onDark: true),
+                  if (busy) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFFFFB4B4)),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -425,41 +452,83 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
     );
   }
 
-  Widget _shortCodeEntry({bool onDark = false}) {
+  Widget _manualLinkEntry({bool onDark = false}) {
+    final labelColor = onDark ? Colors.white70 : null;
+    final fieldBorder = onDark
+        ? OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.white38),
+          )
+        : null;
+    final focusBorder = onDark
+        ? OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: SyncColors.sky),
+          )
+        : null;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         TextField(
-          controller: shortCodeInput,
+          controller: qrTokenInput,
           enabled: !busy,
-          textCapitalization: TextCapitalization.characters,
           textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _lookupShortCode(),
+          onSubmitted: (_) => _lookupPastedToken(),
           style: TextStyle(color: onDark ? Colors.white : null),
           decoration: InputDecoration(
-            labelText: 'Device link short code',
-            hintText: 'Enter short code',
-            prefixIcon: const Icon(Icons.password_rounded),
-            labelStyle: TextStyle(color: onDark ? Colors.white70 : null),
+            labelText: 'QR token or link',
+            hintText: 'Paste QR token',
+            prefixIcon: const Icon(Icons.qr_code_2_rounded),
+            labelStyle: TextStyle(color: labelColor),
             hintStyle: TextStyle(color: onDark ? Colors.white54 : null),
-            prefixIconColor: onDark ? Colors.white70 : null,
+            prefixIconColor: labelColor,
             filled: onDark,
             fillColor: onDark ? Colors.white.withValues(alpha: .08) : null,
-            enabledBorder: onDark
-                ? OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.white38),
-                  )
-                : null,
-            focusedBorder: onDark
-                ? OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SyncColors.sky),
+            enabledBorder: fieldBorder,
+            focusedBorder: focusBorder,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: busy ? null : _lookupPastedToken,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: const Text('Continue with QR token'),
+            style: onDark
+                ? OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white38),
                   )
                 : null,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
+        TextField(
+          controller: shortCodeInput,
+          enabled: !busy,
+          keyboardType: TextInputType.number,
+          inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 6,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _lookupShortCode(),
+          style: TextStyle(color: onDark ? Colors.white : null),
+          decoration: InputDecoration(
+            labelText: '6-digit device link code',
+            hintText: 'Enter short code',
+            counterText: '',
+            prefixIcon: const Icon(Icons.password_rounded),
+            labelStyle: TextStyle(color: labelColor),
+            hintStyle: TextStyle(color: onDark ? Colors.white54 : null),
+            prefixIconColor: labelColor,
+            filled: onDark,
+            fillColor: onDark ? Colors.white.withValues(alpha: .08) : null,
+            enabledBorder: fieldBorder,
+            focusedBorder: focusBorder,
+          ),
+        ),
+        const SizedBox(height: 8),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
@@ -567,6 +636,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
           TextField(
             controller: emailCode,
             keyboardType: TextInputType.number,
+            inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
             maxLength: 6,
             decoration: const InputDecoration(
               labelText: 'Email verification code',
@@ -578,6 +648,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
           TextField(
             controller: supportCode,
             keyboardType: TextInputType.number,
+            inputFormatters: const [FilteringTextInputFormatter.digitsOnly],
             maxLength: 6,
             decoration: const InputDecoration(
               labelText: 'SyncChat Support chat code',
@@ -605,7 +676,7 @@ class _DeviceLinkQrScreenState extends State<DeviceLinkQrScreen> {
         TextButton.icon(
           onPressed: busy ? null : _scanAgain,
           icon: const Icon(Icons.qr_code_scanner_rounded),
-          label: const Text('Use another QR or short code'),
+          label: const Text('Use another QR, token, or short code'),
         ),
       ],
     );
