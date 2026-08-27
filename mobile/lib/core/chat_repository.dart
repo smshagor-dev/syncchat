@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'api_client.dart';
 import 'auth_repository.dart';
 import 'e2ee_service.dart';
 import 'realtime_client.dart';
+import 'topic_selection_store.dart';
 
 class ChatRepository {
   ChatRepository({
@@ -21,6 +23,8 @@ class ChatRepository {
   final RealtimeClient _realtime;
   final E2eeService _e2ee;
   final Random _random = Random.secure();
+  final Map<String, Map<void Function(dynamic), void Function(dynamic)>>
+      _topicAwareHandlers = {};
 
   Map<String, dynamic>? _currentUser;
   String? _openRoomId;
@@ -40,7 +44,8 @@ class ChatRepository {
       '/chats/$roomId',
       query: {'skip': skip, 'limit': limit},
     );
-    return _e2ee.decryptMessages(_mapList(response.payload));
+    final decrypted = await _e2ee.decryptMessages(_mapList(response.payload));
+    return _filterSelectedTopic(roomId, decrypted);
   }
 
   Future<List<Map<String, dynamic>>> listMedia({String? roomId}) async {
@@ -59,6 +64,7 @@ class ChatRepository {
   }
 
   Future<void> openRoom(String roomId) async {
+    await TopicSelectionStore.read(roomId);
     if (!_realtime.isConnected) await _realtime.connect();
     if (!_realtime.isConnected) {
       throw const ApiException(
@@ -92,6 +98,7 @@ class ChatRepository {
     final roomId = _roomId(inbox);
     final roomType = inbox['roomType']?.toString() ?? 'private';
     final owners = _ownersId(inbox);
+    final effectiveTopicId = await _effectiveTopicId(roomId, topicId);
     Map<String, dynamic>? e2eeEnvelope;
     var transportText = message;
     if (_deviceE2eeEnabled(inbox)) {
@@ -121,7 +128,7 @@ class ChatRepository {
       'userId': userId,
       'text': transportText,
       'replyTo': replyTo,
-      'topicId': topicId,
+      'topicId': effectiveTopicId,
       'viewOnce': viewOnce,
       if (e2eeEnvelope != null) 'e2eeEnvelope': e2eeEnvelope,
     });
@@ -166,6 +173,7 @@ class ChatRepository {
   }) async {
     _guardE2eeMedia(inbox);
     final roomId = _roomId(inbox);
+    final effectiveTopicId = await _effectiveTopicId(roomId, topicId);
     final resolvedClientMessageId = _resolveClientMessageId(clientMessageId);
     final response = await _api.post(
       '/chats/send-file',
@@ -177,7 +185,7 @@ class ChatRepository {
         'ownersId': _ownersId(inbox),
         'text': text.trim(),
         'replyTo': replyTo,
-        'topicId': topicId,
+        'topicId': effectiveTopicId,
         'viewOnce': viewOnce,
         'file': file,
       },
@@ -301,6 +309,7 @@ class ChatRepository {
     required Map<String, dynamic> inbox,
     required String text,
     String? replyTo,
+    String? topicId,
     String mode = 'once',
     DateTime? scheduledFor,
     String recurringType = 'none',
@@ -314,14 +323,17 @@ class ChatRepository {
         message: 'Message cannot be empty.',
       );
     }
+    final roomId = _roomId(inbox);
+    final effectiveTopicId = await _effectiveTopicId(roomId, topicId);
     final response = await _api.post(
       '/chats/scheduled',
       body: {
-        'roomId': _roomId(inbox),
+        'roomId': roomId,
         'roomType': inbox['roomType']?.toString() ?? 'private',
         'ownersId': _ownersId(inbox),
         'text': message,
         'replyTo': replyTo,
+        'topicId': effectiveTopicId,
         'mode': mode,
         'scheduledFor': scheduledFor?.toUtc().toIso8601String(),
         'recurringType': recurringType,
@@ -378,7 +390,8 @@ class ChatRepository {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
-    return _e2ee.decryptMessages(messages);
+    final decrypted = await _e2ee.decryptMessages(messages);
+    return _filterSelectedTopic(roomId, decrypted);
   }
 
   Future<void> typing(Map<String, dynamic> inbox) async {
@@ -390,11 +403,60 @@ class ChatRepository {
     });
   }
 
-  void on(String event, void Function(dynamic data) handler) =>
+  void on(String event, void Function(dynamic data) handler) {
+    if (event != 'chat/insert' && event != 'chat/sync-result') {
       _realtime.on(event, handler);
+      return;
+    }
 
-  void off(String event, [void Function(dynamic data)? handler]) =>
-      _realtime.off(event, handler);
+    final handlers = _topicAwareHandlers.putIfAbsent(
+      event,
+      () => <void Function(dynamic), void Function(dynamic)>{},
+    );
+    if (handlers.containsKey(handler)) return;
+
+    void wrapped(dynamic data) {
+      final roomId = data is Map ? data['roomId']?.toString() ?? '' : '';
+      final selected = TopicSelectionStore.peek(roomId);
+      if (selected == null || selected.isEmpty || data is! Map) {
+        handler(data);
+        return;
+      }
+
+      if (event == 'chat/insert') {
+        if (data['topicId']?.toString() == selected) handler(data);
+        return;
+      }
+
+      final rawMessages = data['messages'];
+      if (rawMessages is! List) {
+        handler(data);
+        return;
+      }
+      final filtered = rawMessages
+          .whereType<Map>()
+          .where((item) => item['topicId']?.toString() == selected)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false);
+      handler({...Map<String, dynamic>.from(data), 'messages': filtered});
+    }
+
+    handlers[handler] = wrapped;
+    _realtime.on(event, wrapped);
+  }
+
+  void off(String event, [void Function(dynamic data)? handler]) {
+    if (handler == null) {
+      _topicAwareHandlers.remove(event);
+      _realtime.off(event);
+      return;
+    }
+    final wrapped = _topicAwareHandlers[event]?.remove(handler);
+    if (_topicAwareHandlers[event]?.isEmpty == true) {
+      _topicAwareHandlers.remove(event);
+    }
+    _realtime.off(event, wrapped ?? handler);
+  }
 
   bool _deviceE2eeEnabled(Map<String, dynamic> inbox) =>
       inbox['roomType']?.toString() == 'private' &&
@@ -418,6 +480,23 @@ class ChatRepository {
         payload: {'code': 'E2EE_SCHEDULE_NOT_SUPPORTED'},
       );
     }
+  }
+
+  Future<String?> _effectiveTopicId(String roomId, String? requested) async {
+    final explicit = requested?.trim() ?? '';
+    if (explicit.isNotEmpty) return explicit;
+    return TopicSelectionStore.read(roomId);
+  }
+
+  Future<List<Map<String, dynamic>>> _filterSelectedTopic(
+    String roomId,
+    List<Map<String, dynamic>> messages,
+  ) async {
+    final topicId = await TopicSelectionStore.read(roomId);
+    if (topicId == null || topicId.isEmpty) return messages;
+    return messages
+        .where((message) => message['topicId']?.toString() == topicId)
+        .toList(growable: false);
   }
 
   String _roomId(Map<String, dynamic> inbox) {
