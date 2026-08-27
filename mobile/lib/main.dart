@@ -280,7 +280,7 @@ class _MaintenanceScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: SyncColors.slate900,
                   borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: SyncColors.slate800),
+                  border: Border.all(color: SyncColors.slate700),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
