@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEBUG_RELEASE_TAG: mobile-debug-v0.1.0-4
-  DEBUG_RELEASE_TITLE: SyncChat Android Debug v0.1.0+4
+  DEBUG_RELEASE_TAG: mobile-debug-v0.1.0-5
+  DEBUG_RELEASE_TITLE: SyncChat Android Debug v0.1.0+5
 
 jobs:
   debug-apk:
@@ -48,8 +48,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build installable debug APK
-        run: flutter build apk --debug
+      - name: Build installable debug APK against production API
+        run: >-
+          flutter build apk --debug
+          --dart-define=SYNCCHAT_API_BASE_URL=https://api.syncchat.live/api
+          --dart-define=SYNCCHAT_SOCKET_URL=https://api.syncchat.live
+          --dart-define=SYNCCHAT_APP_VERSION=${DEBUG_RELEASE_TAG}
 
       - name: Package debug APK
         run: |
@@ -81,6 +85,6 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "$DEBUG_RELEASE_TITLE" \
-              --notes "Installable SyncChat Android debug build for direct device testing. Debug-signed, not intended for Google Play production distribution." \
+              --notes "Installable SyncChat Android debug build connected to https://api.syncchat.live/api and https://api.syncchat.live. Debug-signed, not intended for Google Play production distribution." \
               --prerelease
           fi
