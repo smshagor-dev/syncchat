@@ -159,6 +159,7 @@ const sanitizeProfileForViewer = ({
     canSeeAvatar && payload?.avatar
       ? toAbsoluteUploadUrl(payload.avatar)
       : DEFAULT_USER_AVATAR_URL;
+  const visibleLastSeenAt = canSeeLastSeen ? payload?.updatedAt || null : null;
 
   return {
     ...payload,
@@ -167,7 +168,11 @@ const sanitizeProfileForViewer = ({
     canSeeAvatar,
     canSeeOnline,
     canSeeLastSeen,
-    lastSeenAt: canSeeLastSeen ? payload?.updatedAt || null : null,
+    // `updatedAt` is the source used for last-seen throughout the service. Do not
+    // leave the raw timestamp in a sanitized profile when last-seen is hidden,
+    // otherwise clients can reconstruct the protected presence value.
+    updatedAt: visibleLastSeenAt,
+    lastSeenAt: visibleLastSeenAt,
     presenceLabel: canSeeOnline && payload?.online
       ? 'online'
       : canSeeLastSeen
