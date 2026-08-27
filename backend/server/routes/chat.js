@@ -8,11 +8,17 @@ const ctrl = require('../controllers/chat');
 const chatUpload = require('../controllers/chatUpload');
 const resumableUpload = require('../controllers/resumableUpload');
 const chatDeletion = require('../controllers/chatDeletion');
+const { mediaProxy } = require('../controllers/mediaProxy');
 
 const resumableChunk = express.raw({
   type: 'application/octet-stream',
   limit: '8mb',
 });
+
+// Mobile/web clients call the backend for persistent media. The backend then
+// reads from the configured FTP/FTPS storage, keeping storage implementation
+// details out of clients.
+router.get('/media/proxy', mediaProxy);
 
 router.post('/chats/upload', authenticate, upload.single('file'), chatUpload.upload);
 router.post('/chats/uploads/resumable', authenticate, resumableUpload.create);
