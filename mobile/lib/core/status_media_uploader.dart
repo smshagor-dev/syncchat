@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'api_client.dart';
 
@@ -147,7 +148,7 @@ class StatusMediaUploader {
   Future<void> _sendPart({
     required String uploadId,
     required int partNumber,
-    required List<int> bytes,
+    required Uint8List bytes,
   }) async {
     Object? lastFailure;
     for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
@@ -155,9 +156,7 @@ class StatusMediaUploader {
         await _api.sendBytes(
           'PUT',
           '/chat-v2/uploads/$uploadId/parts/$partNumber',
-          body: bytes is List<int>
-              ? Uint8List.fromList(bytes)
-              : Uint8List.fromList(List<int>.from(bytes)),
+          body: bytes,
         );
         return;
       } on ApiException catch (failure) {
