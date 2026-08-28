@@ -125,11 +125,10 @@
   [data-syncchat-desktop-shell] nav.min-h-16 p.font-bold {
     font-weight: 650 !important;
   }
+}
 
-  /* Context panels stay usable on large monitors without swallowing the room. */
-  @media (min-width: 1280px) {
-    [data-syncchat-desktop-shell] [class*='xl:mr-[380px]'] {
-      margin-right: 360px !important;
-    }
+@media (min-width: 1280px) {
+  [data-syncchat-desktop-shell] [class*='xl:mr-[380px]'] {
+    margin-right: 360px !important;
   }
 }
