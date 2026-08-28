@@ -18,6 +18,7 @@ import installChatToolsSettingsBridge from './helpers/chatToolsSettingsBridge';
 import installInboxModalNavigationGuard from './helpers/inboxModalNavigationGuard';
 import installImageFallbacks from './helpers/imageFallbacks';
 import installRuntimeBranding from './helpers/runtimeBranding';
+import installLocalFirstRuntime from './helpers/localFirstRuntime';
 import './styles/chatToolsTheme.css';
 import './styles/layoutFixes.css';
 import './styles/callScreenTheme.css';
@@ -28,6 +29,11 @@ import './styles/webDesktopParity.css';
 import './styles/mobileWebMessenger.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
+
+// Hydrate the last verified account/settings and install stale-while-revalidate
+// transport before React mounts. Warm launches therefore paint the cached
+// messenger immediately while API/socket reconciliation continues silently.
+installLocalFirstRuntime(store);
 
 const root = ReactDOM.createRoot(document.querySelector('#root'));
 
