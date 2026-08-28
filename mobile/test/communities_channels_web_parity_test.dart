@@ -3,32 +3,28 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('communities destination preserves current web contracts', () {
+  test('communities destination uses the cleaner mobile-first surface', () {
     final entry = File('lib/screens/live_p1_communities_screen.dart').readAsStringSync();
-    final source = File('lib/screens/live_p1_communities_web_parity_screen.dart').readAsStringSync();
+    final source = File('lib/screens/live_p1_communities_core_screen.dart').readAsStringSync();
 
-    expect(entry, contains("export 'live_p1_communities_web_parity_screen.dart'"));
+    expect(entry, contains("export 'live_p1_communities_core_screen.dart'"));
     for (final contract in [
-      'Create New',
+      'Create community',
+      'LiveCreateCommunityScreen',
+      'LiveCreateCommunityGroupScreen',
       "context.services.communities.chats(id)",
       'View all',
       'Show less',
-      'New Group',
-      "context.services.contacts.search(query)",
-      'Search people by username, email, mobile',
-      "'participantsId': users.map",
-      "'identities': identities.toList",
+      'New group',
       'LiveChatRoomScreen',
-      "imageUrl: community['avatar']?.toString()",
-      'avatarDataUri',
-      "final relativeTime = _relativeTime(content['time']);",
-      'mainAxisSize: MainAxisSize.min',
-      'if (relativeTime.isNotEmpty)',
-      'a few seconds ago',
-      'years ago',
+      'unreadTotal',
+      'previewChats',
     ]) {
       expect(source, contains(contract));
     }
+
+    expect(source, isNot(contains("Text('Community actions'")));
+    expect(source, isNot(contains("child: Text(creating ? 'Close' : 'Create New')")));
   });
 
   test('channels destination preserves joined discover and room navigation', () {
@@ -57,8 +53,8 @@ void main() {
     }
   });
 
-  test('pre-audit community and channel screens remain rollback references', () {
-    expect(File('lib/screens/live_p1_communities_core_screen.dart').existsSync(), isTrue);
+  test('alternate community and channel screens remain rollback references', () {
+    expect(File('lib/screens/live_p1_communities_web_parity_screen.dart').existsSync(), isTrue);
     expect(File('lib/screens/live_channels_core_screen.dart').existsSync(), isTrue);
   });
 }
