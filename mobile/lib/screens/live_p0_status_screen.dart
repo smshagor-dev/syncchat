@@ -7,6 +7,7 @@ import '../core/public_app_config.dart';
 import '../core/realtime_client.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../widgets/professional_mobile_surface.dart';
 import 'live_p0_status_web_parity_screen.dart';
 
 class LiveP0StatusScreen extends StatefulWidget {
@@ -54,12 +55,16 @@ class _LiveP0StatusScreenState extends State<LiveP0StatusScreen> {
   @override
   Widget build(BuildContext context) {
     if (!context.publicAppConfig.featureEnabled('status')) {
-      return const _StatusDisabledScreen();
+      return const ProfessionalMobileSurface(
+        child: _StatusDisabledScreen(),
+      );
     }
 
-    return KeyedSubtree(
-      key: ValueKey<int>(_revision),
-      child: const WebParityStatusScreen(),
+    return ProfessionalMobileSurface(
+      child: KeyedSubtree(
+        key: ValueKey<int>(_revision),
+        child: const WebParityStatusScreen(),
+      ),
     );
   }
 }

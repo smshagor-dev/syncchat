@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('settings hub routes to web-parity surface', () {
+  test('settings hub keeps web-parity behavior behind mobile surface', () {
     final entry = File('lib/screens/live_settings_hub_screen.dart').readAsStringSync();
-    expect(entry, contains("export 'live_settings_hub_web_parity_screen.dart'"));
+    expect(entry, contains("import 'live_settings_hub_web_parity_screen.dart' as parity"));
+    expect(entry, contains('ProfessionalMobileSurface'));
+    expect(entry, contains('child: parity.LiveSettingsHubScreen('));
     expect(File('lib/screens/live_settings_hub_core_screen.dart').existsSync(), isTrue);
   });
 

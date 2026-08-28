@@ -27,11 +27,13 @@ void main() {
     expect(source, isNot(contains("child: Text(creating ? 'Close' : 'Create New')")));
   });
 
-  test('channels destination preserves joined discover and room navigation', () {
+  test('channels preserves rich behavior behind the approved mobile surface', () {
     final entry = File('lib/screens/live_channels_screen.dart').readAsStringSync();
     final source = File('lib/screens/live_channels_web_parity_screen.dart').readAsStringSync();
 
-    expect(entry, contains("export 'live_channels_web_parity_screen.dart'"));
+    expect(entry, contains("import 'live_channels_web_parity_screen.dart' as parity"));
+    expect(entry, contains('ProfessionalMobileSurface'));
+    expect(entry, contains('child: parity.ChannelHubScreen()'));
     for (final contract in [
       'Broadcast-style rooms with subscriber controls',
       "_sectionLabel('Joined')",

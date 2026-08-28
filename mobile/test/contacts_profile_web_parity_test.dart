@@ -38,7 +38,9 @@ void main() {
     final entry = File('lib/screens/live_full_profile_screen.dart').readAsStringSync();
     final source = File('lib/screens/live_full_profile_web_parity_screen.dart').readAsStringSync();
 
-    expect(entry, contains("export 'live_full_profile_web_parity_screen.dart'"));
+    expect(entry, contains("import 'live_full_profile_web_parity_screen.dart' as parity"));
+    expect(entry, contains('ProfessionalMobileSurface'));
+    expect(entry, contains('child: parity.LiveFullProfileScreen()'));
     expect(source, contains("imageUrl: profile['avatar']?.toString()"));
     expect(source, contains("field: 'username'"));
     expect(source, contains("field: 'fullname'"));
