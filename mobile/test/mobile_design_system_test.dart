@@ -13,6 +13,11 @@ void main() {
       'SnackBarBehavior.floating',
       'BottomSheetThemeData(',
       'PopupMenuThemeData(',
+      'CardThemeData(',
+      'ListTileThemeData(',
+      'ProgressIndicatorThemeData(',
+      'minLeadingWidth: 36',
+      'minVerticalPadding: 8',
     ]) {
       expect(theme, contains(contract), reason: 'Missing design token: $contract');
     }
@@ -70,5 +75,17 @@ void main() {
     expect(contacts, isNot(contains("'Sync Mobile Contacts'")));
     expect(contacts, isNot(contains("'Sorted by last seen time'")));
     expect(contacts, isNot(contains("'Create a new Group'")));
+  });
+
+  test('remaining feature-rich screens inherit the shared professional system', () {
+    final status = File('lib/screens/live_p0_status_screen.dart').readAsStringSync();
+    final channels = File('lib/screens/live_channels_screen.dart').readAsStringSync();
+    final settings = File('lib/screens/live_settings_hub_screen.dart').readAsStringSync();
+    final profile = File('lib/screens/live_full_profile_screen.dart').readAsStringSync();
+
+    expect(status, contains('WebParityStatusScreen'));
+    expect(channels, contains("export 'live_channels_web_parity_screen.dart'"));
+    expect(settings, contains("export 'live_settings_hub_web_parity_screen.dart'"));
+    expect(profile, contains("export 'live_full_profile_web_parity_screen.dart'"));
   });
 }

@@ -26,12 +26,10 @@ void main() {
     }
   });
 
-  test('audited entry files stay wired to their web-parity implementations', () {
+  test('feature-rich parity entries remain active where behavior is broader', () {
     final expectedExports = <String, String>{
       'lib/screens/live_p0_contacts_screen.dart':
           "export 'live_p0_contacts_web_parity_screen.dart'",
-      'lib/screens/live_p1_communities_screen.dart':
-          "export 'live_p1_communities_web_parity_screen.dart'",
       'lib/screens/live_channels_screen.dart':
           "export 'live_channels_web_parity_screen.dart'",
       'lib/screens/live_collection_screens.dart':
@@ -45,11 +43,25 @@ void main() {
     for (final entry in expectedExports.entries) {
       final source = File(entry.key).readAsStringSync();
       expect(source, contains(entry.value), reason: 'Parity entry drifted: ${entry.key}');
-      expect(
-        source,
-        isNot(contains('_core_screen.dart')),
-        reason: 'Rollback/core implementation became active: ${entry.key}',
-      );
+    }
+  });
+
+  test('communities uses the cleaner production-capable mobile presentation', () {
+    final source = File('lib/screens/live_p1_communities_screen.dart').readAsStringSync();
+    final implementation =
+        File('lib/screens/live_p1_communities_core_screen.dart').readAsStringSync();
+
+    expect(source, contains("export 'live_p1_communities_core_screen.dart'"));
+    for (final contract in [
+      'LiveCreateCommunityScreen',
+      'LiveCreateCommunityGroupScreen',
+      'context.services.communities.chats(id)',
+      'LiveChatRoomScreen(',
+      'Create community',
+      'New group',
+      'View all',
+    ]) {
+      expect(implementation, contains(contract));
     }
   });
 
@@ -93,7 +105,6 @@ void main() {
       expect(presentation, contains(contract));
     }
 
-    // The active mobile list must not regress to the old dashboard/web flow.
     expect(chats, isNot(contains('_buildStatusRail')));
     expect(chats, isNot(contains('_buildLabels')));
     expect(chats, isNot(contains('contactLabelsByRoom')));
@@ -118,12 +129,12 @@ void main() {
     }
   });
 
-  test('rollback references remain present without being routed directly', () {
+  test('alternate implementations remain available as rollback references', () {
     for (final path in [
       'lib/screens/live_chat_room_core_screen.dart',
       'lib/screens/live_calls_core_screen.dart',
       'lib/screens/live_p0_contacts_core_screen.dart',
-      'lib/screens/live_p1_communities_core_screen.dart',
+      'lib/screens/live_p1_communities_web_parity_screen.dart',
       'lib/screens/live_channels_core_screen.dart',
       'lib/screens/live_collection_core_screens.dart',
       'lib/screens/live_settings_hub_core_screen.dart',
