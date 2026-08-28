@@ -50,25 +50,118 @@ abstract final class SyncChatTheme {
         backgroundColor: Colors.white,
         foregroundColor: SyncColors.slate900,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
+        toolbarHeight: 58,
+        titleTextStyle: TextStyle(
+          color: SyncColors.slate900,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -.2,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: SyncColors.slate100,
-        hintStyle: const TextStyle(color: SyncColors.slate500),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        hintStyle: const TextStyle(color: SyncColors.slate500, fontSize: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.slate200),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.slate200),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.sky, width: 1.4),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.sky600, width: 1.2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.danger),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.danger, width: 1.2),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          side: const BorderSide(color: SyncColors.slate200),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(42, 42),
+          shape: const CircleBorder(),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: SyncColors.slate50,
+        selectedColor: const Color(0xFFE0F2FE),
+        side: const BorderSide(color: SyncColors.slate200),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        labelStyle: const TextStyle(
+          color: SyncColors.slate600,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        visualDensity: VisualDensity.compact,
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: SyncColors.sky600,
+        foregroundColor: Colors.white,
+        elevation: 3,
+        focusElevation: 3,
+        hoverElevation: 4,
+        highlightElevation: 4,
+        shape: CircleBorder(),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: SyncColors.slate900,
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 5,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: SyncColors.slate200,
+        thickness: .7,
+        space: 1,
       ),
     );
   }
@@ -91,25 +184,118 @@ abstract final class SyncChatTheme {
         backgroundColor: SyncColors.spill900,
         foregroundColor: Color(0xFFF8FAFC),
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
+        toolbarHeight: 58,
+        titleTextStyle: TextStyle(
+          color: Color(0xFFF8FAFC),
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -.2,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: SyncColors.spill800,
-        hintStyle: const TextStyle(color: SyncColors.spill300),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        hintStyle: const TextStyle(color: SyncColors.spill300, fontSize: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.spill700),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.spill700),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: SyncColors.sky, width: 1.4),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.sky, width: 1.2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.danger),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: SyncColors.danger, width: 1.2),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          side: const BorderSide(color: SyncColors.spill700),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(42, 42),
+          shape: const CircleBorder(),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: SyncColors.spill800,
+        selectedColor: const Color(0x3328B6F6),
+        side: const BorderSide(color: SyncColors.spill700),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        labelStyle: const TextStyle(
+          color: SyncColors.spill300,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        visualDensity: VisualDensity.compact,
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: SyncColors.sky600,
+        foregroundColor: Colors.white,
+        elevation: 3,
+        focusElevation: 3,
+        hoverElevation: 4,
+        highlightElevation: 4,
+        shape: CircleBorder(),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: SyncColors.spill800,
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: SyncColors.spill900,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: SyncColors.spill900,
+        surfaceTintColor: Colors.transparent,
+        elevation: 5,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: SyncColors.spill700,
+        thickness: .7,
+        space: 1,
       ),
     );
   }
