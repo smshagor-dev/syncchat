@@ -1,0 +1,50 @@
+/*
+ * Browser/desktop parity guard.
+ *
+ * SyncChat Desktop bundles the same frontend/client build that powers the Web
+ * app. These rules keep normal desktop browsers on the exact same edge-to-edge
+ * messenger canvas as the Tauri window while leaving mobile breakpoints alone.
+ */
+
+@media (min-width: 768px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [data-syncchat-desktop-app] {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  [data-syncchat-desktop-shell] {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+  }
+
+  [data-syncchat-desktop-shell] > *,
+  [data-syncchat-mobile-shell],
+  [data-syncchat-mobile-shell] > * {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* Browser scroll belongs to the inbox/page/room surfaces, never the document. */
+  body {
+    overscroll-behavior: none;
+  }
+}
