@@ -349,6 +349,45 @@ class ApiClient {
     }
   }
 
+  Future<ApiEnvelope> sendBytes(
+    String method,
+    String path, {
+    required Uint8List body,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    var refreshed = false;
+    while (true) {
+      final uri = _config.apiUri(path, queryParameters: query);
+      final requestHeaders = <String, String>{
+        'accept': 'application/json',
+        'content-type': 'application/octet-stream',
+        ...?headers,
+      };
+      if (authenticated) {
+        requestHeaders['authorization'] = 'Bearer ${await _requireAccessToken()}';
+      }
+
+      final request = http.Request(method, uri)
+        ..headers.addAll(requestHeaders)
+        ..bodyBytes = body;
+
+      try {
+        return await _sendRequest(request);
+      } on ApiException catch (error) {
+        if (authenticated &&
+            !refreshed &&
+            error.isUnauthorized &&
+            await refreshSession()) {
+          refreshed = true;
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
   Future<ApiEnvelope> _multipartOnce(
     String path, {
     required String fieldName,
