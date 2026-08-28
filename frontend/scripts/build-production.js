@@ -17,6 +17,12 @@ const mobileNavPath = path.join(
   'foreground',
   'mobileNav.jsx'
 );
+const localFirstRuntimePath = path.join(
+  rootDir,
+  'client',
+  'helpers',
+  'localFirstRuntime.js'
+);
 const parityStylePath = path.join(rootDir, 'client', 'styles', 'webDesktopParity.css');
 const mobileStylePath = path.join(rootDir, 'client', 'styles', 'mobileWebMessenger.css');
 
@@ -63,7 +69,7 @@ if (!fs.existsSync(webpackCliPath)) {
 /*
  * Web and Tauri Desktop intentionally ship the same frontend/client bundle.
  * Fail the production build if a future refactor drops the shared messenger
- * shell, desktop parity styles, or the mobile Web presentation contract.
+ * shell, desktop parity styles, mobile Web presentation, or local-first boot.
  */
 assertSourceContains(
   clientIndexPath,
@@ -72,8 +78,23 @@ assertSourceContains(
     "./styles/desktopPages.css",
     "./styles/webDesktopParity.css",
     "./styles/mobileWebMessenger.css",
+    "./helpers/localFirstRuntime",
+    'installLocalFirstRuntime(store)',
   ],
-  'Desktop/Web style'
+  'Desktop/Web style and startup'
+);
+assertSourceContains(
+  localFirstRuntimePath,
+  [
+    'syncchat.local-first.boot.v1',
+    "'/settings'",
+    "'/users'",
+    "'/app-config'",
+    "'/inboxes'",
+    'indexedDB',
+    'revalidate',
+  ],
+  'Local-first startup'
 );
 assertSourceContains(
   chatRoutePath,
@@ -92,7 +113,7 @@ if (!fs.existsSync(mobileStylePath)) {
   fail('Mobile Web messenger stylesheet is missing.', { mobileStylePath });
 }
 
-log('Desktop/Web and Mobile Web messenger parity contracts verified.');
+log('Desktop/Web, Mobile Web and local-first startup contracts verified.');
 log('Starting production build', {
   node: process.version,
   execPath: process.execPath,
