@@ -13,10 +13,10 @@ import 'live_channels_screen.dart';
 import 'live_collection_screens.dart';
 import 'live_full_profile_screen.dart';
 import 'live_help_screens.dart';
-import 'live_messenger_chats_screen.dart';
 import 'live_p0_contacts_screen.dart';
 import 'live_p0_status_screen.dart';
 import 'live_p1_communities_screen.dart';
+import 'live_professional_chats_screen.dart';
 import 'live_settings_hub_screen.dart';
 
 enum LiveHomeTab { chats, status, communities, channels, calls }
@@ -109,7 +109,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
   }
 
   Widget pageForTab() => switch (selected) {
-        LiveHomeTab.chats => LiveMessengerChatsScreen(
+        LiveHomeTab.chats => LiveProfessionalChatsScreen(
             onMenu: () => scaffoldKey.currentState?.openDrawer(),
             onOpenStatus: () => setState(() => selected = LiveHomeTab.status),
             onThemeChanged: widget.onThemeChanged,
