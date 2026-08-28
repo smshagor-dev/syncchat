@@ -73,18 +73,20 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            0,
-            0,
-            0,
-            118 + MediaQuery.paddingOf(context).bottom,
+          padding: EdgeInsets.only(
+            top: 2,
+            bottom: 96 + MediaQuery.paddingOf(context).bottom,
           ),
           children: [
-            _header(),
             if (loading)
               const Padding(
-                padding: EdgeInsets.only(top: 72),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.only(top: 88),
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.3),
+                  ),
+                ),
               )
             else if (error != null)
               Padding(
@@ -93,17 +95,38 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
               )
             else if (calls.isEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 72),
+                padding: const EdgeInsets.fromLTRB(28, 92, 28, 0),
                 child: Column(
                   children: [
-                    Icon(Icons.call_outlined, size: 50, color: context.muted),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No call history yet.',
-                      style: TextStyle(
-                        color: context.muted,
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: SyncColors.sky.withValues(alpha: .10),
+                        shape: BoxShape.circle,
                       ),
+                      child: const Icon(
+                        Icons.call_outlined,
+                        size: 27,
+                        color: SyncColors.sky600,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'No calls yet',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Your recent voice and video calls will appear here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: context.muted, height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _showNewCall,
+                      icon: const Icon(Icons.add_call),
+                      label: const Text('Start a call'),
                     ),
                   ],
                 ),
@@ -116,41 +139,6 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     );
   }
 
-  Widget _header() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
-      decoration: BoxDecoration(
-        color: context.panel,
-        border: Border(bottom: BorderSide(color: context.border)),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'All Calls',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Incoming, outgoing, rejected and missed',
-                  style: TextStyle(fontSize: 11.5),
-                ),
-              ],
-            ),
-          ),
-          IconButton.filled(
-            tooltip: 'Start new call',
-            onPressed: _showNewCall,
-            icon: const Icon(Icons.add_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _callTile(Map<String, dynamic> call) {
     final meta = _callMeta(call)!;
     final profile = _privateProfile(call);
@@ -159,128 +147,114 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     final online = call['roomType']?.toString() == 'private' &&
         profile['canSeeOnline'] != false &&
         profile['online'] == true;
+    final tone = meta.danger
+        ? SyncColors.danger
+        : meta.outgoing
+            ? SyncColors.sky600
+            : SyncColors.success;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-      decoration: BoxDecoration(
-        color: context.panel,
-        border: Border(bottom: BorderSide(color: context.border)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SyncAvatar(
-            name: name,
-            imageUrl: avatar,
-            radius: 24,
-            online: online,
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _relativeTime(call['createdAt']),
-                      style: TextStyle(color: context.muted, fontSize: 11),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Icon(
-                      meta.video ? Icons.videocam_outlined : Icons.call_outlined,
-                      size: 16,
-                      color: meta.danger
-                          ? SyncColors.danger
-                          : meta.outgoing
-                              ? SyncColors.sky
-                              : SyncColors.success,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      meta.label,
-                      style: TextStyle(
-                        color: meta.danger
-                            ? SyncColors.danger
-                            : meta.outgoing
-                                ? SyncColors.sky
-                                : SyncColors.success,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _actionButton(
-                      tooltip: 'Audio call',
-                      icon: Icons.call_outlined,
-                      onPressed: () => _redial(call, name: name, video: false),
-                    ),
-                    const SizedBox(width: 7),
-                    _actionButton(
-                      tooltip: 'Video call',
-                      icon: Icons.videocam_outlined,
-                      onPressed: () => _redial(call, name: name, video: true),
-                    ),
-                    const SizedBox(width: 7),
-                    _actionButton(
-                      tooltip: 'Message',
-                      icon: Icons.chat_bubble_outline_rounded,
-                      neutral: true,
-                      onPressed: () => _openMessage(call, name),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionButton({
-    required String tooltip,
-    required IconData icon,
-    required VoidCallback onPressed,
-    bool neutral = false,
-  }) {
-    return Tooltip(
-      message: tooltip,
+    return Material(
+      color: context.panel,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onPressed,
-        child: Container(
-          width: 38,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: neutral
-                ? context.softPanel
-                : SyncColors.sky.withValues(alpha: context.isDark ? .18 : .10),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: context.border),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: neutral ? context.ink : SyncColors.sky,
+        onTap: () => _openMessage(call, name),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+          child: Row(
+            children: [
+              SyncAvatar(
+                name: name,
+                imageUrl: avatar,
+                radius: 25,
+                online: online,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: context.border.withValues(alpha: .58),
+                        width: .7,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                Icon(
+                                  meta.outgoing
+                                      ? Icons.call_made_rounded
+                                      : Icons.call_received_rounded,
+                                  size: 15,
+                                  color: tone,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    '${meta.video ? 'Video' : 'Audio'} · ${meta.label}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: tone,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _relativeTime(call['createdAt']),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: context.muted,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        tooltip: meta.video ? 'Video call' : 'Audio call',
+                        onPressed: () => _redial(
+                          call,
+                          name: name,
+                          video: meta.video,
+                        ),
+                        icon: Icon(
+                          meta.video ? Icons.videocam_outlined : Icons.call_outlined,
+                          color: SyncColors.sky600,
+                          size: 22,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -439,17 +413,12 @@ class _LiveCallsScreenState extends State<LiveCallsScreen> {
     final time = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
     if (time == null) return 'recently';
     final diff = DateTime.now().difference(time);
-    if (diff.isNegative || diff.inSeconds < 45) return 'a few seconds ago';
-    if (diff.inMinutes < 2) return 'a minute ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
-    if (diff.inHours < 2) return 'an hour ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    if (diff.inDays < 2) return 'a day ago';
-    if (diff.inDays < 30) return '${diff.inDays} days ago';
-    if (diff.inDays < 60) return 'a month ago';
-    if (diff.inDays < 365) return '${diff.inDays ~/ 30} months ago';
-    if (diff.inDays < 730) return 'a year ago';
-    return '${diff.inDays ~/ 365} years ago';
+    if (diff.isNegative || diff.inSeconds < 45) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${time.day}/${time.month}/${time.year.toString().substring(2)}';
   }
 
   void _snack(String message) {
@@ -573,11 +542,9 @@ class _NewCallSheetState extends State<_NewCallSheet> {
           ListTile(
             title: const Text(
               'Start Call',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19),
             ),
-            subtitle: const Text(
-              'Select contacts for an admin-managed audio/video call',
-            ),
+            subtitle: const Text('Choose one or more contacts'),
             trailing: IconButton(
               tooltip: 'Close',
               onPressed: () => Navigator.pop(context),
@@ -621,7 +588,7 @@ class _NewCallSheetState extends State<_NewCallSheet> {
               controller: search,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                hintText: 'Search by username, email, number',
+                hintText: 'Search contacts',
                 prefixIcon: Icon(Icons.search_rounded),
               ),
             ),
@@ -631,7 +598,7 @@ class _NewCallSheetState extends State<_NewCallSheet> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Max participants: ${config?.maxGroupParticipants ?? 4}',
+                'Up to ${config?.maxGroupParticipants ?? 4} participants',
                 style: TextStyle(color: context.muted, fontSize: 11.5),
               ),
             ),
