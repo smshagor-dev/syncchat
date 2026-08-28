@@ -10,6 +10,8 @@
     "dev": "npm run icons && tauri dev",
     "build": "npm run icons && tauri build",
     "build:binary": "npm run icons && tauri build --no-bundle",
+    "build:macos": "npm run icons && tauri build --bundles app,dmg --target universal-apple-darwin --ci",
+    "build:linux": "npm run icons && tauri build --bundles deb,appimage --ci",
     "check": "npm run icons && cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
