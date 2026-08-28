@@ -158,7 +158,6 @@ abstract final class SyncChatTheme {
           fontWeight: FontWeight.w600,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 5),
-        visualDensity: VisualDensity.compact,
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: SyncColors.sky600,
@@ -323,7 +322,6 @@ abstract final class SyncChatTheme {
           fontWeight: FontWeight.w600,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 5),
-        visualDensity: VisualDensity.compact,
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: SyncColors.sky600,

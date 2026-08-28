@@ -56,6 +56,11 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
 
   String get currentUserId => currentUser?['_id']?.toString() ?? '';
 
+  String _errorText(Object failure) {
+    if (failure is ApiException) return failure.message;
+    return failure.toString().replaceFirst('Exception: ', '');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -151,9 +156,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       final next = await context.services.settings.get();
       if (!mounted) return;
       setState(() {
-        settings = next is Map
-            ? Map<String, dynamic>.from(next)
-            : const <String, dynamic>{};
+        settings = Map<String, dynamic>.from(next);
       });
     } on Object {
       // Blocking metadata is secondary; the chat list stays available.

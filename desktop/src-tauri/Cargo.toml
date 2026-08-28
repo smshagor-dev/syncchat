@@ -1,6 +1,6 @@
 [package]
 name = "syncchat-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "Native desktop application for SyncChat"
 authors = ["Md Shahanur Islam Shagor"]
 license = "MIT"

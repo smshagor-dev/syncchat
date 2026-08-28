@@ -177,33 +177,23 @@ class _BottomDock extends StatelessWidget {
   final ValueChanged<LiveHomeTab> onSelect;
 
   static const items = [
-    (
-      LiveHomeTab.chats,
-      'Chats',
+    (LiveHomeTab.chats, 'Chats',
       Icons.chat_bubble_outline_rounded,
       Icons.chat_bubble_rounded,
     ),
-    (
-      LiveHomeTab.status,
-      'Status',
+    (LiveHomeTab.status, 'Status',
       Icons.donut_large_outlined,
       Icons.donut_large_rounded,
     ),
-    (
-      LiveHomeTab.communities,
-      'Communities',
+    (LiveHomeTab.communities, 'Communities',
       Icons.groups_outlined,
       Icons.groups_rounded,
     ),
-    (
-      LiveHomeTab.channels,
-      'Channels',
+    (LiveHomeTab.channels, 'Channels',
       Icons.podcasts_outlined,
       Icons.podcasts_rounded,
     ),
-    (
-      LiveHomeTab.calls,
-      'Calls',
+    (LiveHomeTab.calls, 'Calls',
       Icons.call_outlined,
       Icons.call_rounded,
     ),

@@ -2,7 +2,7 @@
 name: syncchat_mobile
 description: Native Flutter mobile client for SyncChat with web-client design parity.
 publish_to: "none"
-version: 0.1.0+4
+version: 1.0.0+5
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
