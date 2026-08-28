@@ -305,59 +305,68 @@ class _FullPageDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appName = context.publicAppConfig.appName;
+    final foreground = context.ink;
+    final secondary = context.muted;
+    final divider = context.border.withValues(alpha: .82);
+
     return Drawer(
       width: MediaQuery.sizeOf(context).width,
       shape: const RoundedRectangleBorder(),
-      backgroundColor: SyncColors.spill950,
+      backgroundColor: context.panel,
+      surfaceTintColor: Colors.transparent,
       child: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 10, 12),
-              child: Row(
-                children: [
-                  const RuntimeBrandLogo(
-                    size: 45,
-                    borderRadius: 14,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          appName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const Text(
-                          'Menu',
-                          style: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+            Material(
+              color: context.panel,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 10, 12),
+                child: Row(
+                  children: [
+                    const RuntimeBrandLogo(
+                      size: 45,
+                      borderRadius: 14,
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white70,
-                      size: 25,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            appName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            'Menu',
+                            style: TextStyle(
+                              color: secondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      tooltip: 'Close menu',
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: secondary,
+                        size: 25,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const Divider(height: 1, color: Colors.white12),
+            Divider(height: 1, color: divider),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -367,24 +376,26 @@ class _FullPageDrawer extends StatelessWidget {
                   MediaQuery.paddingOf(context).bottom + 10,
                 ),
                 children: [
-                  ...primary.map((item) => row(item)),
-                  section('More'),
-                  ...more.map((item) => row(item)),
-                  section('Account'),
-                  ...account.map((item) => row(item)),
+                  ...primary.map((item) => row(context, item)),
+                  section(context, 'More'),
+                  ...more.map((item) => row(context, item)),
+                  section(context, 'Account'),
+                  ...account.map((item) => row(context, item)),
                   const SizedBox(height: 8),
                   ListTile(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
+                    tileColor: Colors.transparent,
+                    hoverColor: SyncColors.danger.withValues(alpha: .08),
                     leading: const Icon(
                       Icons.logout_rounded,
-                      color: Color(0xFFFF7B86),
+                      color: SyncColors.danger,
                     ),
                     title: const Text(
                       'Log out',
                       style: TextStyle(
-                        color: Color(0xFFFF7B86),
+                        color: SyncColors.danger,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -399,30 +410,38 @@ class _FullPageDrawer extends StatelessWidget {
     );
   }
 
-  Widget row((String, String, IconData) item) => ListTile(
+  Widget row(
+    BuildContext context,
+    (String, String, IconData) item,
+  ) =>
+      ListTile(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
-        leading: Icon(item.$3, color: Colors.white70),
+        tileColor: Colors.transparent,
+        hoverColor: context.softPanel,
+        leading: Icon(item.$3, color: context.muted),
         title: Text(
           item.$2,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: context.ink,
             fontSize: 15,
             fontWeight: FontWeight.w800,
           ),
         ),
-        trailing:
-            const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: context.muted.withValues(alpha: .72),
+        ),
         onTap: () => onSelected(item.$1),
       );
 
-  Widget section(String label) => Padding(
+  Widget section(BuildContext context, String label) => Padding(
         padding: const EdgeInsets.fromLTRB(14, 18, 14, 5),
         child: Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white38,
+          style: TextStyle(
+            color: context.muted,
             fontSize: 10,
             fontWeight: FontWeight.w900,
             letterSpacing: .8,
