@@ -85,7 +85,6 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
 
   @override
   Widget build(BuildContext context) {
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       key: scaffoldKey,
       drawerScrimColor: Colors.black.withValues(alpha: .48),
@@ -95,9 +94,9 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
         children: [
           Positioned.fill(child: pageForTab()),
           Positioned(
-            left: 12,
-            right: 12,
-            bottom: safeBottom < 8 ? 8 : safeBottom,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: _BottomDock(
               selected: selected,
               onSelect: (tab) => setState(() => selected = tab),
@@ -178,135 +177,100 @@ class _BottomDock extends StatelessWidget {
   final ValueChanged<LiveHomeTab> onSelect;
 
   static const items = [
-    (LiveHomeTab.chats, 'Chats', Icons.message_outlined),
-    (LiveHomeTab.status, 'Status', Icons.monitor_heart_outlined),
-    (LiveHomeTab.communities, 'Communities', Icons.group_outlined),
-    (LiveHomeTab.channels, 'Channels', Icons.podcasts_rounded),
-    (LiveHomeTab.calls, 'Calls', Icons.call_outlined),
+    (
+      LiveHomeTab.chats,
+      'Chats',
+      Icons.chat_bubble_outline_rounded,
+      Icons.chat_bubble_rounded,
+    ),
+    (
+      LiveHomeTab.status,
+      'Status',
+      Icons.donut_large_outlined,
+      Icons.donut_large_rounded,
+    ),
+    (
+      LiveHomeTab.communities,
+      'Communities',
+      Icons.groups_outlined,
+      Icons.groups_rounded,
+    ),
+    (
+      LiveHomeTab.channels,
+      'Channels',
+      Icons.podcasts_outlined,
+      Icons.podcasts_rounded,
+    ),
+    (
+      LiveHomeTab.calls,
+      'Calls',
+      Icons.call_outlined,
+      Icons.call_rounded,
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final dark = context.isDark;
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: context.panel.withValues(alpha: .95),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: context.border.withValues(alpha: .80)),
-        boxShadow: [
-          BoxShadow(
-            color: dark
-                ? const Color(0xC7020617)
-                : const Color(0x7A0F172A),
-            blurRadius: 44,
-            spreadRadius: -14,
-            offset: const Offset(0, 18),
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: context.panel,
+          border: Border(
+            top: BorderSide(color: context.border.withValues(alpha: .72)),
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          for (var index = 0; index < items.length; index++) ...[
-            if (index > 0) const SizedBox(width: 6),
-            Expanded(child: _item(context, items[index])),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final item in items)
+              Expanded(child: _item(context, item)),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _item(BuildContext context, (LiveHomeTab, String, IconData) item) {
+  Widget _item(
+    BuildContext context,
+    (LiveHomeTab, String, IconData, IconData) item,
+  ) {
     final active = selected == item.$1;
-    final dark = context.isDark;
+    final activeColor =
+        context.isDark ? const Color(0xFF7DD3FC) : SyncColors.sky700;
+    final inactiveColor = context.muted;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
+    return InkResponse(
+      containedInkWell: true,
+      highlightShape: BoxShape.rectangle,
       onTap: () => onSelect(item.$1),
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: active
-                  ? LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: dark
-                          ? [
-                              SyncColors.sky.withValues(alpha: .25),
-                              SyncColors.sky.withValues(alpha: .10),
-                            ]
-                          : [
-                              SyncColors.sky.withValues(alpha: .20),
-                              SyncColors.sky600.withValues(alpha: .10),
-                            ],
-                    )
-                  : null,
-              borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(2, 7, 2, 5),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              active ? item.$4 : item.$3,
+              size: 22,
+              color: active ? activeColor : inactiveColor,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: active ? SyncColors.sky : context.softPanel,
-                    boxShadow: active
-                        ? [
-                            BoxShadow(
-                              color: SyncColors.sky.withValues(alpha: .90),
-                              blurRadius: 20,
-                              spreadRadius: -8,
-                              offset: const Offset(0, 8),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Icon(
-                    item.$3,
-                    size: 16,
-                    color: active
-                        ? Colors.white
-                        : (dark ? SyncColors.spill300 : SyncColors.slate500),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.$2,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: active
-                        ? (dark ? const Color(0xFF7DD3FC) : SyncColors.sky700)
-                        : (dark ? SyncColors.spill300 : SyncColors.slate500),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (active)
-            Positioned(
-              top: -4,
-              child: Container(
-                width: 32,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: dark
-                      ? const Color(0xE65AC8FA)
-                      : SyncColors.sky.withValues(alpha: .90),
-                  borderRadius: BorderRadius.circular(999),
-                ),
+            const SizedBox(height: 3),
+            Text(
+              item.$2,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: item.$1 == LiveHomeTab.communities ? 9.5 : 10.5,
+                height: 1.1,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? activeColor : inactiveColor,
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
