@@ -61,6 +61,37 @@ abstract final class SyncChatTheme {
           letterSpacing: -.2,
         ),
       ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: SyncColors.slate200),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        minLeadingWidth: 36,
+        minVerticalPadding: 8,
+        iconColor: SyncColors.slate600,
+        textColor: SyncColors.slate900,
+        titleTextStyle: TextStyle(
+          color: SyncColors.slate900,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+        subtitleTextStyle: TextStyle(
+          color: SyncColors.slate500,
+          fontSize: 12.5,
+          height: 1.35,
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: SyncColors.sky600,
+        linearTrackColor: SyncColors.slate100,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: SyncColors.slate100,
@@ -194,6 +225,37 @@ abstract final class SyncChatTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -.2,
         ),
+      ),
+      cardTheme: CardThemeData(
+        color: SyncColors.spill900,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: SyncColors.spill700),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        minLeadingWidth: 36,
+        minVerticalPadding: 8,
+        iconColor: SyncColors.spill300,
+        textColor: Color(0xFFF8FAFC),
+        titleTextStyle: TextStyle(
+          color: Color(0xFFF8FAFC),
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+        subtitleTextStyle: TextStyle(
+          color: SyncColors.spill300,
+          fontSize: 12.5,
+          height: 1.35,
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: SyncColors.sky,
+        linearTrackColor: SyncColors.spill800,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

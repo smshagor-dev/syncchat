@@ -1,1 +1,1 @@
-export 'live_p1_communities_web_parity_screen.dart';
+export 'live_p1_communities_core_screen.dart';
