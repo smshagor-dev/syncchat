@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import '../core/app_scope.dart';
 import '../core/biometric_service.dart';
 import '../theme.dart';
+import '../widgets/professional_mobile_surface.dart';
 import 'live_chat_room_web_parity_screen.dart';
 
-// The biometric entry stays separate from the room implementation, preserving
-// the architecture established by live_chat_room_core_screen.dart while the
-// active room surface mirrors the current web chat room.
+// The biometric entry stays separate from the room implementation. The
+// feature-rich room keeps Web parity behavior while inheriting the production
+// mobile messenger presentation through [ProfessionalMobileSurface].
 class LiveChatRoomScreen extends StatefulWidget {
   const LiveChatRoomScreen({
     super.key,
@@ -83,65 +84,71 @@ class _LiveChatRoomScreenState extends State<LiveChatRoomScreen> {
   @override
   Widget build(BuildContext context) {
     if (checkingLock) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return const ProfessionalMobileSurface(
+        child: Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
     if (locked && !unlocked) {
-      return Scaffold(
-        backgroundColor: context.page,
-        appBar: AppBar(
-          title: Text(widget.name),
-          backgroundColor: context.panel,
-          surfaceTintColor: Colors.transparent,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.fingerprint_rounded,
-                  color: SyncColors.sky,
-                  size: 58,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Chat locked',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Authenticate to view messages in ${widget.name}.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: context.muted),
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: unlocking ? null : _unlockChat,
-                  icon: unlocking
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.fingerprint_rounded),
-                  label: Text(unlocking ? 'Checking…' : 'Unlock chat'),
-                ),
-              ],
+      return ProfessionalMobileSurface(
+        child: Scaffold(
+          backgroundColor: context.page,
+          appBar: AppBar(
+            title: Text(widget.name),
+            backgroundColor: context.panel,
+            surfaceTintColor: Colors.transparent,
+          ),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.fingerprint_rounded,
+                    color: SyncColors.sky,
+                    size: 58,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Chat locked',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Authenticate to view messages in ${widget.name}.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: context.muted),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: unlocking ? null : _unlockChat,
+                    icon: unlocking
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.fingerprint_rounded),
+                    label: Text(unlocking ? 'Checking…' : 'Unlock chat'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     }
 
-    return WebParityChatRoomScreen(
-      inbox: widget.inbox,
-      name: widget.name,
+    return ProfessionalMobileSurface(
+      child: WebParityChatRoomScreen(
+        inbox: widget.inbox,
+        name: widget.name,
+      ),
     );
   }
 }
