@@ -3,6 +3,7 @@ import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_repository.dart';
 import 'cached_repositories.dart';
+import 'cached_settings_repository.dart';
 import 'calling_repository.dart';
 import 'channel_repository.dart' as live_channel;
 import 'chat_cache.dart';
@@ -101,7 +102,7 @@ class AppServices {
       ),
       groups: GroupRepository(api: api, auth: auth, realtime: realtime),
       profile: ProfileRepository(api),
-      settings: SettingsRepository(api),
+      settings: CachedSettingsRepository(api),
       accountStorage: AccountStorageRepository(api),
     );
   }
