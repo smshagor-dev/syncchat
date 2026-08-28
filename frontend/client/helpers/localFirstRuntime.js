@@ -109,6 +109,28 @@ function requestPath(requestConfig) {
   }
 }
 
+function headerValue(headers, name) {
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') return headers.get(name);
+  return headers[name] ?? headers[name.toLowerCase()];
+}
+
+function isPrimaryInboxRequest(requestConfig) {
+  const raw = String(requestConfig?.url || '');
+  const params = requestConfig?.params;
+  const hasParams =
+    params && typeof params === 'object' && Object.keys(params).length > 0;
+  return !raw.includes('?') && !hasParams;
+}
+
+function isCacheableRequest(requestConfig) {
+  const path = requestPath(requestConfig);
+  if (!['/settings', '/users', '/app-config', '/inboxes'].includes(path)) {
+    return false;
+  }
+  return path !== '/inboxes' || isPrimaryInboxRequest(requestConfig);
+}
+
 function responsePayload(response) {
   return response?.data?.payload;
 }
@@ -195,7 +217,7 @@ async function persistRoute(token, path, response, store) {
 
     const previousMaintenance = previous?.maintenance || null;
     const nextMaintenance = payload?.maintenance || null;
-    if (!sameValue(previousMaintenance, nextMaintenance)) {
+    if (previous && !sameValue(previousMaintenance, nextMaintenance)) {
       const reloadKey = `syncchat.app-config-reloaded:${JSON.stringify(nextMaintenance)}`;
       if (!sessionStorage.getItem(reloadKey)) {
         sessionStorage.setItem(reloadKey, '1');
@@ -283,10 +305,11 @@ export default function installLocalFirstRuntime(store) {
   const requestInterceptor = axios.interceptors.request.use(async (requestConfig) => {
     const method = String(requestConfig.method || 'get').toLowerCase();
     const path = requestPath(requestConfig);
-    const networkOnly = requestConfig?.headers?.[NETWORK_ONLY_HEADER] === '1';
-    const cacheable = ['/settings', '/users', '/app-config', '/inboxes'].includes(path);
+    const networkOnly = headerValue(requestConfig?.headers, NETWORK_ONLY_HEADER) === '1';
 
-    if (method !== 'get' || networkOnly || !cacheable) return requestConfig;
+    if (method !== 'get' || networkOnly || !isCacheableRequest(requestConfig)) {
+      return requestConfig;
+    }
 
     const cached = await readCachedRoute(token, path);
     if (!cached) return requestConfig;
@@ -299,8 +322,8 @@ export default function installLocalFirstRuntime(store) {
   const responseInterceptor = axios.interceptors.response.use(
     (response) => {
       const path = requestPath(response.config);
-      const fromLocalCache = response?.headers?.[CACHE_HEADER] === '1';
-      if (!fromLocalCache && ['/settings', '/users', '/app-config', '/inboxes'].includes(path)) {
+      const fromLocalCache = headerValue(response?.headers, CACHE_HEADER) === '1';
+      if (!fromLocalCache && isCacheableRequest(response.config)) {
         Promise.resolve(persistRoute(token, path, response, store)).catch(() => {});
       }
       return response;
