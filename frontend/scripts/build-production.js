@@ -9,7 +9,16 @@ const publicRoot = path.join(rootDir, 'client', 'public');
 const pwaSourceRoot = path.join(rootDir, 'pwa');
 const clientIndexPath = path.join(rootDir, 'client', 'index.jsx');
 const chatRoutePath = path.join(rootDir, 'client', 'routes', 'chat.jsx');
+const mobileNavPath = path.join(
+  rootDir,
+  'client',
+  'components',
+  'chat',
+  'foreground',
+  'mobileNav.jsx'
+);
 const parityStylePath = path.join(rootDir, 'client', 'styles', 'webDesktopParity.css');
+const mobileStylePath = path.join(rootDir, 'client', 'styles', 'mobileWebMessenger.css');
 
 const log = (message, extra = null) => {
   if (extra === null || typeof extra === 'undefined') {
@@ -54,7 +63,7 @@ if (!fs.existsSync(webpackCliPath)) {
 /*
  * Web and Tauri Desktop intentionally ship the same frontend/client bundle.
  * Fail the production build if a future refactor drops the shared messenger
- * shell or its browser parity styles from the Web entry point.
+ * shell, desktop parity styles, or the mobile Web presentation contract.
  */
 assertSourceContains(
   clientIndexPath,
@@ -62,6 +71,7 @@ assertSourceContains(
     "./styles/desktopMessenger.css",
     "./styles/desktopPages.css",
     "./styles/webDesktopParity.css",
+    "./styles/mobileWebMessenger.css",
   ],
   'Desktop/Web style'
 );
@@ -70,11 +80,19 @@ assertSourceContains(
   ['data-syncchat-desktop-app', 'data-syncchat-desktop-shell'],
   'Messenger shell'
 );
+assertSourceContains(
+  mobileNavPath,
+  ['data-syncchat-mobile-nav', 'fixed inset-x-0 bottom-0'],
+  'Mobile Web navigation'
+);
 if (!fs.existsSync(parityStylePath)) {
   fail('Browser desktop parity stylesheet is missing.', { parityStylePath });
 }
+if (!fs.existsSync(mobileStylePath)) {
+  fail('Mobile Web messenger stylesheet is missing.', { mobileStylePath });
+}
 
-log('Desktop/Web messenger parity contract verified.');
+log('Desktop/Web and Mobile Web messenger parity contracts verified.');
 log('Starting production build', {
   node: process.version,
   execPath: process.execPath,
