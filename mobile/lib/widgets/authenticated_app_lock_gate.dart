@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/app_scope.dart';
+import '../core/cached_settings_repository.dart';
 import '../theme.dart';
 
 class AuthenticatedAppLockGate extends StatefulWidget {
@@ -21,7 +24,10 @@ class AuthenticatedAppLockGate extends StatefulWidget {
 
 class _AuthenticatedAppLockGateState extends State<AuthenticatedAppLockGate> {
   final password = TextEditingController();
-  Future<Map<String, dynamic>>? settingsFuture;
+
+  Map<String, dynamic> settings = const {};
+  bool cacheReady = false;
+  bool started = false;
   bool unlocked = false;
   bool checking = false;
   String? error;
@@ -29,7 +35,9 @@ class _AuthenticatedAppLockGateState extends State<AuthenticatedAppLockGate> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    settingsFuture ??= context.services.settings.get();
+    if (started) return;
+    started = true;
+    unawaited(_bootstrap());
   }
 
   @override
@@ -38,14 +46,38 @@ class _AuthenticatedAppLockGateState extends State<AuthenticatedAppLockGate> {
     super.dispose();
   }
 
-  Future<void> _reload() async {
+  Future<void> _bootstrap() async {
+    Map<String, dynamic> cached = const {};
+    final repository = context.services.settings;
+    if (repository is CachedSettingsRepository) {
+      cached = await repository.readCached();
+    }
     if (!mounted) return;
-    final future = context.services.settings.get();
     setState(() {
-      settingsFuture = future;
-      error = null;
+      settings = cached;
+      cacheReady = true;
     });
-    await future;
+
+    // Server settings are authoritative, but must never block the first useful
+    // frame. A successful refresh also updates the encrypted secure cache.
+    unawaited(_refreshServer());
+  }
+
+  Future<void> _refreshServer() async {
+    try {
+      final fresh = await context.services.settings.get().timeout(
+        const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+      setState(() {
+        settings = fresh;
+        error = null;
+        if (fresh['appLockEnabled'] == true) unlocked = false;
+      });
+    } on Object catch (failure) {
+      // Keep the cached decision. Network health is not a launch dependency.
+      debugPrint('SyncChat app-lock refresh deferred: $failure');
+    }
   }
 
   Future<void> _unlock() async {
@@ -83,30 +115,14 @@ class _AuthenticatedAppLockGateState extends State<AuthenticatedAppLockGate> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: settingsFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const _AppLockLoading();
-        }
-        if (snapshot.hasError) {
-          final failure = snapshot.error;
-          return _AppLockUnavailable(
-            message: failure is ApiException
-                ? failure.message
-                : 'Unable to verify SyncChat security settings.',
-            onRetry: _reload,
-            onLogout: widget.onLogout,
-          );
-        }
+    // This wait is local secure-storage I/O only. No API call sits in front of
+    // the chat list anymore.
+    if (!cacheReady) return const _AppLockCacheLoading();
 
-        final settings = snapshot.data ?? const <String, dynamic>{};
-        if (settings['appLockEnabled'] != true || unlocked) {
-          return widget.child;
-        }
-        return _lockScreen();
-      },
-    );
+    if (settings['appLockEnabled'] != true || unlocked) {
+      return widget.child;
+    }
+    return _lockScreen();
   }
 
   Widget _lockScreen() {
@@ -203,74 +219,12 @@ class _AuthenticatedAppLockGateState extends State<AuthenticatedAppLockGate> {
   }
 }
 
-class _AppLockLoading extends StatelessWidget {
-  const _AppLockLoading();
+class _AppLockCacheLoading extends StatelessWidget {
+  const _AppLockCacheLoading();
 
   @override
   Widget build(BuildContext context) => const Scaffold(
         backgroundColor: SyncColors.slate950,
-        body: Center(child: CircularProgressIndicator()),
-      );
-}
-
-class _AppLockUnavailable extends StatelessWidget {
-  const _AppLockUnavailable({
-    required this.message,
-    required this.onRetry,
-    required this.onLogout,
-  });
-
-  final String message;
-  final Future<void> Function() onRetry;
-  final Future<void> Function(BuildContext context) onLogout;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: context.page,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 430),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.security_rounded,
-                      size: 58,
-                      color: SyncColors.sky,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Security check unavailable',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 23,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 9),
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: context.muted, height: 1.45),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: onRetry,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Try again'),
-                    ),
-                    TextButton(
-                      onPressed: () => onLogout(context),
-                      child: const Text('Sign out'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        body: SizedBox.expand(),
       );
 }
