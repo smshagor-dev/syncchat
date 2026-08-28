@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as bi from 'react-icons/bi';
-import { v4 as uuidv4 } from 'uuid';
 import { setModal } from '../../../redux/features/modal';
 import { setPage } from '../../../redux/features/page';
-import { setRefreshInbox } from '../../../redux/features/chore';
 
 import config from '../../../config';
 
@@ -44,6 +42,7 @@ function Header({
     !page.setting &&
     !page.status &&
     !page.communities &&
+    !page.channels &&
     !page.media &&
     !page.policy &&
     !page.starred &&
@@ -68,15 +67,21 @@ function Header({
     };
   }, [selectModeActive]);
 
+  const iconButton =
+    'grid h-9 w-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-spill-300 dark:hover:bg-spill-700 dark:hover:text-white';
+
   return (
-    <div className="grid items-center z-10 bg-slate-100 text-slate-800 border-b border-slate-200 dark:bg-spill-800 dark:text-spill-100 dark:border-spill-700">
-      <div className="h-16 pl-4 pr-2 flex gap-5 justify-between items-center">
+    <div
+      data-syncchat-desktop-inbox-header
+      className="z-10 grid items-center border-b border-slate-200 bg-white text-slate-800 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-100"
+    >
+      <div className="flex h-14 items-center justify-between gap-4 px-3">
         {!selectModeActive ? (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                className="md:hidden p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
+                className="md:hidden grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-spill-300 dark:hover:bg-spill-700"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenMobileSidebar();
@@ -84,73 +89,60 @@ function Header({
               >
                 <bi.BiMenu size={22} />
               </button>
-              {/* brand name */}
-              <div className="flex items-center gap-2">
-                {config.brandLogo ? (
-                  <img
-                    src={config.brandLogo}
-                    alt={config.brandName}
-                    className="h-8 w-8 rounded-lg object-cover"
-                  />
-                ) : null}
-                <h1 className="text-xl font-bold">{config.brandName}</h1>
-              </div>
+              {config.brandLogo ? (
+                <img
+                  src={config.brandLogo}
+                  alt={config.brandName}
+                  className="h-8 w-8 rounded-lg object-cover md:hidden"
+                />
+              ) : null}
+              <h1 className="truncate text-lg font-semibold tracking-tight md:text-[19px]">
+                <span className="md:hidden">{config.brandName}</span>
+                <span className="hidden md:inline">Chats</span>
+              </h1>
             </div>
-            <div className="flex">
-              {[
-                {
-                  target: 'refresh-inbox',
-                  icon: <bi.BiRotateRight />,
-                  action() {
-                    dispatch(setRefreshInbox(uuidv4()));
-                  },
-                },
-                {
-                  target: 'contact',
-                  icon: <bi.BiMessageSquareDots />,
-                  action() {
-                    dispatch(setPage({ target: 'contact' }));
-                  },
-                },
-                {
-                  target: 'minibox',
-                  icon: <bi.BiDotsVerticalRounded />,
-                  action(e) {
-                    e.stopPropagation();
-                    dispatch(setModal({ target: 'minibox' }));
-                  },
-                },
-              ].map((elem) => (
-                <button
-                  type="button"
-                  key={elem.target}
-                  className="p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
-                  onClick={elem.action}
-                >
-                  {elem.icon}
-                </button>
-              ))}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title="New chat"
+                aria-label="New chat"
+                className={iconButton}
+                onClick={() => dispatch(setPage({ target: 'contact', data: true }))}
+              >
+                <bi.BiMessageSquareAdd size={20} />
+              </button>
+              <button
+                type="button"
+                title="More"
+                aria-label="More"
+                className={iconButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dispatch(setModal({ target: 'minibox' }));
+                }}
+              >
+                <bi.BiDotsVerticalRounded size={21} />
+              </button>
             </div>
           </>
         ) : (
           <>
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
+                className={iconButton}
                 onClick={onExitSelectMode}
               >
                 <bi.BiArrowBack size={20} />
               </button>
-              <h1 className="text-base sm:text-lg font-bold truncate">
-                {selectedInboxCount} chat
-                {selectedInboxCount > 1 ? 's' : ''} selected
+              <h1 className="truncate text-base font-semibold sm:text-lg">
+                {selectedInboxCount} chat{selectedInboxCount > 1 ? 's' : ''} selected
               </h1>
             </div>
             <div className="relative" ref={selectMenuRef}>
               <button
                 type="button"
-                className="p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:text-spill-300 dark:hover:bg-spill-700"
+                className={iconButton}
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectMenuOpen((prev) => !prev);
@@ -159,7 +151,7 @@ function Header({
                 <bi.BiDotsVerticalRounded size={20} />
               </button>
               {selectMenuOpen && (
-                <div className="absolute right-0 mt-1 w-56 py-2 rounded-md shadow-xl bg-white dark:bg-spill-800 border border-slate-200 dark:border-spill-700 z-20">
+                <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl dark:border-spill-700 dark:bg-spill-800">
                   {[
                     {
                       key: 'mark-unread',
@@ -190,7 +182,7 @@ function Header({
                     <button
                       key={item.key}
                       type="button"
-                      className={`w-full px-4 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-spill-700 ${
+                      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-spill-700 ${
                         item.danger ? 'text-rose-600 dark:text-rose-400' : ''
                       }`}
                       onClick={async () => {
@@ -199,7 +191,7 @@ function Header({
                       }}
                     >
                       <i>{item.icon}</i>
-                      <span className="text-sm">{item.label}</span>
+                      <span>{item.label}</span>
                     </button>
                   ))}
                 </div>
@@ -208,20 +200,21 @@ function Header({
           </>
         )}
       </div>
+
       {!selectModeActive && (
-        <div className="px-3 py-2 bg-white border-t border-slate-200 dark:bg-spill-900 dark:border-spill-700">
+        <div className="border-t border-slate-100 bg-white px-3 pb-2.5 pt-2 dark:border-spill-800 dark:bg-spill-900">
           <label
             htmlFor="search"
-            className="flex gap-3 items-center rounded-lg px-3 h-10 bg-slate-100 text-slate-500 border border-slate-200 dark:bg-spill-800 dark:text-spill-300 dark:border-spill-700"
+            className="flex h-9 items-center gap-2.5 rounded-full bg-slate-100 px-3 text-slate-500 ring-1 ring-transparent transition focus-within:bg-white focus-within:ring-sky-500/40 dark:bg-spill-800 dark:text-spill-300 dark:focus-within:bg-spill-800"
           >
-            <bi.BiSearchAlt size={18} />
+            <bi.BiSearchAlt size={17} />
             <input
               type="text"
               name="search"
               id="search"
               autoComplete="off"
-              className="w-full text-sm text-slate-700 placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
-              placeholder="Search chats..."
+              className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-spill-100 dark:placeholder:text-spill-400"
+              placeholder="Search chats"
               value={normalizedSearch.query}
               onChange={(e) =>
                 setSearchState((prev) => ({
@@ -233,46 +226,39 @@ function Header({
             {normalizedSearch.query && (
               <button
                 type="button"
-                className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
-                onClick={() =>
-                  setSearchState({
-                    query: '',
-                  })
-                }
+                className="grid h-6 w-6 place-items-center rounded-full hover:bg-slate-200 dark:hover:bg-spill-700"
+                onClick={() => setSearchState({ query: '' })}
               >
                 <bi.BiX size={16} />
               </button>
             )}
           </label>
+
           {showFilters && (
-            <div className="mt-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-spill-700">
-              <div className="inline-flex min-w-full gap-2">
+            <div className="mt-2 overflow-x-auto scrollbar-none">
+              <div className="inline-flex min-w-full gap-1.5">
                 {[
-                  { key: 'all', label: 'All' },
-                  {
-                    key: 'unread',
-                    label: `Unread (${filterCounts?.unread || 0})`,
-                  },
+                  { key: 'all', label: 'All', count: filterCounts?.all || 0 },
+                  { key: 'unread', label: 'Unread', count: filterCounts?.unread || 0 },
                   {
                     key: 'favourite',
-                    label: `Favourite (${filterCounts?.favouriteUnread || 0})`,
+                    label: 'Favourites',
+                    count: filterCounts?.favouriteUnread || 0,
                   },
-                  {
-                    key: 'group',
-                    label: `Group (${filterCounts?.groupUnread || 0})`,
-                  },
+                  { key: 'group', label: 'Groups', count: filterCounts?.groupUnread || 0 },
                 ].map((item) => (
                   <button
                     key={item.key}
                     type="button"
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition ${
+                    className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                       chatFilter === item.key
-                        ? 'bg-sky-600 text-white border-sky-600'
-                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-spill-800 dark:text-spill-200 dark:border-spill-700 dark:hover:bg-spill-700'
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-500/70 dark:bg-sky-500/15 dark:text-sky-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-300 dark:hover:bg-spill-800'
                     }`}
                     onClick={() => setChatFilter(item.key)}
                   >
                     {item.label}
+                    {item.key !== 'all' && item.count > 0 ? ` ${item.count}` : ''}
                   </button>
                 ))}
               </div>
