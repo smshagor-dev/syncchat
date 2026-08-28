@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 abstract final class SyncColors {
-  static const sky = Color(0xFF0EA5E9);
-  static const sky600 = Color(0xFF0284C7);
-  static const sky700 = Color(0xFF0369A1);
-  static const cyan = Color(0xFF06B6D4);
-  static const teal = Color(0xFF14B8A6);
+  // Keep the historical token names for compatibility across the existing
+  // mobile codebase, but move the production brand accent to the approved
+  // violet system used by the current SyncChat visual direction.
+  static const sky = Color(0xFF8B5CF6);
+  static const sky600 = Color(0xFF7C3AED);
+  static const sky700 = Color(0xFF6D28D9);
+  static const cyan = Color(0xFFA78BFA);
+  static const teal = Color(0xFFC084FC);
 
   static const slate50 = Color(0xFFF8FAFC);
   static const slate100 = Color(0xFFF1F5F9);
@@ -17,14 +20,15 @@ abstract final class SyncColors {
   static const slate900 = Color(0xFF0F172A);
   static const slate950 = Color(0xFF020617);
 
-  static const spill950 = Color(0xFF0C1116);
-  static const spill900 = Color(0xFF141D26);
-  static const spill800 = Color(0xFF1D2935);
-  static const spill700 = Color(0xFF273645);
-  static const spill600 = Color(0xFF334557);
+  // Navy messenger surfaces matching the current desktop/mobile visual family.
+  static const spill950 = Color(0xFF070B14);
+  static const spill900 = Color(0xFF0D1422);
+  static const spill800 = Color(0xFF131D2D);
+  static const spill700 = Color(0xFF202B40);
+  static const spill600 = Color(0xFF2D3A52);
   static const spill300 = Color(0xFF94A3B8);
 
-  static const sentBubble = Color(0xFFCCECFF);
+  static const sentBubble = Color(0xFFEDE9FE);
   static const receivedBubble = Color(0xFFFFFFFF);
   static const success = Color(0xFF22C55E);
   static const danger = Color(0xFFF43F5E);
@@ -94,7 +98,7 @@ abstract final class SyncChatTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: SyncColors.slate100,
+        fillColor: const Color(0xFFF6F4FF),
         hintStyle: const TextStyle(color: SyncColors.slate500, fontSize: 14),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         border: OutlineInputBorder(
@@ -148,9 +152,9 @@ abstract final class SyncChatTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: SyncColors.slate50,
-        selectedColor: const Color(0xFFE0F2FE),
-        side: const BorderSide(color: SyncColors.slate200),
+        backgroundColor: const Color(0xFFF8F7FF),
+        selectedColor: const Color(0xFFF0ECFF),
+        side: const BorderSide(color: Color(0xFFE7E2F8)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         labelStyle: const TextStyle(
           color: SyncColors.slate600,
@@ -313,7 +317,7 @@ abstract final class SyncChatTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: SyncColors.spill800,
-        selectedColor: const Color(0x3328B6F6),
+        selectedColor: const Color(0x337C3AED),
         side: const BorderSide(color: SyncColors.spill700),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         labelStyle: const TextStyle(
@@ -363,10 +367,10 @@ abstract final class SyncChatTheme {
 
 extension SyncContext on BuildContext {
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
-  Color get page => isDark ? SyncColors.spill950 : SyncColors.slate50;
+  Color get page => isDark ? SyncColors.spill950 : const Color(0xFFFAF9FF);
   Color get panel => isDark ? SyncColors.spill900 : Colors.white;
-  Color get softPanel => isDark ? SyncColors.spill800 : SyncColors.slate100;
-  Color get border => isDark ? SyncColors.spill700 : SyncColors.slate200;
+  Color get softPanel => isDark ? SyncColors.spill800 : const Color(0xFFF6F4FF);
+  Color get border => isDark ? SyncColors.spill700 : const Color(0xFFE7E2F8);
   Color get muted => isDark ? SyncColors.spill300 : SyncColors.slate500;
   Color get ink => isDark ? const Color(0xFFF8FAFC) : SyncColors.slate900;
 }
