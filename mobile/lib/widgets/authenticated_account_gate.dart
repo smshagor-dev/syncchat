@@ -29,7 +29,6 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
   Object? _hardError;
   RealtimeClient? _realtime;
   bool _bound = false;
-  bool _cacheReady = false;
   bool _sessionInactive = false;
 
   @override
@@ -52,16 +51,25 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
   }
 
   Future<void> _bootstrap() async {
-    final cached = await context.services.chatCache.readCurrentUser();
-    if (!mounted) return;
-    setState(() {
-      _cacheReady = true;
-      if (cached.isNotEmpty) _account = cached;
-    });
+    Map<String, dynamic> cached = const {};
+    try {
+      cached = await context.services.chatCache.readCurrentUser().timeout(
+        const Duration(milliseconds: 750),
+        onTimeout: () => const <String, dynamic>{},
+      );
+    } on Object catch (failure) {
+      debugPrint('SyncChat account cache deferred: $failure');
+    }
 
-    // Returning users render from the encrypted local account snapshot. The
-    // server remains authoritative and reconciles silently after first paint.
-    unawaited(_refresh(surfaceError: cached.isEmpty));
+    if (!mounted) return;
+    if (cached.isNotEmpty) {
+      setState(() => _account = cached);
+    }
+
+    // The authenticated shell is never blocked by account metadata I/O.
+    // Backend authorization remains authoritative while the account snapshot
+    // is reconciled in the background immediately after first paint.
+    unawaited(_refresh(surfaceError: false));
   }
 
   void _onInactive(dynamic _) {
@@ -82,7 +90,9 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       });
     } on Object catch (failure) {
       if (!mounted) return;
-      if (surfaceError || _account == null || failure is ApiException && failure.isUnauthorized) {
+      if (failure is ApiException && failure.isUnauthorized) {
+        setState(() => _hardError = failure);
+      } else if (surfaceError && _account == null) {
         setState(() => _hardError = failure);
       } else {
         debugPrint('SyncChat account refresh deferred: $failure');
@@ -107,10 +117,6 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       return _SessionInactiveScreen(onLogout: widget.onLogout, onRetry: _reload);
     }
 
-    if (!_cacheReady || _account == null && _hardError == null) {
-      return const _AccountGateLoading();
-    }
-
     if (_account == null && _hardError != null) {
       final failure = _hardError!;
       return _AccountUnavailableScreen(
@@ -122,7 +128,13 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       );
     }
 
-    final account = _account ?? const <String, dynamic>{};
+    // Do not hold the first useful frame behind SQLite / secure-storage / API
+    // account metadata. A valid local session is enough to render the shell;
+    // the server refresh above can still replace it immediately for an
+    // unauthorized/inactive account.
+    if (_account == null) return widget.child;
+
+    final account = _account!;
     final status = account['status']?.toString().trim().toLowerCase() ?? 'active';
     if (status != 'active') {
       return _AccountUnavailableScreen(
@@ -187,7 +199,6 @@ class _AccountVerificationScreenState extends State<AccountVerificationScreen> {
       setState(() => _error = 'Enter the 6-digit verification code.');
       return;
     }
-
     setState(() {
       _submitting = true;
       _error = null;
@@ -331,9 +342,7 @@ class _AccountVerificationScreenState extends State<AccountVerificationScreen> {
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _resending ? null : _resend,
-                    child: Text(
-                      _resending ? 'Sending…' : 'Re-send verification code',
-                    ),
+                    child: Text(_resending ? 'Sending…' : 'Re-send verification code'),
                   ),
                   TextButton(
                     onPressed: () => widget.onLogout(context),
@@ -350,10 +359,7 @@ class _AccountVerificationScreenState extends State<AccountVerificationScreen> {
 }
 
 class _SessionInactiveScreen extends StatelessWidget {
-  const _SessionInactiveScreen({
-    required this.onLogout,
-    required this.onRetry,
-  });
+  const _SessionInactiveScreen({required this.onLogout, required this.onRetry});
 
   final Future<void> Function(BuildContext context) onLogout;
   final Future<void> Function() onRetry;
@@ -459,18 +465,6 @@ class _GateMessageScreen extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _AccountGateLoading extends StatelessWidget {
-  const _AccountGateLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: context.page,
-      body: const SizedBox.expand(),
     );
   }
 }
