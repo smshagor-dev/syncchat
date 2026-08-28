@@ -19,7 +19,7 @@ import 'live_p1_communities_screen.dart';
 import 'live_professional_chats_screen.dart';
 import 'live_settings_hub_screen.dart';
 
-enum LiveHomeTab { chats, status, communities, channels, calls }
+enum LiveHomeTab { chats, status, communities, calls, settings }
 
 class LiveMobileShell extends StatefulWidget {
   const LiveMobileShell({
@@ -116,8 +116,11 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
           ),
         LiveHomeTab.status => const LiveP0StatusScreen(),
         LiveHomeTab.communities => const LiveP1CommunitiesScreen(),
-        LiveHomeTab.channels => const ChannelHubScreen(),
         LiveHomeTab.calls => const LiveCallsScreen(),
+        LiveHomeTab.settings => LiveSettingsHubScreen(
+            onThemeChanged: widget.onThemeChanged,
+            onLogout: widget.onLogout,
+          ),
       };
 
   Future<void> _openTarget(String target) async {
@@ -126,8 +129,8 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
       'chats': LiveHomeTab.chats,
       'status': LiveHomeTab.status,
       'communities': LiveHomeTab.communities,
-      'channels': LiveHomeTab.channels,
       'calls': LiveHomeTab.calls,
+      'settings': LiveHomeTab.settings,
     };
     final tab = tabTargets[target];
     if (tab != null) {
@@ -147,6 +150,7 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
 
     final Widget screen = switch (target) {
       'contacts' => const LiveP0ContactsScreen(),
+      'channels' => const ChannelHubScreen(),
       'archive' => const LiveInboxCollectionScreen(
           kind: LiveInboxCollectionKind.archive,
         ),
@@ -155,10 +159,6 @@ class _LiveMobileShellState extends State<LiveMobileShell> {
         ),
       'media' => const LiveMediaScreen(),
       'feedback' => const LiveFeedbackScreen(),
-      'settings' => LiveSettingsHubScreen(
-          onThemeChanged: widget.onThemeChanged,
-          onLogout: widget.onLogout,
-        ),
       'profile' => const LiveFullProfileScreen(),
       _ => const LiveP0ContactsScreen(),
     };
@@ -177,25 +177,35 @@ class _BottomDock extends StatelessWidget {
   final ValueChanged<LiveHomeTab> onSelect;
 
   static const items = [
-    (LiveHomeTab.chats, 'Chats',
+    (
+      LiveHomeTab.chats,
+      'Chats',
       Icons.chat_bubble_outline_rounded,
       Icons.chat_bubble_rounded,
     ),
-    (LiveHomeTab.status, 'Status',
+    (
+      LiveHomeTab.status,
+      'Status',
       Icons.donut_large_outlined,
       Icons.donut_large_rounded,
     ),
-    (LiveHomeTab.communities, 'Communities',
+    (
+      LiveHomeTab.communities,
+      'Communities',
       Icons.groups_outlined,
       Icons.groups_rounded,
     ),
-    (LiveHomeTab.channels, 'Channels',
-      Icons.podcasts_outlined,
-      Icons.podcasts_rounded,
-    ),
-    (LiveHomeTab.calls, 'Calls',
+    (
+      LiveHomeTab.calls,
+      'Calls',
       Icons.call_outlined,
       Icons.call_rounded,
+    ),
+    (
+      LiveHomeTab.settings,
+      'Settings',
+      Icons.settings_outlined,
+      Icons.settings_rounded,
     ),
   ];
 
@@ -214,8 +224,7 @@ class _BottomDock extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final item in items)
-              Expanded(child: _item(context, item)),
+            for (final item in items) Expanded(child: _item(context, item)),
           ],
         ),
       ),
@@ -227,8 +236,9 @@ class _BottomDock extends StatelessWidget {
     (LiveHomeTab, String, IconData, IconData) item,
   ) {
     final active = selected == item.$1;
-    final activeColor =
-        context.isDark ? const Color(0xFF7DD3FC) : SyncColors.sky700;
+    final activeColor = context.isDark
+        ? const Color(0xFFA78BFA)
+        : SyncColors.sky700;
     final inactiveColor = context.muted;
 
     return InkResponse(
@@ -271,10 +281,6 @@ class _FullPageDrawer extends StatelessWidget {
 
   final ValueChanged<String> onSelected;
 
-  // Keep the user's requested full-page drawer presentation, but mirror the
-  // actual Web sidebar information architecture. Feature-specific engineering
-  // tools remain reachable from their normal contextual surfaces, not as
-  // App-only primary navigation entries.
   static const primary = [
     ('chats', 'Chats', Icons.chat_bubble_outline_rounded),
     ('calls', 'Calls', Icons.call_outlined),
@@ -302,8 +308,7 @@ class _FullPageDrawer extends StatelessWidget {
     return Drawer(
       width: MediaQuery.sizeOf(context).width,
       shape: const RoundedRectangleBorder(),
-      backgroundColor:
-          context.isDark ? SyncColors.spill900 : SyncColors.slate900,
+      backgroundColor: SyncColors.spill950,
       child: SafeArea(
         child: Column(
           children: [
