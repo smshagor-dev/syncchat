@@ -55,7 +55,7 @@ class ResumableStatusRepository extends StatusRepository {
         ..remove('mediaDataUrl')
         ..remove('originalname');
 
-      return StatusMediaUploader(_api).postStatus(
+      return await StatusMediaUploader(_api).postStatus(
         filePath: temp.path,
         filename: filename,
         mime: mime,
