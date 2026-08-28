@@ -134,23 +134,62 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
       title: 'Contacts',
       actions: [
         IconButton(
-          tooltip: sortByName ? 'Sort by last seen' : 'Sort by name',
-          onPressed: loading ? null : _toggleSort,
-          icon: Icon(sortByName ? Icons.sort_rounded : Icons.sort_by_alpha_rounded),
+          tooltip: 'Sync phone contacts',
+          onPressed: syncingPhone ? null : _syncPhoneContacts,
+          icon: syncingPhone
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.sync_rounded),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Contact options',
+          onSelected: (value) {
+            if (value == 'sort') unawaited(_toggleSort());
+            if (value == 'labels') unawaited(_openLabels());
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'sort',
+              child: Row(
+                children: [
+                  Icon(
+                    sortByName ? Icons.schedule_rounded : Icons.sort_by_alpha_rounded,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(sortByName ? 'Sort by last seen' : 'Sort by name'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'labels',
+              child: Row(
+                children: [
+                  Icon(Icons.label_outline_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Manage labels'),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
       child: Column(
         children: [
           Container(
             color: context.panel,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: search,
                   onChanged: _onSearchChanged,
+                  textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Search user by username, email or phone',
+                    hintText: 'Search contacts',
                     prefixIcon: const Icon(Icons.search_rounded),
                     suffixIcon: searching
                         ? const Padding(
@@ -162,6 +201,7 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                           )
                         : query.isNotEmpty
                             ? IconButton(
+                                tooltip: 'Clear search',
                                 onPressed: () {
                                   search.clear();
                                   _onSearchChanged('');
@@ -171,33 +211,29 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                             : null,
                   ),
                 ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        searching ? 'Searching...' : '${results.length} users found',
-                        style: TextStyle(fontSize: 12, color: context.muted),
-                      ),
+                if (showingSearch) ...[
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Text(
+                      searching
+                          ? 'Searching…'
+                          : '${results.length} result${results.length == 1 ? '' : 's'}',
+                      style: TextStyle(fontSize: 11.5, color: context.muted),
                     ),
-                    TextButton.icon(
-                      onPressed: syncingPhone ? null : _syncPhoneContacts,
-                      icon: syncingPhone
-                          ? const SizedBox.square(
-                              dimension: 15,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.contact_phone_outlined, size: 18),
-                      label: Text(syncingPhone ? 'Reading contacts...' : 'Sync Mobile Contacts'),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ],
             ),
           ),
           Expanded(
             child: loading && contacts.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.3),
+                    ),
+                  )
                 : error != null && contacts.isEmpty
                     ? _ErrorState(message: error!, onRetry: _load)
                     : showingSearch
@@ -214,45 +250,82 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: 116 + MediaQuery.paddingOf(context).bottom),
+        padding: EdgeInsets.only(
+          top: 2,
+          bottom: 92 + MediaQuery.paddingOf(context).bottom,
+        ),
         children: [
           if (phoneRegistered.isNotEmpty || phoneInvite.isNotEmpty) _phoneSection(),
-          _labelsSection(),
           _actionTile(
             icon: Icons.group_add_outlined,
-            title: 'Create a new Group',
+            title: 'New group',
+            subtitle: 'Create a conversation with multiple people',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const LiveGroupsScreen()),
             ),
           ),
           _actionTile(
             icon: Icons.person_add_alt_1_rounded,
-            title: 'New Contact',
+            title: 'New contact',
+            subtitle: 'Add by username, email, or phone',
             onTap: _addByIdentity,
           ),
-          Container(
-            color: context.softPanel,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 7),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    sortByName ? 'Sorted by name' : 'Sorted by last seen time',
-                    style: TextStyle(fontSize: 12, color: context.muted),
+                    'Contacts',
+                    style: TextStyle(
+                      color: context.isDark
+                          ? const Color(0xFF7DD3FC)
+                          : SyncColors.sky700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                Text('${contacts.length}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                Text(
+                  '${contacts.length}',
+                  style: TextStyle(
+                    color: context.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
           if (contacts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 72),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 72, 28, 0),
               child: Column(
                 children: [
-                  Icon(Icons.people_outline_rounded, size: 52, color: SyncColors.sky),
-                  SizedBox(height: 12),
-                  Text('No saved contacts yet.'),
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: SyncColors.sky.withValues(alpha: .10),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.people_outline_rounded,
+                      size: 28,
+                      color: SyncColors.sky600,
+                    ),
+                  ),
+                  const SizedBox(height: 13),
+                  const Text(
+                    'No contacts yet',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Add a contact or sync your phone book to get started.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: context.muted, height: 1.4),
+                  ),
                 ],
               ),
             )
@@ -267,84 +340,111 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     final contact = contacts[index];
     final profile = _profile(contact);
     final name = _profileName(profile);
-    final assigned = _stringSet(contact['labels']);
     final showLetter = sortByName &&
-        (index == 0 || _firstLetter(_profileName(_profile(contacts[index - 1]))) != _firstLetter(name));
+        (index == 0 ||
+            _firstLetter(_profileName(_profile(contacts[index - 1]))) !=
+                _firstLetter(name));
     return Column(
       children: [
         if (showLetter)
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-              child: Text(_firstLetter(name), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              padding: const EdgeInsets.fromLTRB(16, 11, 16, 3),
+              child: Text(
+                _firstLetter(name),
+                style: TextStyle(
+                  color: context.isDark
+                      ? const Color(0xFF7DD3FC)
+                      : SyncColors.sky700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
         ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          contentPadding: const EdgeInsets.fromLTRB(14, 5, 6, 5),
           leading: SyncAvatar(
             name: name,
             imageUrl: profile['avatar']?.toString(),
             online: profile['canSeeOnline'] != false && profile['online'] == true,
-            radius: 27,
+            radius: 25,
           ),
-          title: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(sortByName ? _bioOrIdentity(profile) : _presenceText(profile)),
-              if (assigned.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 4,
-                  children: labels
-                      .where((label) => assigned.contains(label['_id']?.toString() ?? ''))
-                      .map(_labelChip)
-                      .toList(growable: false),
-                ),
-              ],
-            ],
+          title: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            sortByName ? _bioOrIdentity(profile) : _presenceText(profile),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: context.muted, fontSize: 12.5),
           ),
           trailing: IconButton(
             tooltip: 'Labels',
             onPressed: () => _assignLabels(contact),
-            icon: const Icon(Icons.label_outline_rounded),
+            icon: Icon(
+              Icons.label_outline_rounded,
+              size: 20,
+              color: context.muted,
+            ),
           ),
+          onLongPress: () => _assignLabels(contact),
           onTap: () => _openChat(
             contact['roomId']?.toString() ?? '',
             name,
           ),
         ),
-        Divider(height: 1, indent: 80, color: context.border),
+        Divider(height: 1, indent: 76, color: context.border.withValues(alpha: .62)),
       ],
     );
   }
 
   Widget _searchResults() {
-    if (searching && results.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (results.isEmpty) return const Center(child: Text('No users found.'));
+    if (searching && results.isEmpty) {
+      return const Center(
+        child: SizedBox.square(
+          dimension: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.3),
+        ),
+      );
+    }
+    if (results.isEmpty) {
+      return Center(
+        child: Text('No users found.', style: TextStyle(color: context.muted)),
+      );
+    }
     return ListView.separated(
-      padding: EdgeInsets.only(bottom: 116 + MediaQuery.paddingOf(context).bottom),
+      padding: EdgeInsets.only(bottom: 92 + MediaQuery.paddingOf(context).bottom),
       itemCount: results.length,
-      separatorBuilder: (_, __) => Divider(height: 1, indent: 76, color: context.border),
+      separatorBuilder: (_, __) =>
+          Divider(height: 1, indent: 76, color: context.border.withValues(alpha: .62)),
       itemBuilder: (context, index) {
         final profile = results[index];
         final name = _profileName(profile);
         final saved = profile['isSaved'] == true;
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           leading: SyncAvatar(
             name: name,
             imageUrl: profile['avatar']?.toString(),
             radius: 25,
           ),
-          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text(_identityLine(profile)),
+          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(
+            _identityLine(profile),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           trailing: saved
-              ? FilledButton(
-                  onPressed: () => _openChat(profile['roomId']?.toString() ?? '', name),
-                  child: const Text('Chat now'),
+              ? IconButton(
+                  tooltip: 'Open chat',
+                  onPressed: () =>
+                      _openChat(profile['roomId']?.toString() ?? '', name),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
                 )
               : FilledButton.tonal(
                   onPressed: () => _addSearchResult(profile),
@@ -358,11 +458,21 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
   Widget _phoneSection() {
     return Column(
       children: [
-        Container(
-          color: context.softPanel,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          alignment: Alignment.centerLeft,
-          child: const Text('From Phone Contacts', style: TextStyle(fontWeight: FontWeight.w800)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 5),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Phone contacts',
+              style: TextStyle(
+                color: context.isDark
+                    ? const Color(0xFF7DD3FC)
+                    : SyncColors.sky700,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ),
         for (final item in phoneRegistered)
           ListTile(
@@ -373,19 +483,22 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
             ),
             title: Text(item['contactName']?.toString() ?? _profileName(_profile(item))),
             subtitle: Text('@${_profile(item)['username'] ?? ''} · ${item['contactPhone'] ?? ''}'),
-            trailing: FilledButton(
+            trailing: IconButton(
+              tooltip: 'Open chat',
               onPressed: () => _openPhoneMatch(item),
-              child: const Text('Chat now'),
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
             ),
           ),
         for (final item in phoneInvite)
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)),
             title: Text(
-              item['name']?.toString().trim().isNotEmpty == true ? item['name'].toString() : '[Unknown]',
+              item['name']?.toString().trim().isNotEmpty == true
+                  ? item['name'].toString()
+                  : '[Unknown]',
             ),
             subtitle: Text(item['phones'] is List ? (item['phones'] as List).join(', ') : ''),
-            trailing: FilledButton.tonal(
+            trailing: TextButton(
               onPressed: () => _invite(item),
               child: const Text('Invite'),
             ),
@@ -421,15 +534,35 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
     );
   }
 
-  Widget _actionTile({required IconData icon, required String title, required VoidCallback onTap}) {
+  Widget _actionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     return Column(
       children: [
         ListTile(
-          leading: Icon(icon),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: SyncColors.sky.withValues(alpha: .11),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: SyncColors.sky600, size: 21),
+          ),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: context.muted),
+          ),
           onTap: onTap,
         ),
-        Divider(height: 1, color: context.border),
+        Divider(height: 1, indent: 68, color: context.border.withValues(alpha: .62)),
       ],
     );
   }
@@ -501,7 +634,9 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
       final inbox = await context.services.inbox.findByRoom(roomId);
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name)),
+        MaterialPageRoute<void>(
+          builder: (_) => LiveChatRoomScreen(inbox: inbox, name: name),
+        ),
       );
     } on Object catch (failure) {
       if (mounted) _snack(_errorText(failure));
@@ -521,11 +656,15 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(labelText: 'Username, email or phone'),
-            validator: (value) => (value ?? '').trim().isEmpty ? 'Contact identity is required.' : null,
+            validator: (value) =>
+                (value ?? '').trim().isEmpty ? 'Contact identity is required.' : null,
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               if (key.currentState?.validate() != true) return;
@@ -560,7 +699,9 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
   }
 
   Future<void> _assignLabels(Map<String, dynamic> contact) async {
-    final friendId = contact['friendId']?.toString() ?? _profile(contact)['userId']?.toString() ?? '';
+    final friendId = contact['friendId']?.toString() ??
+        _profile(contact)['userId']?.toString() ??
+        '';
     if (friendId.isEmpty) return;
     final working = _stringSet(contact['labels']);
     final result = await showDialog<List<String>>(
@@ -580,7 +721,8 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                         value: working.contains(id),
                         secondary: CircleAvatar(
                           radius: 6,
-                          backgroundColor: _hexColor(label['color']?.toString() ?? '#2563eb'),
+                          backgroundColor:
+                              _hexColor(label['color']?.toString() ?? '#2563eb'),
                         ),
                         title: Text(label['name']?.toString() ?? 'Label'),
                         onChanged: id.isEmpty
@@ -597,9 +739,13 @@ class _LiveP0ContactsScreenState extends State<LiveP0ContactsScreen> {
                   ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, working.toList(growable: false)),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, working.toList(growable: false)),
               child: const Text('Save'),
             ),
           ],
@@ -681,7 +827,11 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
     return SyncStandardPage(
       title: 'Labels',
       actions: [
-        IconButton(tooltip: 'New label', onPressed: _createLabel, icon: const Icon(Icons.add_rounded)),
+        IconButton(
+          tooltip: 'New label',
+          onPressed: _createLabel,
+          icon: const Icon(Icons.add_rounded),
+        ),
       ],
       child: loading
           ? const Center(child: CircularProgressIndicator())
@@ -692,17 +842,22 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
                   : ListView.separated(
                       padding: const EdgeInsets.all(8),
                       itemCount: labels.length,
-                      separatorBuilder: (_, __) => Divider(height: 1, indent: 62, color: context.border),
+                      separatorBuilder: (_, __) =>
+                          Divider(height: 1, indent: 62, color: context.border),
                       itemBuilder: (context, index) {
                         final label = labels[index];
                         final system = label['isSystem'] == true;
-                        final tone = _hexColor(label['color']?.toString() ?? '#2563eb');
+                        final tone =
+                            _hexColor(label['color']?.toString() ?? '#2563eb');
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor: tone.withValues(alpha: .14),
                             child: Icon(Icons.label_rounded, color: tone),
                           ),
-                          title: Text(label['name']?.toString() ?? 'Label', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          title: Text(
+                            label['name']?.toString() ?? 'Label',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                           subtitle: system ? const Text('Default label') : null,
                           trailing: system
                               ? null
@@ -729,7 +884,11 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'Label name')),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Label name'),
+              ),
               const SizedBox(height: 14),
               const Text('Color', style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
@@ -747,7 +906,10 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _hexColor(value),
-                        border: Border.all(color: selected ? context.ink : Colors.transparent, width: 2),
+                        border: Border.all(
+                          color: selected ? context.ink : Colors.transparent,
+                          width: 2,
+                        ),
                       ),
                     ),
                   );
@@ -756,7 +918,10 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () {
                 final name = controller.text.trim();
@@ -772,11 +937,16 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
     controller.dispose();
     if (result == null || !mounted) return;
     try {
-      await context.services.api.post('/contacts/labels', body: {'name': result.$1, 'color': result.$2});
+      await context.services.api.post(
+        '/contacts/labels',
+        body: {'name': result.$1, 'color': result.$2},
+      );
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorText(failure))),
+      );
     }
   }
 
@@ -789,8 +959,14 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
         title: const Text('Delete label?'),
         content: Text('Delete “${label['name'] ?? 'Label'}”?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -800,7 +976,9 @@ class _LabelsManagerScreenState extends State<_LabelsManagerScreen> {
       await _load();
     } on Object catch (failure) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(failure))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorText(failure))),
+      );
     }
   }
 }
@@ -846,7 +1024,8 @@ String _presenceText(Map<String, dynamic> profile) {
 
   final canSeeLastSeen = profile['canSeeLastSeen'] != false;
   final raw = profile['lastSeenAt']?.toString().trim() ?? '';
-  final value = canSeeLastSeen && raw.isNotEmpty ? DateTime.tryParse(raw)?.toLocal() : null;
+  final value =
+      canSeeLastSeen && raw.isNotEmpty ? DateTime.tryParse(raw)?.toLocal() : null;
   if (value != null) return 'Last seen ${_relativeTime(value)}';
 
   return 'Privacy protected';
@@ -854,17 +1033,12 @@ String _presenceText(Map<String, dynamic> profile) {
 
 String _relativeTime(DateTime time) {
   final diff = DateTime.now().difference(time.toLocal());
-  if (diff.isNegative || diff.inSeconds < 45) return 'a few seconds ago';
-  if (diff.inMinutes < 2) return 'a minute ago';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
-  if (diff.inHours < 2) return 'an hour ago';
-  if (diff.inHours < 24) return '${diff.inHours} hours ago';
-  if (diff.inDays < 2) return 'a day ago';
-  if (diff.inDays < 30) return '${diff.inDays} days ago';
-  if (diff.inDays < 60) return 'a month ago';
-  if (diff.inDays < 365) return '${diff.inDays ~/ 30} months ago';
-  if (diff.inDays < 730) return 'a year ago';
-  return '${diff.inDays ~/ 365} years ago';
+  if (diff.isNegative || diff.inSeconds < 45) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays == 1) return 'yesterday';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  return '${time.day}/${time.month}/${time.year.toString().substring(2)}';
 }
 
 String _identity(Map<String, dynamic> profile) {
@@ -884,12 +1058,18 @@ String _firstLetter(String value) {
 
 Set<String> _stringSet(dynamic value) {
   if (value is! List) return <String>{};
-  return value.map((item) => item.toString()).where((item) => item.isNotEmpty).toSet();
+  return value
+      .map((item) => item.toString())
+      .where((item) => item.isNotEmpty)
+      .toSet();
 }
 
 Color _hexColor(String value) {
   final clean = value.replaceAll('#', '').trim();
-  final parsed = int.tryParse(clean.length == 6 ? 'FF$clean' : clean, radix: 16);
+  final parsed = int.tryParse(
+    clean.length == 6 ? 'FF$clean' : clean,
+    radix: 16,
+  );
   return parsed == null ? SyncColors.sky : Color(parsed);
 }
 
