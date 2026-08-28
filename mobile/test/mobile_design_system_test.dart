@@ -3,10 +3,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('mobile theme keeps messenger-oriented component geometry', () {
+  test('mobile theme keeps messenger geometry and approved purple palette', () {
     final theme = File('lib/theme.dart').readAsStringSync();
 
     for (final contract in [
+      'static const sky = Color(0xFF8B5CF6)',
+      'static const sky600 = Color(0xFF7C3AED)',
+      'static const spill950 = Color(0xFF070B14)',
+      'static const spill900 = Color(0xFF0D1422)',
       'toolbarHeight: 58',
       'borderRadius: BorderRadius.circular(18)',
       'FloatingActionButtonThemeData(',
@@ -32,7 +36,7 @@ void main() {
     expect(widgets, contains('FontWeight.w700'));
   });
 
-  test('primary navigation stays flat and messenger-like', () {
+  test('primary navigation matches approved five-tab mobile layout', () {
     final shell = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
     expect(shell, contains('left: 0'));
@@ -41,6 +45,10 @@ void main() {
     expect(shell, contains('height: 64'));
     expect(shell, contains('Icons.chat_bubble_rounded'));
     expect(shell, contains('Icons.call_rounded'));
+    expect(shell, contains('Icons.settings_rounded'));
+    expect(shell, contains("'Settings'"));
+    expect(shell, contains("'channels' => const ChannelHubScreen()"));
+    expect(shell, isNot(contains('LiveHomeTab.channels')));
 
     expect(shell, isNot(contains('blurRadius: 44')));
     expect(shell, isNot(contains('width: 32,\n                height: 6')));
@@ -77,15 +85,21 @@ void main() {
     expect(contacts, isNot(contains("'Create a new Group'")));
   });
 
-  test('remaining feature-rich screens inherit the shared professional system', () {
+  test('feature-rich screens inherit the shared professional surface', () {
     final status = File('lib/screens/live_p0_status_screen.dart').readAsStringSync();
+    final room = File('lib/screens/live_chat_room_screen.dart').readAsStringSync();
     final channels = File('lib/screens/live_channels_screen.dart').readAsStringSync();
     final settings = File('lib/screens/live_settings_hub_screen.dart').readAsStringSync();
     final profile = File('lib/screens/live_full_profile_screen.dart').readAsStringSync();
+    final surface =
+        File('lib/widgets/professional_mobile_surface.dart').readAsStringSync();
 
-    expect(status, contains('WebParityStatusScreen'));
-    expect(channels, contains("export 'live_channels_web_parity_screen.dart'"));
-    expect(settings, contains("export 'live_settings_hub_web_parity_screen.dart'"));
-    expect(profile, contains("export 'live_full_profile_web_parity_screen.dart'"));
+    for (final source in [status, room, channels, settings, profile]) {
+      expect(source, contains('ProfessionalMobileSurface'));
+    }
+    expect(surface, contains('visualDensity: const VisualDensity(horizontal: -1, vertical: -1)'));
+    expect(surface, contains('navigationBarTheme:'));
+    expect(surface, contains('dialogTheme:'));
+    expect(surface, contains('SyncColors.sky.withValues'));
   });
 }
