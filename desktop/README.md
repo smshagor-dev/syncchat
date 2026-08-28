@@ -1,6 +1,6 @@
 # SyncChat Desktop
 
-SyncChat Desktop is the native desktop distribution of SyncChat. It uses **Rust + Tauri 2** for the native shell and bundles the existing production Web client locally, so the desktop UI stays aligned with the Web application instead of maintaining a second desktop UI implementation.
+SyncChat Desktop is the native desktop distribution of SyncChat. It uses **Rust + Tauri 2** for the native shell and bundles the existing production Web client locally, so Windows, macOS, Linux and browser Web stay aligned instead of maintaining separate desktop UI implementations.
 
 ## Architecture
 
@@ -12,7 +12,6 @@ SyncChat Desktop
 │   ├── single-instance enforcement
 │   ├── syncchat:// deep links
 │   ├── native notifications capability
-│   ├── native file/dialog capability
 │   ├── autostart capability
 │   └── external URL opener
 ├── Bundled SyncChat Web UI
@@ -23,7 +22,44 @@ SyncChat Desktop
     └── https://syncchat.live
 ```
 
-The user does **not** need Node.js or a local web server after the application has been built. The frontend assets are bundled by Tauri and loaded from the native application package.
+The user does **not** need Node.js or a local web server after installation. The frontend assets are bundled with the native application.
+
+## Installer outputs
+
+### Windows x64
+
+- NSIS setup `.exe`
+- MSI `.msi`
+- Native `.exe`
+
+### macOS Universal
+
+- Drag-to-Applications `.dmg`
+- `.app` bundle archive
+- One universal application supports both **Apple Silicon (arm64)** and **Intel (x86_64)** Macs.
+
+CI uses an ad-hoc macOS signature when Apple Developer signing secrets are not configured. This makes the build testable and installable for development/distribution testing, but public distribution without Gatekeeper warnings requires a Developer ID Application certificate and Apple notarization.
+
+### Linux x86_64
+
+- Debian/Ubuntu `.deb` installer
+- Portable `.AppImage`
+- Native `syncchat-desktop` binary
+
+The AppImage bundles the media framework required by SyncChat audio/video features. Linux builds use Ubuntu 22.04 as the compatibility baseline.
+
+## Automated installer builds
+
+`.github/workflows/desktop-macos-linux-installers.yml` builds and verifies macOS and Linux packages whenever relevant desktop/frontend files land on `main`, and it can also be started manually with **Run workflow**.
+
+Artifacts include:
+
+- installer/package files
+- `SHA256SUMS.txt`
+- `BUILD-INFO.txt`
+- MIT `LICENSE`
+
+The existing `desktop-rust-ci.yml` continues to produce the Windows installers.
 
 ## Branding
 
@@ -35,22 +71,78 @@ Desktop icons are generated from the exact mobile application logo:
 
 `npm run icons` calls the Tauri icon generator and creates the Windows `.ico`, macOS `.icns`, PNG and store icon variants in `src-tauri/icons/`. The generated icon directory is intentionally not committed so there is only one source-of-truth logo in the repository.
 
-## License
+## Local macOS build
 
-This folder uses the repository's **MIT License**. See `LICENSE`.
+Requirements:
 
-## Requirements for Windows builds
+- macOS with Xcode Command Line Tools
+- Node.js 24.x + npm
+- Rust stable through rustup
+
+Run from the repository root:
+
+```bash
+bash desktop/build-macos.sh
+```
+
+Expected output root:
+
+```text
+desktop/src-tauri/target/universal-apple-darwin/release/bundle/
+├── dmg/*.dmg
+└── macos/SyncChat.app
+```
+
+By default the helper uses an ad-hoc signing identity (`-`). If a valid Apple signing identity is configured in `APPLE_SIGNING_IDENTITY`, that value is preserved instead.
+
+## Local Linux build
+
+Recommended baseline: Ubuntu 22.04 or Debian 12 with WebKitGTK 4.1.
+
+On Ubuntu/Debian install the native dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  build-essential \
+  curl \
+  wget \
+  file \
+  libxdo-dev \
+  libssl-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  patchelf \
+  xdg-utils \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-libav
+```
+
+Then run:
+
+```bash
+bash desktop/build-linux.sh
+```
+
+Expected output root:
+
+```text
+desktop/src-tauri/target/release/bundle/
+├── deb/*.deb
+└── appimage/*.AppImage
+```
+
+## Local Windows build
+
+Requirements:
 
 - Windows 10 or Windows 11
 - Node.js 24.x
 - npm 11.x
 - Rust stable through rustup
 - Microsoft C++ Build Tools / Visual Studio Build Tools with the Desktop development with C++ workload
-- WebView2 does not need to be preinstalled for the generated installers because the Windows bundle uses Tauri's `offlineInstaller` mode
-
-MSI generation uses WiX through Tauri. If MSI creation reports that VBSCRIPT is unavailable, enable the Windows VBSCRIPT optional feature or build the NSIS installer only.
-
-## Local Windows build
 
 From the repository root:
 
@@ -58,8 +150,6 @@ From the repository root:
 cd desktop
 .\build-windows.ps1
 ```
-
-The script installs the frontend dependencies, installs Tauri CLI dependencies, generates the desktop icons from the mobile logo, builds the production Web client, compiles Rust and creates the Windows installers.
 
 Expected outputs:
 
@@ -79,14 +169,14 @@ To build only the native executable without installer bundles:
 
 Install dependencies once:
 
-```powershell
-npm --prefix ..\frontend ci
-npm install
+```bash
+npm --prefix frontend ci
+npm --prefix desktop install --ignore-scripts
 ```
 
-Then:
+Then from `desktop/`:
 
-```powershell
+```bash
 npm run dev
 ```
 
@@ -104,11 +194,11 @@ PUBLIC_ORIGIN=https://syncchat.live
 
 They can be overridden for a build without changing source code:
 
-```powershell
-$env:SYNCCHAT_API_BASE_URL='https://api.example.com/api'
-$env:SYNCCHAT_SOCKET_URL='https://api.example.com'
-$env:SYNCCHAT_PUBLIC_ORIGIN='https://example.com'
-npm run build
+```bash
+SYNCCHAT_API_BASE_URL='https://api.example.com/api' \
+SYNCCHAT_SOCKET_URL='https://api.example.com' \
+SYNCCHAT_PUBLIC_ORIGIN='https://example.com' \
+npm --prefix desktop run build
 ```
 
 ## Desktop behavior
@@ -118,7 +208,6 @@ npm run build
 - The tray menu includes **Open SyncChat** and **Quit SyncChat**.
 - Starting SyncChat a second time focuses the existing process instead of creating a duplicate app instance.
 - Installed builds register the `syncchat://` custom URL scheme.
-- `syncchat://chat?...` is forwarded to the bundled `/chat?...` route.
 - External `http`, `https`, `mailto` and `tel` links are opened with the operating-system default application.
 - The desktop bridge exposes `window.SyncChatDesktop` for explicit native notification and autostart actions without requesting permission automatically.
 
@@ -126,13 +215,6 @@ npm run build
 
 Tauri IPC capabilities are limited to the local `main` window. The desktop shell grants only the plugin defaults required for app functionality; it does not expose unrestricted shell execution. The Web bundle uses a Tauri Content Security Policy and only secure HTTP/WebSocket connections are expected for production services.
 
-## Windows runtime packaging
+## License
 
-Windows uses:
-
-- static Visual C++ runtime linking
-- NSIS installer
-- MSI installer
-- offline WebView2 installer bundle
-
-The offline WebView2 mode increases installer size, but allows installation without downloading WebView2 during setup. On normal Windows 10/11 systems the app continues to use the secure system-managed WebView2 runtime after installation.
+This folder uses the repository's **MIT License**. See `LICENSE`.
