@@ -17,6 +17,7 @@ import 'screens/mobile_social_auth_screen.dart';
 import 'theme.dart';
 import 'widgets/authenticated_account_gate.dart';
 import 'widgets/authenticated_app_lock_gate.dart';
+import 'widgets/biometric_setup_prompt_gate.dart';
 import 'widgets/connection_resilience_layer.dart';
 import 'widgets/notification_navigation_layer.dart';
 
@@ -107,12 +108,14 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       onLogout: _logout,
       child: AuthenticatedAppLockGate(
         onLogout: _logout,
-        child: ConnectionResilienceLayer(
-          child: NotificationNavigationLayer(
-            child: GlobalCallLayer(
-              child: LiveMobileShell(
-                onThemeChanged: _setDarkMode,
-                onLogout: _logout,
+        child: BiometricSetupPromptGate(
+          child: ConnectionResilienceLayer(
+            child: NotificationNavigationLayer(
+              child: GlobalCallLayer(
+                child: LiveMobileShell(
+                  onThemeChanged: _setDarkMode,
+                  onLogout: _logout,
+                ),
               ),
             ),
           ),
@@ -125,7 +128,6 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     return MobileSocialAuthScreen(
       authRepository: _services.auth,
       onAuthenticated: (context) async {
-        unawaited(BiometricService.enableAfterSuccessfulLogin());
         unawaited(_services.chat.currentUser(refresh: true));
         unawaited(_startAuthenticatedIntegrations());
         if (!context.mounted) return;
@@ -194,8 +196,6 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       onTimeout: () => false,
     );
     if (!hasSession) return false;
-
-    unawaited(BiometricService.enableAfterSuccessfulLogin());
 
     // Render the signed-in UI immediately from local state/cache. Network,
     // profile refresh, sockets and push registration continue in background.
