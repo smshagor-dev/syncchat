@@ -7,6 +7,10 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+  errors:
+    # Contacts keeps one legacy labels helper as an audited rollback surface.
+    # It is intentionally not part of the active compact messenger layout.
+    unused_element: info
 
 linter:
   rules:
