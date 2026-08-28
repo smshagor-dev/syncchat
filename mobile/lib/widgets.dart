@@ -33,13 +33,13 @@ class SyncAvatar extends StatelessWidget {
 
     Widget fallback() => CircleAvatar(
           radius: radius,
-          backgroundColor: SyncColors.sky.withOpacity(.14),
+          backgroundColor: SyncColors.sky.withValues(alpha: .12),
           child: Text(
             initials.isEmpty ? 'S' : initials,
             style: TextStyle(
               color: context.isDark ? const Color(0xFFBAE6FD) : SyncColors.sky700,
-              fontWeight: FontWeight.w900,
-              fontSize: radius * .66,
+              fontWeight: FontWeight.w800,
+              fontSize: radius * .62,
             ),
           ),
         );
@@ -77,12 +77,12 @@ class SyncAvatar extends StatelessWidget {
             right: -1,
             bottom: -1,
             child: Container(
-              width: radius * .58,
-              height: radius * .58,
+              width: radius * .52,
+              height: radius * .52,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: SyncColors.success,
-                border: Border.all(color: context.panel, width: 2),
+                border: Border.all(color: context.panel, width: 2.2),
               ),
             ),
           ),
@@ -110,17 +110,8 @@ class SyncSoftCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: context.panel,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: context.border),
-        boxShadow: context.isDark
-            ? null
-            : const [
-                BoxShadow(
-                  color: Color(0x100F172A),
-                  blurRadius: 12,
-                  offset: Offset(0, 4),
-                ),
-              ],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.border.withValues(alpha: .82)),
       ),
       child: child,
     );
@@ -146,34 +137,33 @@ class SyncFeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: context.isDark
-              ? [SyncColors.spill800, SyncColors.spill900]
-              : [const Color(0xFFE0F2FE), const Color(0xFFECFEFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: context.border),
+        color: context.panel,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.border.withValues(alpha: .82)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            backgroundColor: SyncColors.sky.withOpacity(.14),
-            child: Icon(icon, color: SyncColors.sky),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: SyncColors.sky.withValues(alpha: .12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: SyncColors.sky600, size: 21),
           ),
           const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 5),
           Text(
             body,
-            style: TextStyle(color: context.muted, height: 1.45),
+            style: TextStyle(color: context.muted, height: 1.4, fontSize: 13.5),
           ),
           if (actionLabel != null) ...[
             const SizedBox(height: 13),
@@ -209,26 +199,31 @@ class SyncEntityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = danger ? SyncColors.danger : SyncColors.sky;
+    final tone = danger ? SyncColors.danger : SyncColors.sky600;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 7),
       child: Material(
         color: context.panel,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              border: Border.all(color: context.border),
-              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: context.border.withValues(alpha: .82)),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: tone.withOpacity(.10),
-                  child: Icon(icon, color: tone, size: 20),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: .10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: tone, size: 19),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -238,7 +233,7 @@ class SyncEntityTile extends StatelessWidget {
                       Text(
                         title,
                         style: TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           color: danger ? SyncColors.danger : null,
                         ),
                       ),
@@ -247,7 +242,7 @@ class SyncEntityTile extends StatelessWidget {
                         subtitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: context.muted),
+                        style: TextStyle(fontSize: 12.5, color: context.muted),
                       ),
                     ],
                   ),
@@ -271,12 +266,12 @@ class SyncSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      label.toUpperCase(),
+      label,
       style: TextStyle(
-        color: context.muted,
-        fontSize: 11,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1.3,
+        color: context.isDark ? const Color(0xFF7DD3FC) : SyncColors.sky700,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        letterSpacing: .15,
       ),
     );
   }
@@ -296,15 +291,24 @@ class SyncStandardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canPop = Navigator.canPop(context);
     return Scaffold(
       backgroundColor: context.isDark ? SyncColors.spill950 : Colors.white,
       appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        automaticallyImplyLeading: false,
+        leading: canPop
+            ? IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(Icons.arrow_back_rounded),
+              )
+            : null,
+        title: Text(title),
         actions: actions,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1, color: context.border.withValues(alpha: .72)),
+        ),
       ),
       body: child,
     );
@@ -332,22 +336,26 @@ class SyncDockPage extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              height: 64,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              height: 58,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               color: context.panel,
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.2,
+                      ),
                     ),
                   ),
                   if (trailing != null) trailing!,
                 ],
               ),
             ),
-            Divider(height: 1, color: context.border),
+            Divider(height: 1, color: context.border.withValues(alpha: .72)),
             Expanded(child: child),
           ],
         ),
@@ -392,7 +400,7 @@ class SyncStatusAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 68,
+      width: 72,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -404,30 +412,35 @@ class SyncStatusAvatar extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: add ? context.border : SyncColors.sky,
+                    color: add ? context.border : SyncColors.sky600,
                     width: 2,
                   ),
                 ),
-                child: SyncAvatar(name: name, imageUrl: imageUrl, radius: 21),
+                child: SyncAvatar(name: name, imageUrl: imageUrl, radius: 23),
               ),
               if (add)
-                const Positioned(
+                Positioned(
                   right: -1,
                   bottom: -1,
-                  child: CircleAvatar(
-                    radius: 9,
-                    backgroundColor: SyncColors.sky600,
-                    child: Icon(Icons.add_rounded, color: Colors.white, size: 14),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: SyncColors.sky600,
+                      border: Border.all(color: context.panel, width: 2),
+                    ),
+                    child: const Icon(Icons.add_rounded, color: Colors.white, size: 14),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Text(
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
           ),
         ],
       ),
