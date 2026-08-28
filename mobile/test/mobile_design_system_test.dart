@@ -41,4 +41,18 @@ void main() {
     expect(shell, isNot(contains('blurRadius: 44')));
     expect(shell, isNot(contains('width: 32,\n                height: 6')));
   });
+
+  test('calls screen stays compact and action-light', () {
+    final calls = File('lib/screens/live_calls_screen.dart').readAsStringSync();
+
+    expect(calls, contains("title: 'Calls'"));
+    expect(calls, contains("label: const Text('Start a call')"));
+    expect(calls, contains("'${meta.video ? 'Video' : 'Audio'} · ${meta.label}'"));
+    expect(calls, contains('onTap: () => _openMessage(call, name)'));
+    expect(calls, contains('video: meta.video'));
+
+    // Keep the list closer to WhatsApp/Telegram instead of a dashboard card.
+    expect(calls, isNot(contains("'All Calls'")));
+    expect(calls, isNot(contains('_actionButton(')));
+  });
 }
