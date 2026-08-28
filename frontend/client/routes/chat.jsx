@@ -53,6 +53,7 @@ function Chat() {
     <div
       role="button"
       tabIndex={0}
+      data-syncchat-desktop-app
       className="absolute inset-0 overflow-hidden bg-slate-100 text-slate-800 dark:bg-spill-950 dark:text-white/90"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -68,12 +69,12 @@ function Chat() {
         }
       }}
     >
-      <div className="hidden md:block absolute top-0 left-0 right-0 h-28 bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-500 dark:from-spill-800 dark:via-spill-700 dark:to-spill-600" />
-      <div className="relative w-full h-full md:p-5">
-        <div className="relative w-full h-full overflow-hidden md:rounded-md md:shadow-2xl grid md:grid-cols-[480px_1fr] bg-white dark:bg-spill-900">
-          <cont.foreground />
-          <cont.room />
-        </div>
+      <div
+        data-syncchat-desktop-shell
+        className="relative h-full w-full overflow-hidden grid md:grid-cols-[420px_minmax(0,1fr)] bg-white dark:bg-spill-900"
+      >
+        <cont.foreground />
+        <cont.room />
       </div>
 
       <Helmet>
