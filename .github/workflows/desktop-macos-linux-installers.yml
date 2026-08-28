@@ -1,0 +1,219 @@
+name: Desktop macOS Linux Installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'mobile/assets/syncchat_logo.png'
+      - '.github/workflows/desktop-macos-linux-installers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-installers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-universal:
+    name: macOS Universal DMG
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust with Intel and Apple Silicon targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Install desktop dependencies
+        run: npm --prefix desktop install --ignore-scripts
+
+      - name: Build universal macOS app and DMG
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm --prefix desktop run build:macos
+
+      - name: Verify and package macOS release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bundle_root='desktop/src-tauri/target/universal-apple-darwin/release/bundle'
+          app_path="$(find "$bundle_root/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          dmg_path="$(find "$bundle_root/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+
+          test -n "$app_path" || { echo 'No macOS .app bundle was produced.' >&2; exit 1; }
+          test -n "$dmg_path" || { echo 'No macOS .dmg installer was produced.' >&2; exit 1; }
+
+          app_binary="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit)"
+          test -n "$app_binary" || { echo 'No executable found inside the macOS app bundle.' >&2; exit 1; }
+
+          archs="$(lipo -archs "$app_binary")"
+          echo "Universal binary architectures: $archs"
+          [[ "$archs" == *arm64* ]] || { echo 'Missing arm64 architecture.' >&2; exit 1; }
+          [[ "$archs" == *x86_64* ]] || { echo 'Missing x86_64 architecture.' >&2; exit 1; }
+
+          codesign --verify --deep --strict "$app_path"
+
+          artifact_root='desktop/artifacts/macos-universal'
+          rm -rf "$artifact_root"
+          mkdir -p "$artifact_root"
+
+          cp "$dmg_path" "$artifact_root/"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "$artifact_root/SyncChat-macOS-universal.app.zip"
+          cp desktop/LICENSE "$artifact_root/LICENSE"
+
+          (
+            cd "$artifact_root"
+            shasum -a 256 -- *.dmg *.zip LICENSE > SHA256SUMS.txt
+          )
+
+          cat > "$artifact_root/BUILD-INFO.txt" <<EOF
+          SyncChat Desktop macOS Universal
+          Commit: $GITHUB_SHA
+          Architectures: arm64, x86_64
+          Installer: DMG
+          App archive: ZIP
+          Signing: ad-hoc CI signature
+          Notarization: not configured
+          API: https://api.syncchat.live/api
+          Socket: https://api.syncchat.live
+          Public origin: https://syncchat.live
+          Runtime: Rust + Tauri 2
+          License: MIT
+          EOF
+
+          echo 'Verified macOS artifacts:'
+          find "$artifact_root" -maxdepth 1 -type f -print
+
+      - name: Upload macOS installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncChat-macOS-universal-${{ github.sha }}
+          path: desktop/artifacts/macos-universal/*
+          if-no-files-found: error
+          retention-days: 30
+
+  linux-x64:
+    name: Linux x64 DEB and AppImage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-libav
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Install desktop dependencies
+        run: npm --prefix desktop install --ignore-scripts
+
+      - name: Build Linux DEB and AppImage
+        run: npm --prefix desktop run build:linux
+
+      - name: Verify and package Linux release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_root='desktop/src-tauri/target/release'
+          bundle_root="$release_root/bundle"
+          deb_path="$(find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          appimage_path="$(find "$bundle_root/appimage" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          binary_path="$release_root/syncchat-desktop"
+
+          test -f "$binary_path" || { echo 'Missing Linux production executable.' >&2; exit 1; }
+          test -n "$deb_path" || { echo 'No Debian installer was produced.' >&2; exit 1; }
+          test -n "$appimage_path" || { echo 'No AppImage was produced.' >&2; exit 1; }
+
+          dpkg-deb --info "$deb_path" >/dev/null
+          chmod +x "$appimage_path"
+          file "$binary_path"
+          file "$appimage_path"
+
+          artifact_root='desktop/artifacts/linux-x64'
+          rm -rf "$artifact_root"
+          mkdir -p "$artifact_root"
+
+          cp "$deb_path" "$artifact_root/"
+          cp "$appimage_path" "$artifact_root/"
+          cp "$binary_path" "$artifact_root/syncchat-desktop"
+          cp desktop/LICENSE "$artifact_root/LICENSE"
+
+          (
+            cd "$artifact_root"
+            sha256sum -- *.deb *.AppImage syncchat-desktop LICENSE > SHA256SUMS.txt
+          )
+
+          cat > "$artifact_root/BUILD-INFO.txt" <<EOF
+          SyncChat Desktop Linux x86_64
+          Commit: $GITHUB_SHA
+          Architecture: x86_64
+          Packages: DEB, AppImage
+          AppImage media framework: bundled
+          API: https://api.syncchat.live/api
+          Socket: https://api.syncchat.live
+          Public origin: https://syncchat.live
+          Runtime: Rust + Tauri 2 / WebKitGTK 4.1
+          Build baseline: Ubuntu 22.04
+          License: MIT
+          EOF
+
+          echo 'Verified Linux artifacts:'
+          find "$artifact_root" -maxdepth 1 -type f -print
+
+      - name: Upload Linux installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncChat-Linux-x64-${{ github.sha }}
+          path: desktop/artifacts/linux-x64/*
+          if-no-files-found: error
+          retention-days: 30
