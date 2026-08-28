@@ -1,0 +1,134 @@
+/* Shared desktop presentation for contacts, status, communities, channels, profile and settings. */
+@media (min-width: 768px) {
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20'][class*='grid-rows-[auto_1fr]']
+    > div:first-child {
+    min-height: 56px !important;
+    height: 56px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    border-color: var(--syncchat-desktop-border) !important;
+    background: #fff !important;
+  }
+
+  .dark
+    [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20'][class*='grid-rows-[auto_1fr]']
+    > div:first-child {
+    background: #141d26 !important;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    > div:first-child
+    h1.text-2xl,
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    > div:first-child
+    h1 {
+    font-size: 19px !important;
+    line-height: 1.35 !important;
+    font-weight: 650 !important;
+    letter-spacing: -0.01em;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    > div:first-child
+    button[class*='rounded-full'] {
+    min-height: 36px;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    form[class*='rounded-2xl'][class*='border'] {
+    margin: 10px !important;
+    border-radius: 14px !important;
+    border-color: var(--syncchat-desktop-border) !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .dark
+    [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    form[class*='rounded-2xl'][class*='border'] {
+    background: #141d26 !important;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='bg-gradient-to-'] {
+    background-image: none !important;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='rounded-2xl'][class*='border'],
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='rounded-xl'][class*='border'] {
+    border-color: var(--syncchat-desktop-border) !important;
+    box-shadow: none !important;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    textarea,
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    select {
+    border-color: var(--syncchat-desktop-border) !important;
+    border-radius: 10px !important;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='overflow-y-auto'] {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .dark
+    [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='overflow-y-auto'] {
+    scrollbar-color: #334557 transparent;
+  }
+
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='shadow-xl'],
+  [data-syncchat-mobile-shell]
+    > [class*='absolute'][class*='z-20']
+    [class*='shadow-2xl'] {
+    box-shadow: 0 10px 30px rgb(15 23 42 / 0.12) !important;
+  }
+
+  /* Room header aligns with the inbox header height and divider language. */
+  [data-syncchat-desktop-shell] nav.min-h-16 {
+    min-height: 64px !important;
+    border-bottom: 1px solid var(--syncchat-desktop-border);
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  [data-syncchat-desktop-shell] nav.min-h-16 img.w-10.h-10 {
+    width: 40px !important;
+    height: 40px !important;
+    object-fit: cover;
+  }
+
+  [data-syncchat-desktop-shell] nav.min-h-16 p.font-bold {
+    font-weight: 650 !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-syncchat-desktop-shell] [class*='xl:mr-[380px]'] {
+    margin-right: 360px !important;
+  }
+}
