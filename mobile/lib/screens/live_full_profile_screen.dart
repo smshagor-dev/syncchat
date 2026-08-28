@@ -1,1 +1,1 @@
-export 'live_full_profile_web_parity_screen.dart';
+export 'live_full_profile_core_screen.dart';
