@@ -7,6 +7,8 @@ class BiometricService {
 
   static const _storage = FlutterSecureStorage();
   static const _enabledKey = 'syncchat.biometric_unlock_enabled.v1';
+  static const _preferenceSetKey =
+      'syncchat.biometric_unlock_preference_set.v1';
   static final LocalAuthentication _auth = LocalAuthentication();
   static DateTime? _lastUnlockAt;
 
@@ -22,7 +24,12 @@ class BiometricService {
   }
 
   static Future<bool> hasPreference() async {
-    return await _storage.read(key: _enabledKey) != null;
+    if (await _storage.read(key: _preferenceSetKey) == '1') return true;
+
+    // Before explicit preference tracking existed, login could auto-write `1`.
+    // A stored `0`, however, could only come from the user turning biometrics
+    // off in Settings, so preserve that choice during migration.
+    return await _storage.read(key: _enabledKey) == '0';
   }
 
   static Future<bool> shouldOfferSetup() async {
@@ -31,6 +38,7 @@ class BiometricService {
   }
 
   static Future<bool> isEnabled() async {
+    if (await _storage.read(key: _preferenceSetKey) != '1') return false;
     final value = await _storage.read(key: _enabledKey);
     return value == '1' && await isAvailable();
   }
@@ -41,6 +49,7 @@ class BiometricService {
   }) async {
     if (!enabled) {
       await _storage.write(key: _enabledKey, value: '0');
+      await _storage.write(key: _preferenceSetKey, value: '1');
       _lastUnlockAt = null;
       return true;
     }
@@ -55,6 +64,7 @@ class BiometricService {
     if (!verified) return false;
 
     await _storage.write(key: _enabledKey, value: '1');
+    await _storage.write(key: _preferenceSetKey, value: '1');
     _lastUnlockAt = DateTime.now();
     return true;
   }
