@@ -24,6 +24,7 @@ import './styles/callScreenTheme.css';
 import './styles/inboxMenuMobile.css';
 import './styles/desktopMessenger.css';
 import './styles/desktopPages.css';
+import './styles/webDesktopParity.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 
