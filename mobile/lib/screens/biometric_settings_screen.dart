@@ -7,7 +7,8 @@ class BiometricSettingsScreen extends StatefulWidget {
   const BiometricSettingsScreen({super.key});
 
   @override
-  State<BiometricSettingsScreen> createState() => _BiometricSettingsScreenState();
+  State<BiometricSettingsScreen> createState() =>
+      _BiometricSettingsScreenState();
 }
 
 class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
@@ -52,13 +53,6 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
     try {
       if (next) {
         await BiometricService.setEnabled(true);
-        final verified = await BiometricService.authenticate(
-          reason: 'Confirm biometric protection for SyncChat',
-        );
-        if (!verified) {
-          await BiometricService.setEnabled(false);
-          throw StateError('Biometric verification was not completed.');
-        }
       } else {
         await BiometricService.setEnabled(false);
       }
@@ -72,7 +66,10 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
       setState(() {
         saving = false;
         enabled = false;
-        error = failure.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
+        error = failure
+            .toString()
+            .replaceFirst('Bad state: ', '')
+            .replaceFirst('Exception: ', '');
       });
     }
   }

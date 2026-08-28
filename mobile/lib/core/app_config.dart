@@ -19,15 +19,15 @@ class SyncChatConfig {
   factory SyncChatConfig.fromEnvironment() {
     const apiBaseUrl = String.fromEnvironment(
       'SYNCCHAT_API_BASE_URL',
-      defaultValue: 'http://127.0.0.1:5599/api',
+      defaultValue: 'https://api.syncchat.live/api',
     );
     const socketUrl = String.fromEnvironment(
       'SYNCCHAT_SOCKET_URL',
-      defaultValue: 'http://127.0.0.1:5599',
+      defaultValue: 'https://api.syncchat.live',
     );
     const publicOrigin = String.fromEnvironment(
       'SYNCCHAT_PUBLIC_ORIGIN',
-      defaultValue: '',
+      defaultValue: 'https://syncchat.live',
     );
     const firebaseApiKey = String.fromEnvironment(
       'SYNCCHAT_FIREBASE_API_KEY',

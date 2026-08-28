@@ -125,6 +125,7 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     return MobileSocialAuthScreen(
       authRepository: _services.auth,
       onAuthenticated: (context) async {
+        unawaited(BiometricService.enableAfterSuccessfulLogin());
         unawaited(_services.chat.currentUser(refresh: true));
         unawaited(_startAuthenticatedIntegrations());
         if (!context.mounted) return;
@@ -144,9 +145,9 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     }
 
     try {
-      await _services.nativeCallPush
-          .startAuthenticated()
-          .timeout(const Duration(seconds: 8));
+      await _services.nativeCallPush.startAuthenticated().timeout(
+        const Duration(seconds: 8),
+      );
     } on Object catch (error) {
       debugPrint('SyncChat native push startup deferred: $error');
     }
@@ -171,9 +172,9 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
 
   Future<void> _logout(BuildContext context) async {
     try {
-      await _services.nativeCallPush
-          .unregisterCurrentDevice()
-          .timeout(const Duration(seconds: 5));
+      await _services.nativeCallPush.unregisterCurrentDevice().timeout(
+        const Duration(seconds: 5),
+      );
     } on Object {}
     _services.realtime.disconnect();
     await _services.auth.logout();
@@ -193,6 +194,8 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
       onTimeout: () => false,
     );
     if (!hasSession) return false;
+
+    unawaited(BiometricService.enableAfterSuccessfulLogin());
 
     // Render the signed-in UI immediately from local state/cache. Network,
     // profile refresh, sockets and push registration continue in background.
