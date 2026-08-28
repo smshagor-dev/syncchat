@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -23,21 +25,21 @@ class AuthenticatedAccountGate extends StatefulWidget {
 }
 
 class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
-  Future<Map<String, dynamic>>? _accountFuture;
+  Map<String, dynamic>? _account;
+  Object? _hardError;
   RealtimeClient? _realtime;
   bool _bound = false;
+  bool _cacheReady = false;
   bool _sessionInactive = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_accountFuture == null) {
-      _accountFuture = context.services.chat.currentUser(refresh: true);
-    }
     if (!_bound) {
       _bound = true;
       _realtime = context.services.realtime;
       _realtime?.on('user/inactivate', _onInactive);
+      unawaited(_bootstrap());
     }
   }
 
@@ -49,19 +51,52 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
     super.dispose();
   }
 
+  Future<void> _bootstrap() async {
+    final cached = await context.services.chatCache.readCurrentUser();
+    if (!mounted) return;
+    setState(() {
+      _cacheReady = true;
+      if (cached.isNotEmpty) _account = cached;
+    });
+
+    // Returning users render from the encrypted local account snapshot. The
+    // server remains authoritative and reconciles silently after first paint.
+    unawaited(_refresh(surfaceError: cached.isEmpty));
+  }
+
   void _onInactive(dynamic _) {
     if (!mounted) return;
     setState(() => _sessionInactive = true);
   }
 
+  Future<void> _refresh({required bool surfaceError}) async {
+    try {
+      final fresh = await context.services.chat
+          .currentUser(refresh: true)
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      setState(() {
+        _account = fresh;
+        _hardError = null;
+        _sessionInactive = false;
+      });
+    } on Object catch (failure) {
+      if (!mounted) return;
+      if (surfaceError || _account == null || failure is ApiException && failure.isUnauthorized) {
+        setState(() => _hardError = failure);
+      } else {
+        debugPrint('SyncChat account refresh deferred: $failure');
+      }
+    }
+  }
+
   Future<void> _reload() async {
     if (!mounted) return;
-    final future = context.services.chat.currentUser(refresh: true);
     setState(() {
       _sessionInactive = false;
-      _accountFuture = future;
+      _hardError = null;
     });
-    await future;
+    await _refresh(surfaceError: true);
   }
 
   @override
@@ -72,52 +107,46 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       return _SessionInactiveScreen(onLogout: widget.onLogout, onRetry: _reload);
     }
 
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _accountFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const _AccountGateLoading();
-        }
+    if (!_cacheReady || _account == null && _hardError == null) {
+      return const _AccountGateLoading();
+    }
 
-        if (snapshot.hasError) {
-          final error = snapshot.error;
-          return _AccountUnavailableScreen(
-            message: error is ApiException
-                ? error.message
-                : 'Unable to load this $appName account.',
-            onRetry: _reload,
-            onLogout: widget.onLogout,
-          );
-        }
+    if (_account == null && _hardError != null) {
+      final failure = _hardError!;
+      return _AccountUnavailableScreen(
+        message: failure is ApiException
+            ? failure.message
+            : 'Unable to load this $appName account.',
+        onRetry: _reload,
+        onLogout: widget.onLogout,
+      );
+    }
 
-        final account = snapshot.data ?? const <String, dynamic>{};
-        final status =
-            account['status']?.toString().trim().toLowerCase() ?? 'active';
-        if (status != 'active') {
-          return _AccountUnavailableScreen(
-            message: status == 'blocked'
-                ? 'This $appName account is blocked.'
-                : status == 'banned'
-                    ? 'This $appName account is banned.'
-                    : status == 'deleted'
-                        ? 'This $appName account is no longer available.'
-                        : 'This $appName account is inactive.',
-            onRetry: _reload,
-            onLogout: widget.onLogout,
-          );
-        }
+    final account = _account ?? const <String, dynamic>{};
+    final status = account['status']?.toString().trim().toLowerCase() ?? 'active';
+    if (status != 'active') {
+      return _AccountUnavailableScreen(
+        message: status == 'blocked'
+            ? 'This $appName account is blocked.'
+            : status == 'banned'
+                ? 'This $appName account is banned.'
+                : status == 'deleted'
+                    ? 'This $appName account is no longer available.'
+                    : 'This $appName account is inactive.',
+        onRetry: _reload,
+        onLogout: widget.onLogout,
+      );
+    }
 
-        if (account['verified'] != true) {
-          return AccountVerificationScreen(
-            account: account,
-            onVerified: _reload,
-            onLogout: widget.onLogout,
-          );
-        }
+    if (account['verified'] != true) {
+      return AccountVerificationScreen(
+        account: account,
+        onVerified: _reload,
+        onLogout: widget.onLogout,
+      );
+    }
 
-        return widget.child;
-      },
-    );
+    return widget.child;
   }
 }
 
@@ -441,7 +470,7 @@ class _AccountGateLoading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.page,
-      body: const Center(child: CircularProgressIndicator()),
+      body: const SizedBox.expand(),
     );
   }
 }
