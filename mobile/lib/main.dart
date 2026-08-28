@@ -62,14 +62,18 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   ThemeMode _themeMode = ThemeMode.system;
   late final AppServices _services;
   late final Future<bool> _sessionFuture;
-  late final Future<PublicAppConfig> _publicConfigFuture;
+  PublicAppConfig _runtimeConfig = PublicAppConfig.fallback;
 
   @override
   void initState() {
     super.initState();
     _services = widget.services ?? AppServices.create();
     _sessionFuture = _restoreSession();
-    _publicConfigFuture = _loadPublicAppConfig();
+
+    // Public configuration is deliberately outside the critical launch path.
+    // The fallback is a complete SyncChat configuration, so the first frame
+    // can render while branding/limits/maintenance are reconciled silently.
+    unawaited(_refreshPublicAppConfig());
   }
 
   @override
@@ -79,16 +83,16 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
     super.dispose();
   }
 
-  Future<PublicAppConfig> _loadPublicAppConfig() async {
+  Future<void> _refreshPublicAppConfig() async {
     try {
       final runtime = await _services.publicAppConfig.load().timeout(
         const Duration(seconds: 5),
       );
       _services.applyPublicAppConfig(runtime);
-      return runtime;
+      if (!mounted) return;
+      setState(() => _runtimeConfig = runtime);
     } on Object catch (error) {
       debugPrint('SyncChat public app config deferred: $error');
-      return PublicAppConfig.fallback;
     }
   }
 
@@ -218,42 +222,29 @@ class _SyncChatMobileAppState extends State<SyncChatMobileApp> {
   Widget build(BuildContext context) {
     return AppServicesScope(
       services: _services,
-      child: FutureBuilder<PublicAppConfig>(
-        future: _publicConfigFuture,
-        builder: (context, configSnapshot) {
-          final runtimeConfig =
-              configSnapshot.data ?? PublicAppConfig.fallback;
-          final configReady =
-              configSnapshot.connectionState == ConnectionState.done;
-
-          return PublicAppConfigScope(
-            config: runtimeConfig,
-            child: MaterialApp(
-              title: runtimeConfig.appName,
-              debugShowCheckedModeBanner: false,
-              theme: SyncChatTheme.light(),
-              darkTheme: SyncChatTheme.dark(),
-              themeMode: _themeMode,
-              home: !configReady
-                  ? const _BootScreen()
-                  : runtimeConfig.maintenanceEnabled
-                      ? _MaintenanceScreen(config: runtimeConfig)
-                      : FutureBuilder<bool>(
-                          future: _sessionFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState !=
-                                ConnectionState.done) {
-                              return const _BootScreen();
-                            }
-                            if (snapshot.data == true) {
-                              return _authenticatedHome();
-                            }
-                            return _authScreen();
-                          },
-                        ),
-            ),
-          );
-        },
+      child: PublicAppConfigScope(
+        config: _runtimeConfig,
+        child: MaterialApp(
+          title: _runtimeConfig.appName,
+          debugShowCheckedModeBanner: false,
+          theme: SyncChatTheme.light(),
+          darkTheme: SyncChatTheme.dark(),
+          themeMode: _themeMode,
+          home: _runtimeConfig.maintenanceEnabled
+              ? _MaintenanceScreen(config: _runtimeConfig)
+              : FutureBuilder<bool>(
+                  future: _sessionFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const _BootScreen();
+                    }
+                    if (snapshot.data == true) {
+                      return _authenticatedHome();
+                    }
+                    return _authScreen();
+                  },
+                ),
+        ),
       ),
     );
   }
