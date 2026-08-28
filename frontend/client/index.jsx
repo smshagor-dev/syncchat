@@ -22,6 +22,7 @@ import './styles/chatToolsTheme.css';
 import './styles/layoutFixes.css';
 import './styles/callScreenTheme.css';
 import './styles/inboxMenuMobile.css';
+import './styles/desktopMessenger.css';
 
 import { registerServiceWorker } from './pwa/registerSW';
 
