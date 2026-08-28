@@ -7,7 +7,7 @@ void main() {
     final shell = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
     for (final contract in [
-      'LiveHomeTab.chats => LiveP0ChatsScreen(',
+      'LiveHomeTab.chats => LiveMessengerChatsScreen(',
       'LiveHomeTab.status => const LiveP0StatusScreen()',
       'LiveHomeTab.communities => const LiveP1CommunitiesScreen()',
       'LiveHomeTab.channels => const ChannelHubScreen()',
@@ -53,11 +53,11 @@ void main() {
     }
   });
 
-  test('status chat room calls and chat list use audited active surfaces', () {
+  test('status room calls and messenger chat list use audited active surfaces', () {
     final status = File('lib/screens/live_p0_status_screen.dart').readAsStringSync();
     final room = File('lib/screens/live_chat_room_screen.dart').readAsStringSync();
     final calls = File('lib/screens/live_calls_screen.dart').readAsStringSync();
-    final chats = File('lib/screens/live_p0_chats_screen.dart').readAsStringSync();
+    final chats = File('lib/screens/live_messenger_chats_screen.dart').readAsStringSync();
 
     expect(status, contains("import 'live_p0_status_web_parity_screen.dart'"));
     expect(status, contains('child: const WebParityStatusScreen()'));
@@ -71,19 +71,25 @@ void main() {
     expect(calls, isNot(contains("import 'live_calls_core_screen.dart'")));
 
     for (final contract in [
-      'Search chats...',
-      'contactLabelsByRoom',
+      'Search chats',
       "realtime.on('inbox/find'",
       "realtime.on('inbox/preferences'",
       'LiveChatRoomScreen(',
+      'FloatingActionButton(',
+      'onLongPress:',
     ]) {
       expect(chats, contains(contract));
     }
+
+    // The active mobile list must not regress to the old dashboard/web flow.
+    expect(chats, isNot(contains('_buildStatusRail')));
+    expect(chats, isNot(contains('_buildLabels')));
+    expect(chats, isNot(contains('contactLabelsByRoom')));
   });
 
-  test('contextual features stay implemented without becoming drawer routes', () {
+  test('contextual chat features stay implemented without cluttering navigation', () {
     final shell = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
-    final chats = File('lib/screens/live_p0_chats_screen.dart').readAsStringSync();
+    final chats = File('lib/screens/live_messenger_chats_screen.dart').readAsStringSync();
 
     expect(chats, contains("value: 'starred'"));
     expect(chats, contains('LiveStarredMessagesScreen'));
