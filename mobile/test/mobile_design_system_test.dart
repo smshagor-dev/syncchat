@@ -37,7 +37,6 @@ void main() {
     expect(shell, contains('Icons.chat_bubble_rounded'));
     expect(shell, contains('Icons.call_rounded'));
 
-    // Avoid regressing to the previous oversized floating glass dock.
     expect(shell, isNot(contains('blurRadius: 44')));
     expect(shell, isNot(contains('width: 32,\n                height: 6')));
   });
@@ -51,8 +50,25 @@ void main() {
     expect(calls, contains('onTap: () => _openMessage(call, name)'));
     expect(calls, contains('video: meta.video'));
 
-    // Keep the list closer to WhatsApp/Telegram instead of a dashboard card.
     expect(calls, isNot(contains("'All Calls'")));
     expect(calls, isNot(contains('_actionButton(')));
+  });
+
+  test('contacts screen stays search-first and scan-friendly', () {
+    final contacts = File(
+      'lib/screens/live_p0_contacts_web_parity_screen.dart',
+    ).readAsStringSync();
+
+    expect(contacts, contains("hintText: 'Search contacts'"));
+    expect(contacts, contains("tooltip: 'Sync phone contacts'"));
+    expect(contacts, contains("Text('Manage labels')"));
+    expect(contacts, contains("title: 'New group'"));
+    expect(contacts, contains("title: 'New contact'"));
+    expect(contacts, contains('onLongPress: () => _assignLabels(contact)'));
+    expect(contacts, contains("'Contacts'"));
+
+    expect(contacts, isNot(contains("'Sync Mobile Contacts'")));
+    expect(contacts, isNot(contains("'Sorted by last seen time'")));
+    expect(contacts, isNot(contains("'Create a new Group'")));
   });
 }
