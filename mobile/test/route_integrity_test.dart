@@ -7,7 +7,7 @@ void main() {
     final shell = File('lib/screens/live_mobile_shell.dart').readAsStringSync();
 
     for (final contract in [
-      'LiveHomeTab.chats => LiveMessengerChatsScreen(',
+      'LiveHomeTab.chats => LiveProfessionalChatsScreen(',
       'LiveHomeTab.status => const LiveP0StatusScreen()',
       'LiveHomeTab.communities => const LiveP1CommunitiesScreen()',
       'LiveHomeTab.channels => const ChannelHubScreen()',
@@ -53,11 +53,13 @@ void main() {
     }
   });
 
-  test('status room calls and messenger chat list use audited active surfaces', () {
+  test('status room calls and professional chat list use audited active surfaces', () {
     final status = File('lib/screens/live_p0_status_screen.dart').readAsStringSync();
     final room = File('lib/screens/live_chat_room_screen.dart').readAsStringSync();
     final calls = File('lib/screens/live_calls_screen.dart').readAsStringSync();
     final chats = File('lib/screens/live_messenger_chats_screen.dart').readAsStringSync();
+    final presentation =
+        File('lib/screens/live_professional_chats_screen.dart').readAsStringSync();
 
     expect(status, contains("import 'live_p0_status_web_parity_screen.dart'"));
     expect(status, contains('child: const WebParityStatusScreen()'));
@@ -79,6 +81,16 @@ void main() {
       'onLongPress:',
     ]) {
       expect(chats, contains(contract));
+    }
+
+    for (final contract in [
+      'LiveMessengerChatsScreen(',
+      '_MessengerScrollBehavior',
+      'inputDecorationTheme:',
+      'chipTheme:',
+      'floatingActionButtonTheme:',
+    ]) {
+      expect(presentation, contains(contract));
     }
 
     // The active mobile list must not regress to the old dashboard/web flow.
