@@ -59,7 +59,10 @@ void main() {
 
     expect(calls, contains("title: 'Calls'"));
     expect(calls, contains("label: const Text('Start a call')"));
-    expect(calls, contains("'${meta.video ? 'Video' : 'Audio'} · ${meta.label}'"));
+    expect(
+      calls,
+      contains(r"'${meta.video ? 'Video' : 'Audio'} · ${meta.label}'"),
+    );
     expect(calls, contains('onTap: () => _openMessage(call, name)'));
     expect(calls, contains('video: meta.video'));
 
@@ -97,7 +100,12 @@ void main() {
     for (final source in [status, room, channels, settings, profile]) {
       expect(source, contains('ProfessionalMobileSurface'));
     }
-    expect(surface, contains('visualDensity: const VisualDensity(horizontal: -1, vertical: -1)'));
+    expect(
+      surface,
+      contains(
+        'visualDensity: const VisualDensity(horizontal: -1, vertical: -1)',
+      ),
+    );
     expect(surface, contains('navigationBarTheme:'));
     expect(surface, contains('dialogTheme:'));
     expect(surface, contains('SyncColors.sky.withValues'));
