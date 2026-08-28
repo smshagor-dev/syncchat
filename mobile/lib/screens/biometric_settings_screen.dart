@@ -51,12 +51,19 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
       error = null;
     });
     try {
-      if (next) {
-        await BiometricService.setEnabled(true);
-      } else {
-        await BiometricService.setEnabled(false);
-      }
+      final changed = await BiometricService.setEnabled(
+        next,
+        reason: 'Confirm your identity to enable biometric protection',
+      );
       if (!mounted) return;
+      if (!changed) {
+        setState(() {
+          saving = false;
+          enabled = false;
+          error = 'Biometric verification was cancelled or unsuccessful.';
+        });
+        return;
+      }
       setState(() {
         enabled = next;
         saving = false;
@@ -124,7 +131,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                   child: const Padding(
                     padding: EdgeInsets.all(16),
                     child: Text(
-                      'Your SyncChat login session stays signed in until you explicitly log out or the server revokes the device. Biometric protection locks the local app without destroying that session.',
+                      'Your SyncChat login session stays signed in until you explicitly log out or the server revokes the device. Biometric protection locks the local app without destroying that session. Turning it on always requires a successful biometric check.',
                       style: TextStyle(height: 1.45),
                     ),
                   ),
