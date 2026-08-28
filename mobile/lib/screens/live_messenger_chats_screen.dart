@@ -13,9 +13,12 @@ import 'live_p0_contacts_screen.dart';
 import 'live_settings_hub_screen.dart';
 import 'live_starred_messages_screen.dart';
 
-/// Mobile-first chat list inspired by the information hierarchy used by
-/// WhatsApp and Telegram. The backend/inbox model stays unchanged; this screen
-/// only replaces the web-oriented chat-list presentation.
+/// Native mobile chat-list presentation.
+///
+/// This deliberately keeps SyncChat's existing inbox/realtime APIs and moves
+/// web-style secondary information behind mobile-friendly interactions. The
+/// visible hierarchy follows the proven messenger pattern: header, search,
+/// quick filters, conversations, and a single compose action.
 class LiveMessengerChatsScreen extends StatefulWidget {
   const LiveMessengerChatsScreen({
     super.key,
@@ -36,7 +39,7 @@ class LiveMessengerChatsScreen extends StatefulWidget {
 }
 
 class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
-  final search = TextEditingController();
+  final searchController = TextEditingController();
   final searchFocus = FocusNode();
 
   List<Map<String, dynamic>> inboxes = const [];
@@ -44,7 +47,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
   Map<String, dynamic> settings = const {};
 
   StreamSubscription<RealtimeConnectionState>? connectionSubscription;
-  Timer? apiFallbackTimer;
+  Timer? fallbackTimer;
 
   bool loading = true;
   String? error;
@@ -67,8 +70,8 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     realtime?.off('inbox/delete', _onInboxDelete);
     realtime?.off('inbox/chat-lock', _onLockUpdate);
     connectionSubscription?.cancel();
-    apiFallbackTimer?.cancel();
-    search.dispose();
+    fallbackTimer?.cancel();
+    searchController.dispose();
     searchFocus.dispose();
     super.dispose();
   }
@@ -94,25 +97,25 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
 
     connectionSubscription = realtime.states.listen((state) {
       if (state == RealtimeConnectionState.connected) {
-        apiFallbackTimer?.cancel();
+        fallbackTimer?.cancel();
         unawaited(_load());
       } else if (state == RealtimeConnectionState.disconnected) {
-        _scheduleApiFallback();
+        _scheduleFallback();
       }
     });
 
     if (realtime.state == RealtimeConnectionState.disconnected) {
       unawaited(realtime.connect());
-      _scheduleApiFallback();
+      _scheduleFallback();
     }
 
     unawaited(_load());
     unawaited(_loadSettings());
   }
 
-  void _scheduleApiFallback() {
-    apiFallbackTimer?.cancel();
-    apiFallbackTimer = Timer(const Duration(milliseconds: 500), () {
+  void _scheduleFallback() {
+    fallbackTimer?.cancel();
+    fallbackTimer = Timer(const Duration(milliseconds: 500), () {
       if (!mounted) return;
       if (!context.services.realtime.isConnected) unawaited(_load());
     });
@@ -120,14 +123,12 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
 
   Future<void> _load() async {
     if (mounted) setState(() => error = null);
-
     try {
       final result = await Future.wait<dynamic>([
         context.services.chat.currentUser(refresh: true),
         context.services.inbox.list(),
       ]);
       if (!mounted) return;
-
       setState(() {
         currentUser = Map<String, dynamic>.from(result[0] as Map);
         inboxes = (result[1] as List)
@@ -147,15 +148,15 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
 
   Future<void> _loadSettings() async {
     try {
-      final result = await context.services.settings.get();
+      final next = await context.services.settings.get();
       if (!mounted) return;
       setState(() {
-        settings = result is Map
-            ? Map<String, dynamic>.from(result)
+        settings = next is Map
+            ? Map<String, dynamic>.from(next)
             : const <String, dynamic>{};
       });
     } on Object {
-      // Chat list remains fully usable if settings metadata is unavailable.
+      // Blocking metadata is secondary; the chat list stays available.
     }
   }
 
@@ -170,10 +171,10 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       final index = copy.indexWhere(
         (item) => item['roomId']?.toString() == roomId,
       );
-      if (index >= 0) {
-        copy[index] = {...copy[index], ...next};
-      } else {
+      if (index < 0) {
         copy.insert(0, next);
+      } else {
+        copy[index] = {...copy[index], ...next};
       }
       inboxes = copy;
     });
@@ -209,20 +210,23 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     });
   }
 
-  List<Map<String, dynamic>> get visibleInboxes {
-    final query = search.text.trim().toLowerCase();
-    final rows = inboxes.where((inbox) {
-      if (_isDeletedForMe(inbox) || _isHidden(inbox) || _isArchived(inbox)) {
-        return false;
-      }
+  Iterable<Map<String, dynamic>> get _activeInboxes => inboxes.where(
+        (inbox) =>
+            !_isDeletedForMe(inbox) &&
+            !_isHidden(inbox) &&
+            !_isArchived(inbox),
+      );
 
-      final matchesFilter = switch (filter) {
+  List<Map<String, dynamic>> get visibleInboxes {
+    final query = searchController.text.trim().toLowerCase();
+    final rows = _activeInboxes.where((inbox) {
+      final matches = switch (filter) {
         'unread' => _hasUnreadForMe(inbox),
         'favourite' => _isFavourite(inbox),
         'group' => inbox['roomType']?.toString() == 'group',
         _ => true,
       };
-      if (!matchesFilter) return false;
+      if (!matches) return false;
       if (query.isEmpty) return true;
       return _searchBlob(inbox).contains(query);
     }).toList(growable: false);
@@ -236,32 +240,26 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     return rows;
   }
 
-  Iterable<Map<String, dynamic>> get _countBase => inboxes.where(
-        (inbox) =>
-            !_isDeletedForMe(inbox) &&
-            !_isHidden(inbox) &&
-            !_isArchived(inbox),
-      );
-
-  int get unreadCount => _countBase.where(_hasUnreadForMe).length;
-  int get favouriteCount => _countBase.where(_isFavourite).length;
-  int get groupCount => _countBase
+  int get unreadCount => _activeInboxes.where(_hasUnreadForMe).length;
+  int get favouriteCount => _activeInboxes.where(_isFavourite).length;
+  int get groupCount => _activeInboxes
       .where((inbox) => inbox['roomType']?.toString() == 'group')
       .length;
 
   @override
   Widget build(BuildContext context) {
+    final page = context.isDark ? SyncColors.spill950 : Colors.white;
     return Scaffold(
-      backgroundColor: context.page,
+      backgroundColor: page,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            _buildHeader(),
-            _buildSearch(),
-            _buildFilters(),
+            _header(),
+            _searchBox(),
+            _filters(),
             const SizedBox(height: 4),
-            Expanded(child: _buildBody()),
+            Expanded(child: _body()),
           ],
         ),
       ),
@@ -280,133 +278,101 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _header() {
     return SizedBox(
       height: 58,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 4, right: 4),
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Menu',
-              onPressed: widget.onMenu,
-              icon: const Icon(Icons.menu_rounded, size: 25),
-            ),
-            const SizedBox(width: 4),
-            const Expanded(
-              child: Text(
-                'Chats',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -.35,
-                ),
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Menu',
+            onPressed: widget.onMenu,
+            icon: const Icon(Icons.menu_rounded, size: 25),
+          ),
+          const SizedBox(width: 4),
+          const Expanded(
+            child: Text(
+              'Chats',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 23,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -.3,
               ),
             ),
-            IconButton(
-              tooltip: 'Contacts',
-              onPressed: () => _openUtility(const LiveP0ContactsScreen()),
-              icon: const Icon(Icons.person_add_alt_1_outlined, size: 23),
+          ),
+          IconButton(
+            tooltip: 'Contacts',
+            onPressed: () => _openUtility(const LiveP0ContactsScreen()),
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 23),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            PopupMenuButton<String>(
-              tooltip: 'More',
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            icon: const Icon(Icons.more_vert_rounded, size: 24),
+            onSelected: (value) => unawaited(_handleTopMenu(value)),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'new-group',
+                child: _MenuRow(Icons.group_add_outlined, 'New group'),
               ),
-              icon: const Icon(Icons.more_vert_rounded, size: 24),
-              onSelected: (value) => unawaited(_handleTopMenu(value)),
-              itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                PopupMenuItem(
-                  value: 'new-group',
-                  child: _MenuRow(
-                    icon: Icons.group_add_outlined,
-                    label: 'New group',
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'starred',
-                  child: _MenuRow(
-                    icon: Icons.star_border_rounded,
-                    label: 'Starred messages',
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'status',
-                  child: _MenuRow(
-                    icon: Icons.donut_large_rounded,
-                    label: 'Status',
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'mark-read',
-                  child: _MenuRow(
-                    icon: Icons.mark_chat_read_outlined,
-                    label: 'Mark all as read',
-                  ),
-                ),
-                PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'settings',
-                  child: _MenuRow(
-                    icon: Icons.settings_outlined,
-                    label: 'Settings',
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'logout',
-                  child: _MenuRow(
-                    icon: Icons.logout_rounded,
-                    label: 'Log out',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              PopupMenuItem(
+                value: 'starred',
+                child: _MenuRow(Icons.star_border_rounded, 'Starred messages'),
+              ),
+              PopupMenuItem(
+                value: 'status',
+                child: _MenuRow(Icons.donut_large_rounded, 'Status'),
+              ),
+              PopupMenuItem(
+                value: 'mark-read',
+                child: _MenuRow(Icons.mark_chat_read_outlined, 'Mark all as read'),
+              ),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'settings',
+                child: _MenuRow(Icons.settings_outlined, 'Settings'),
+              ),
+              PopupMenuItem(
+                value: 'logout',
+                child: _MenuRow(Icons.logout_rounded, 'Log out'),
+              ),
+            ],
+          ),
+          const SizedBox(width: 2),
+        ],
       ),
     );
   }
 
-  Widget _buildSearch() {
-    final fill = context.isDark ? SyncColors.spill800 : const Color(0xFFF1F5F9);
-
+  Widget _searchBox() {
+    final fill = context.isDark ? SyncColors.spill800 : SyncColors.slate100;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 3, 12, 7),
       child: SizedBox(
         height: 44,
         child: TextField(
-          controller: search,
+          controller: searchController,
           focusNode: searchFocus,
           onChanged: (_) => setState(() {}),
           textInputAction: TextInputAction.search,
           decoration: InputDecoration(
             hintText: 'Search chats',
-            hintStyle: TextStyle(
-              color: context.muted,
-              fontSize: 14.5,
-              fontWeight: FontWeight.w400,
-            ),
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              size: 21,
-              color: context.muted,
-            ),
+            hintStyle: TextStyle(color: context.muted, fontSize: 14.5),
+            prefixIcon: Icon(Icons.search_rounded, size: 21, color: context.muted),
             prefixIconConstraints: const BoxConstraints(minWidth: 44),
-            suffixIcon: search.text.isEmpty
+            suffixIcon: searchController.text.isEmpty
                 ? null
                 : IconButton(
                     tooltip: 'Clear search',
                     onPressed: () {
-                      search.clear();
+                      searchController.clear();
                       setState(() {});
                     },
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: context.muted,
-                    ),
+                    icon: Icon(Icons.close_rounded, size: 18, color: context.muted),
                   ),
             filled: true,
             fillColor: fill,
@@ -429,8 +395,8 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     );
   }
 
-  Widget _buildFilters() {
-    final filters = <(String, String, int?)>[
+  Widget _filters() {
+    final entries = <(String, String, int?)>[
       ('all', 'All', null),
       ('unread', 'Unread', unreadCount),
       ('favourite', 'Favorites', favouriteCount),
@@ -442,36 +408,31 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         scrollDirection: Axis.horizontal,
-        itemCount: filters.length,
+        itemCount: entries.length,
         separatorBuilder: (_, __) => const SizedBox(width: 7),
         itemBuilder: (_, index) {
-          final item = filters[index];
+          final item = entries[index];
           final active = filter == item.$1;
-          final count = item.$3;
-          final label = count == null || count == 0
-              ? item.$2
-              : '${item.$2} $count';
-
+          final count = item.$3 ?? 0;
+          final label = count > 0 ? '${item.$2} $count' : item.$2;
           return ChoiceChip(
             label: Text(label),
             selected: active,
             showCheckmark: false,
             onSelected: (_) => setState(() => filter = item.$1),
             backgroundColor:
-                context.isDark ? SyncColors.spill850 : const Color(0xFFF8FAFC),
+                context.isDark ? SyncColors.spill800 : SyncColors.slate50,
             selectedColor: context.isDark
-                ? SyncColors.sky.withValues(alpha: .20)
+                ? SyncColors.sky.withValues(alpha: .18)
                 : const Color(0xFFE0F2FE),
             side: BorderSide(
               color: active
                   ? SyncColors.sky600.withValues(alpha: .55)
-                  : context.border.withValues(alpha: .75),
+                  : context.border.withValues(alpha: .8),
             ),
             labelStyle: TextStyle(
               color: active
-                  ? (context.isDark
-                      ? const Color(0xFF7DD3FC)
-                      : SyncColors.sky700)
+                  ? (context.isDark ? const Color(0xFF7DD3FC) : SyncColors.sky700)
                   : context.muted,
               fontSize: 12.5,
               fontWeight: active ? FontWeight.w700 : FontWeight.w600,
@@ -487,7 +448,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _body() {
     if (loading && inboxes.isEmpty) {
       return const Center(
         child: SizedBox(
@@ -499,45 +460,36 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     }
 
     if (error != null && inboxes.isEmpty) {
-      return _ErrorState(message: error!, onRetry: _load);
+      return _ErrorState(error!, _load);
     }
 
-    final items = visibleInboxes;
-    if (items.isEmpty) {
-      final searching = search.text.trim().isNotEmpty || filter != 'all';
+    final rows = visibleInboxes;
+    if (rows.isEmpty) {
+      final filtered = searchController.text.trim().isNotEmpty || filter != 'all';
       return RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(28, 88, 28, 180),
+          padding: const EdgeInsets.fromLTRB(28, 86, 28, 180),
           children: [
             Icon(
-              searching
-                  ? Icons.search_off_rounded
-                  : Icons.chat_bubble_outline_rounded,
+              filtered ? Icons.search_off_rounded : Icons.chat_bubble_outline_rounded,
               size: 48,
               color: context.muted.withValues(alpha: .65),
             ),
             const SizedBox(height: 14),
             Text(
-              searching ? 'No matching chats' : 'No chats yet',
+              filtered ? 'No matching chats' : 'No chats yet',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 7),
             Text(
-              searching
+              filtered
                   ? 'Try a different search or filter.'
                   : 'Start a conversation from the new chat button.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: context.muted,
-                fontSize: 13.5,
-                height: 1.4,
-              ),
+              style: TextStyle(color: context.muted, fontSize: 13.5, height: 1.4),
             ),
           ],
         ),
@@ -552,22 +504,20 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
           top: 2,
           bottom: 176 + MediaQuery.paddingOf(context).bottom,
         ),
-        itemCount: items.length,
-        itemBuilder: (_, index) => _buildChatTile(items[index]),
+        itemCount: rows.length,
+        itemBuilder: (_, index) => _chatTile(rows[index]),
       ),
     );
   }
 
-  Widget _buildChatTile(Map<String, dynamic> inbox) {
+  Widget _chatTile(Map<String, dynamic> inbox) {
     final roomId = inbox['roomId']?.toString() ?? '';
     final name = _inboxName(inbox);
     final profile = _privateProfile(inbox);
-    final hasUnread = _showUnreadBadge(inbox);
-    final unreadCount = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
-    final badgeCount = unreadCount > 0 ? unreadCount : 1;
+    final unread = _showUnreadBadge(inbox);
+    final rawUnread = (inbox['unreadMessage'] as num?)?.toInt() ?? 0;
+    final unreadBadge = rawUnread > 0 ? rawUnread : 1;
     final busy = busyRoomId == roomId;
-    final pinned = _isPinned(inbox);
-    final muted = _isMuted(inbox);
     final locked = _isChatLocked(inbox) || _isPrivateLockedGroup(inbox);
 
     return Material(
@@ -578,7 +528,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SyncAvatar(
                 name: name,
@@ -604,7 +553,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Row(
@@ -612,12 +560,11 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                                 if (_hasChannel(inbox)) ...[
                                   const Icon(
                                     Icons.campaign_outlined,
-                                    size: 16,
+                                    size: 15,
                                     color: SyncColors.sky600,
                                   ),
                                   const SizedBox(width: 4),
-                                ] else if (inbox['roomType']?.toString() ==
-                                    'group') ...[
+                                ] else if (inbox['roomType']?.toString() == 'group') ...[
                                   Icon(
                                     _isGroupPrivate(inbox)
                                         ? Icons.lock_outline_rounded
@@ -636,10 +583,9 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 16.5,
-                                      height: 1.22,
-                                      fontWeight: hasUnread
-                                          ? FontWeight.w800
-                                          : FontWeight.w650,
+                                      height: 1.2,
+                                      fontWeight:
+                                          unread ? FontWeight.w800 : FontWeight.w600,
                                     ),
                                   ),
                                 ),
@@ -650,25 +596,20 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                           Text(
                             _formatChatTime(_contentTime(inbox)),
                             style: TextStyle(
-                              color: hasUnread
-                                  ? SyncColors.sky600
-                                  : context.muted,
+                              color: unread ? SyncColors.sky600 : context.muted,
                               fontSize: 11.5,
-                              fontWeight: hasUnread
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                              fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 5),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            child: _buildPreview(
+                            child: _preview(
                               inbox,
-                              unread: hasUnread,
+                              unread: unread,
                               locked: locked,
                             ),
                           ),
@@ -680,7 +621,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           else ...[
-                            if (pinned)
+                            if (_isPinned(inbox))
                               Padding(
                                 padding: const EdgeInsets.only(right: 5),
                                 child: Transform.rotate(
@@ -692,7 +633,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                                   ),
                                 ),
                               ),
-                            if (muted)
+                            if (_isMuted(inbox))
                               Padding(
                                 padding: const EdgeInsets.only(right: 5),
                                 child: Icon(
@@ -701,21 +642,18 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                                   color: context.muted,
                                 ),
                               ),
-                            if (hasUnread)
+                            if (unread)
                               Container(
-                                constraints: const BoxConstraints(
-                                  minWidth: 20,
-                                  minHeight: 20,
-                                ),
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 5),
+                                constraints:
+                                    const BoxConstraints(minWidth: 20, minHeight: 20),
+                                padding: const EdgeInsets.symmetric(horizontal: 5),
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: SyncColors.sky600,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  badgeCount > 99 ? '99+' : '$badgeCount',
+                                  unreadBadge > 99 ? '99+' : '$unreadBadge',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10.5,
@@ -737,19 +675,18 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     );
   }
 
-  Widget _buildPreview(
+  Widget _preview(
     Map<String, dynamic> inbox, {
     required bool unread,
     required bool locked,
   }) {
-    final textColor = unread
-        ? (context.isDark ? const Color(0xFFE2E8F0) : SyncColors.slate800)
+    final color = unread
+        ? (context.isDark ? SyncColors.slate200 : SyncColors.slate700)
         : context.muted;
     final content = _content(inbox);
-    final outgoing = content['from']?.toString() == currentUserId;
     final children = <Widget>[];
 
-    if (outgoing) {
+    if (content['from']?.toString() == currentUserId) {
       final read = content['readed'] == true;
       final delivered = content['delivered'] == true;
       children.add(
@@ -788,11 +725,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       return Row(children: children);
     }
 
-    final file = _asMap(inbox['file']);
-    final rawText = _contentText(inbox);
-    final preview = _previewText(rawText, file);
-    final previewIcon = _previewIcon(rawText, file);
-
     if (inbox['roomType']?.toString() == 'group') {
       final sender = content['senderName']?.toString().trim() ?? '';
       if (sender.isNotEmpty) {
@@ -804,9 +736,9 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: textColor,
+                color: color,
                 fontSize: 13.5,
-                fontWeight: unread ? FontWeight.w650 : FontWeight.w500,
+                fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ),
@@ -814,11 +746,14 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       }
     }
 
-    if (previewIcon != null) {
-      children.add(Icon(previewIcon, size: 16, color: textColor));
+    final rawText = _contentText(inbox);
+    final file = _asMap(inbox['file']);
+    final preview = _previewText(rawText, file);
+    final icon = _previewIcon(rawText, file);
+    if (icon != null) {
+      children.add(Icon(icon, size: 16, color: color));
       children.add(const SizedBox(width: 4));
     }
-
     children.add(
       Expanded(
         child: Text(
@@ -826,23 +761,21 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: textColor,
+            color: color,
             fontSize: 13.5,
-            fontWeight: unread ? FontWeight.w650 : FontWeight.w400,
+            fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
       ),
     );
-
     return Row(children: children);
   }
 
   String _previewText(String text, Map<String, dynamic> file) {
-    final lower = text.trim().toLowerCase();
+    final value = text.trim();
+    final lower = value.toLowerCase();
     if (lower.startsWith('__event__::')) return 'Event';
-    if (lower.startsWith('__poll__::') || lower.startsWith('poll:')) {
-      return 'Poll';
-    }
+    if (lower.startsWith('__poll__::') || lower.startsWith('poll:')) return 'Poll';
     if (lower.contains('live location') || lower.contains('maps.google.com/?q=')) {
       return 'Location';
     }
@@ -850,15 +783,15 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     if (lower.startsWith('1-time video')) return 'View once video';
     if (lower.startsWith('1-time message')) return 'View once message';
 
-    final callPreview = _callPreview(text);
-    if (callPreview != null) return callPreview;
+    final call = _callText(value);
+    if (call != null) return call;
 
     final fileType = file['type']?.toString().toLowerCase() ?? '';
     if (_isAudioFile(file)) return 'Voice message';
-    if (fileType == 'image') return text.trim().isEmpty ? 'Photo' : text.trim();
-    if (fileType == 'video') return text.trim().isEmpty ? 'Video' : text.trim();
-    if (file.isNotEmpty && text.trim().isEmpty) return 'Document';
-    return text.trim().isEmpty ? 'Message' : text.trim();
+    if (fileType == 'image') return value.isEmpty ? 'Photo' : value;
+    if (fileType == 'video') return value.isEmpty ? 'Video' : value;
+    if (file.isNotEmpty && value.isEmpty) return 'Document';
+    return value.isEmpty ? 'Message' : value;
   }
 
   IconData? _previewIcon(String text, Map<String, dynamic> file) {
@@ -870,11 +803,9 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     if (lower.contains('live location') || lower.contains('maps.google.com/?q=')) {
       return Icons.location_on_outlined;
     }
-    if (lower.startsWith('1-time ')) return Icons.visibility_once_outlined;
-    if (_callPreview(text) != null) {
-      return lower.contains('video')
-          ? Icons.videocam_outlined
-          : Icons.call_outlined;
+    if (lower.startsWith('1-time ')) return Icons.visibility_outlined;
+    if (_callText(text) != null) {
+      return lower.contains('video') ? Icons.videocam_outlined : Icons.call_outlined;
     }
 
     final fileType = file['type']?.toString().toLowerCase() ?? '';
@@ -885,14 +816,13 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     return null;
   }
 
-  String? _callPreview(String text) {
+  String? _callText(String text) {
     final value = text.trim().toLowerCase();
-    final mentionsCall = value.contains('call') ||
+    final isCall = value.contains('call') ||
         value.contains('missed') ||
         value.contains('reject') ||
         value.contains('decline');
-    if (!mentionsCall) return null;
-
+    if (!isCall) return null;
     final video = value.contains('video');
     if (value.contains('missed')) {
       return 'Missed ${video ? 'video' : 'audio'} call';
@@ -932,8 +862,7 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
   }
 
   Future<void> _showActions(Map<String, dynamic> inbox) async {
-    final actions = _actionSpecs(inbox);
-
+    final actions = _actions(inbox);
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -943,130 +872,125 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetContext) {
-        return FractionallySizedBox(
-          heightFactor: .76,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 0, 12, 10),
-                child: Row(
-                  children: [
-                    SyncAvatar(
-                      name: _inboxName(inbox),
-                      imageUrl: _inboxAvatar(inbox),
-                      radius: 22,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .76,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 12, 10),
+              child: Row(
+                children: [
+                  SyncAvatar(
+                    name: _inboxName(inbox),
+                    imageUrl: _inboxAvatar(inbox),
+                    radius: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _inboxName(inbox),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _inboxName(inbox),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                        ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: context.border),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
+                itemCount: actions.length,
+                itemBuilder: (_, index) {
+                  final action = actions[index];
+                  final tone = action.danger ? SyncColors.danger : null;
+                  return ListTile(
+                    enabled: action.enabled,
+                    dense: true,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    leading: Icon(action.icon, size: 21, color: tone),
+                    title: Text(
+                      action.label,
+                      style: TextStyle(
+                        color: tone,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                ),
+                    onTap: !action.enabled
+                        ? null
+                        : () {
+                            Navigator.pop(sheetContext);
+                            unawaited(_runAction(inbox, action.value));
+                          },
+                  );
+                },
               ),
-              Divider(height: 1, color: context.border),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
-                  itemCount: actions.length,
-                  itemBuilder: (_, index) {
-                    final action = actions[index];
-                    final color = action.danger ? SyncColors.danger : null;
-                    return ListTile(
-                      enabled: action.enabled,
-                      minTileHeight: 50,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      leading: Icon(action.icon, size: 21, color: color),
-                      title: Text(
-                        action.label,
-                        style: TextStyle(
-                          color: color,
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onTap: !action.enabled
-                          ? null
-                          : () {
-                              Navigator.pop(sheetContext);
-                              unawaited(_runAction(inbox, action.value));
-                            },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  List<_ChatActionSpec> _actionSpecs(Map<String, dynamic> inbox) {
-    final isPrivate = inbox['roomType']?.toString() == 'private';
-    final friendId = isPrivate ? _friendId(inbox) : '';
+  List<_ActionSpec> _actions(Map<String, dynamic> inbox) {
+    final privateChat = inbox['roomType']?.toString() == 'private';
+    final friendId = privateChat ? _friendId(inbox) : '';
     final locked = _isChatLocked(inbox);
     final shared = locked && inbox['chatLockScope']?.toString() == 'both';
     final sharedOwner =
         shared && inbox['chatLockOwnerId']?.toString() == currentUserId;
 
     return [
-      _ChatActionSpec(
+      _ActionSpec(
         'archive',
         _isArchived(inbox) ? Icons.unarchive_outlined : Icons.archive_outlined,
         _isArchived(inbox) ? 'Unarchive chat' : 'Archive chat',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'mute',
         _isMuted(inbox)
             ? Icons.notifications_outlined
             : Icons.notifications_off_outlined,
         _isMuted(inbox) ? 'Unmute notifications' : 'Mute notifications',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'pin',
         Icons.push_pin_outlined,
         _isPinned(inbox) ? 'Unpin chat' : 'Pin chat',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'unread',
         Icons.mark_chat_unread_outlined,
         _isManuallyUnread(inbox) ? 'Mark as read' : 'Mark as unread',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'favourite',
         _isFavourite(inbox) ? Icons.star_rounded : Icons.star_border_rounded,
         _isFavourite(inbox) ? 'Remove from favorites' : 'Add to favorites',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'list',
         Icons.format_list_bulleted_rounded,
         _isListed(inbox) ? 'Remove from list' : 'Add to list',
       ),
-      _ChatActionSpec(
+      _ActionSpec(
         'hide',
         _isHidden(inbox) ? Icons.visibility_outlined : Icons.visibility_off_outlined,
         _isHidden(inbox) ? 'Unhide chat' : 'Hide chat',
       ),
-      if (isPrivate && friendId.isNotEmpty)
-        _ChatActionSpec(
+      if (privateChat && friendId.isNotEmpty)
+        _ActionSpec(
           'block',
           Icons.block_rounded,
           _isBlocked(friendId) ? 'Unblock contact' : 'Block contact',
           danger: !_isBlocked(friendId),
         ),
-      if (isPrivate)
-        _ChatActionSpec(
+      if (privateChat)
+        _ActionSpec(
           'chat-lock',
           Icons.lock_outline_rounded,
           !locked
@@ -1078,19 +1002,19 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
                   : 'Remove chat lock',
           enabled: !(shared && !sharedOwner),
         ),
-      if (isPrivate && locked && (!shared || sharedOwner))
-        _ChatActionSpec(
+      if (privateChat && locked && (!shared || sharedOwner))
+        const _ActionSpec(
           'change-lock',
           Icons.key_rounded,
           'Change lock password',
         ),
-      const _ChatActionSpec(
+      const _ActionSpec(
         'clear',
         Icons.cleaning_services_outlined,
         'Clear chat',
         danger: true,
       ),
-      const _ChatActionSpec(
+      const _ActionSpec(
         'delete',
         Icons.delete_outline_rounded,
         'Delete chat',
@@ -1123,10 +1047,8 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
         await _preference(inbox, 'hide', !_isHidden(inbox));
         break;
       case 'block':
-        final friendId = _friendId(inbox);
-        if (friendId.isNotEmpty) {
-          await _toggleBlock(friendId, _isBlocked(friendId));
-        }
+        final id = _friendId(inbox);
+        if (id.isNotEmpty) await _toggleBlock(id, _isBlocked(id));
         break;
       case 'chat-lock':
         final locked = _isChatLocked(inbox);
@@ -1166,7 +1088,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
         confirmLabel: 'Unlock',
       );
       if (password == null || !mounted) return;
-
       try {
         final result = await context.services.inbox.verifyChatLock(
           inbox['roomId']?.toString() ?? '',
@@ -1203,7 +1124,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
     final roomId = inbox['roomId']?.toString() ?? '';
     if (roomId.isEmpty) return;
     _setBusy(roomId);
-
     try {
       final updated = await context.services.inbox.setPreference(
         roomId,
@@ -1244,7 +1164,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       builder: (_) => const _CreateLockDialog(),
     );
     if (result == null || !mounted) return;
-
     final roomId = inbox['roomId']?.toString() ?? '';
     _setBusy(roomId);
     try {
@@ -1268,7 +1187,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       builder: (_) => const _ChangeLockDialog(),
     );
     if (result == null || !mounted) return;
-
     final roomId = inbox['roomId']?.toString() ?? '';
     _setBusy(roomId);
     try {
@@ -1295,7 +1213,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       confirmLabel: 'Remove',
     );
     if (!confirmed || !mounted) return;
-
     final roomId = inbox['roomId']?.toString() ?? '';
     _setBusy(roomId);
     try {
@@ -1316,7 +1233,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       confirmLabel: 'Clear',
     );
     if (!confirmed || !mounted) return;
-
     final roomId = inbox['roomId']?.toString() ?? '';
     _setBusy(roomId);
     try {
@@ -1355,7 +1271,6 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
       ),
     );
     if (scope == null || !mounted) return;
-
     final roomId = inbox['roomId']?.toString() ?? '';
     _setBusy(roomId);
     try {
@@ -1476,14 +1391,13 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
         (unread > 0 || (_isChatLocked(inbox) && content['readed'] != true));
   }
 
-  bool _isFavourite(Map<String, dynamic> inbox) {
-    return inbox['isFavourite'] == true ||
-        inbox['isFavorite'] == true ||
-        inbox['favourite'] == true ||
-        inbox['favorite'] == true ||
-        _hasUser(inbox['favouriteBy'], currentUserId) ||
-        _hasUser(inbox['favoriteBy'], currentUserId);
-  }
+  bool _isFavourite(Map<String, dynamic> inbox) =>
+      inbox['isFavourite'] == true ||
+      inbox['isFavorite'] == true ||
+      inbox['favourite'] == true ||
+      inbox['favorite'] == true ||
+      _hasUser(inbox['favouriteBy'], currentUserId) ||
+      _hasUser(inbox['favoriteBy'], currentUserId);
 
   bool _isArchived(Map<String, dynamic> inbox) =>
       _hasUser(inbox['archivedBy'], currentUserId);
@@ -1627,24 +1541,19 @@ class _LiveMessengerChatsScreenState extends State<LiveMessengerChatsScreen> {
   }
 
   void _clearBusy(String roomId) {
-    if (mounted && busyRoomId == roomId) {
-      setState(() => busyRoomId = null);
-    }
+    if (mounted && busyRoomId == roomId) setState(() => busyRoomId = null);
   }
 
   void _message(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
     );
   }
 }
 
-class _ChatActionSpec {
-  const _ChatActionSpec(
+class _ActionSpec {
+  const _ActionSpec(
     this.value,
     this.icon,
     this.label, {
@@ -1660,7 +1569,7 @@ class _ChatActionSpec {
 }
 
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.icon, required this.label});
+  const _MenuRow(this.icon, this.label);
 
   final IconData icon;
   final String label;
@@ -1704,12 +1613,9 @@ class _CreateLockDialogState extends State<_CreateLockDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Choose whether the password protects only your view or both participants.',
-                style: TextStyle(fontSize: 12),
-              ),
+            const Text(
+              'Choose whether the password protects only your view or both participants.',
+              style: TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 14),
             SegmentedButton<String>(
@@ -1726,9 +1632,7 @@ class _CreateLockDialogState extends State<_CreateLockDialog> {
                 ),
               ],
               selected: {scope},
-              onSelectionChanged: (value) {
-                setState(() => scope = value.first);
-              },
+              onSelectionChanged: (value) => setState(() => scope = value.first),
             ),
             const SizedBox(height: 14),
             TextFormField(
@@ -1751,10 +1655,7 @@ class _CreateLockDialogState extends State<_CreateLockDialog> {
         FilledButton(
           onPressed: () {
             if (formKey.currentState?.validate() != true) return;
-            Navigator.pop(
-              context,
-              _LockCreateResult(scope, password.text),
-            );
+            Navigator.pop(context, _LockCreateResult(scope, password.text));
           },
           child: const Text('Save'),
         ),
@@ -1796,9 +1697,8 @@ class _ChangeLockDialogState extends State<_ChangeLockDialog> {
               autofocus: true,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Current password'),
-              validator: (value) => (value ?? '').isEmpty
-                  ? 'Current password is required.'
-                  : null,
+              validator: (value) =>
+                  (value ?? '').isEmpty ? 'Current password is required.' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -1834,20 +1734,18 @@ class _ChangeLockDialogState extends State<_ChangeLockDialog> {
 
 class _LockCreateResult {
   const _LockCreateResult(this.scope, this.password);
-
   final String scope;
   final String password;
 }
 
 class _LockChangeResult {
   const _LockChangeResult(this.oldPassword, this.newPassword);
-
   final String oldPassword;
   final String newPassword;
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
+  const _ErrorState(this.message, this.onRetry);
 
   final String message;
   final Future<void> Function() onRetry;
@@ -1911,24 +1809,20 @@ String _formatChatTime(DateTime time) {
   final yesterday = now.subtract(const Duration(days: 1));
   if (_sameDay(local, yesterday)) return 'Yesterday';
 
-  final difference = DateTime(now.year, now.month, now.day)
+  final days = DateTime(now.year, now.month, now.day)
       .difference(DateTime(local.year, local.month, local.day))
       .inDays;
-  if (difference >= 0 && difference < 7) {
+  if (days >= 0 && days < 7) {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return weekdays[local.weekday - 1];
   }
 
-  if (local.year == now.year) {
-    return '${local.day}/${local.month}';
-  }
+  if (local.year == now.year) return '${local.day}/${local.month}';
   return '${local.day}/${local.month}/${local.year.toString().substring(2)}';
 }
 
-bool _sameDay(DateTime left, DateTime right) =>
-    left.year == right.year &&
-    left.month == right.month &&
-    left.day == right.day;
+bool _sameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
 
 bool _isAudioFile(Map<String, dynamic> file) {
   if (file.isEmpty) return false;
