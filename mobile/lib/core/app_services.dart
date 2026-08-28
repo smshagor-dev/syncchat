@@ -14,6 +14,7 @@ import 'group_repository.dart';
 import 'native_call_push.dart';
 import 'public_app_config.dart';
 import 'realtime_client.dart';
+import 'resumable_status_repository.dart';
 import 'runtime_upload_policy.dart';
 import 'session_store.dart';
 
@@ -93,7 +94,7 @@ class AppServices {
       nativeCallPush: nativeCallPush,
       inbox: CachedInboxRepository(api, chatCache),
       contacts: ContactRepository(api),
-      statuses: StatusRepository(api),
+      statuses: ResumableStatusRepository(api),
       communities: CommunityRepository(api),
       channels: live_channel.ChannelRepository(
         api: api,
