@@ -1,3 +1,5 @@
+const { Op } = require('sequelize');
+
 const StatusModel = require('../db/models/status');
 const ContactModel = require('../db/models/contact');
 const ProfileModel = require('../db/models/profile');
@@ -101,8 +103,8 @@ exports.insertFromUpload = async (req, res) => {
       const mentionedProfiles = friendIds.length
         ? await ProfileModel.findAll({
             where: {
-              userId: { [require('sequelize').Op.in]: friendIds },
-              username: { [require('sequelize').Op.in]: mentionUsernames },
+              userId: { [Op.in]: friendIds },
+              username: { [Op.in]: mentionUsernames },
             },
             attributes: ['userId'],
           })
@@ -155,8 +157,6 @@ exports.insertFromUpload = async (req, res) => {
       hasViewed: true,
     };
 
-    // The persisted status now owns the stored media. The temporary upload
-    // session is no longer needed; its chunks were already removed on complete.
     await ResumableUploadModel.destroy({
       where: { uploadId, userId: req.user._id },
     }).catch(() => {});
