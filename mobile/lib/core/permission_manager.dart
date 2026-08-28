@@ -201,11 +201,14 @@ class AppPermissionManager {
   static Future<bool> ensurePhotos(
     BuildContext context, {
     String reason = 'Photo library permission is needed to choose media to share.',
-  }) => ensure(
-    context,
-    SyncPermission.photos,
-    reason: reason,
-  );
+  }) {
+    // Android's system document/photo picker grants scoped access to the item
+    // the user selects. Requiring broad media-library access before opening it
+    // blocks avatar/group/channel photo selection when READ_MEDIA_IMAGES was
+    // denied even though the picker itself is still allowed.
+    if (Platform.isAndroid) return Future<bool>.value(true);
+    return ensure(context, SyncPermission.photos, reason: reason);
+  }
 
   static Future<bool> ensureVideos(
     BuildContext context, {
