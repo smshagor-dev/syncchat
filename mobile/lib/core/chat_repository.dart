@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'api_client.dart';
 import 'auth_repository.dart';
@@ -17,6 +19,9 @@ class ChatRepository {
        _auth = auth,
        _realtime = realtime,
        _e2ee = e2ee;
+
+  static const int _directUploadMaxBytes = 3 * 1024 * 1024;
+  static const int _resumableChunkBytes = 3 * 1024 * 1024;
 
   final ApiClient _api;
   final AuthRepository _auth;
@@ -153,13 +158,205 @@ class ChatRepository {
     required String filePath,
     String? filename,
   }) async {
-    final response = await _api.multipart(
-      '/chats/upload',
-      fieldName: 'file',
-      filePath: filePath,
-      filename: filename,
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw const ApiException(
+        statusCode: 400,
+        message: 'The selected file is no longer available on this device.',
+      );
+    }
+
+    final size = await file.length();
+    if (size <= 0) {
+      throw const ApiException(statusCode: 400, message: 'The selected file is empty.');
+    }
+
+    final resolvedFilename = _attachmentFilename(filePath, filename);
+    if (size <= _directUploadMaxBytes) {
+      final response = await _api.multipart(
+        '/chats/upload',
+        fieldName: 'file',
+        filePath: filePath,
+        filename: resolvedFilename,
+      );
+      return _mapPayload(response.payload, error: 'Invalid upload response.');
+    }
+
+    return _uploadAttachmentResumable(
+      file: file,
+      filename: resolvedFilename,
+      size: size,
     );
-    return _mapPayload(response.payload, error: 'Invalid upload response.');
+  }
+
+  Future<Map<String, dynamic>> _uploadAttachmentResumable({
+    required File file,
+    required String filename,
+    required int size,
+  }) async {
+    final created = await _api.post(
+      '/chat-v2/uploads',
+      body: {
+        'filename': filename,
+        'mime': _mimeHint(filename),
+        'totalSize': size,
+        'chunkSize': _resumableChunkBytes,
+      },
+    );
+    final session = _mapPayload(
+      created.payload,
+      error: 'Invalid resumable upload response.',
+    );
+    final uploadId = session['uploadId']?.toString().trim() ?? '';
+    if (uploadId.isEmpty) {
+      throw const ApiException(
+        statusCode: 500,
+        message: 'Upload session ID is missing.',
+      );
+    }
+
+    final serverChunkSize =
+        (session['chunkSize'] as num?)?.toInt() ?? _resumableChunkBytes;
+    final chunkSize = min(
+      _resumableChunkBytes,
+      max(256 * 1024, serverChunkSize),
+    );
+    final handle = await file.open(mode: FileMode.read);
+    var partNumber = 0;
+    var uploadedBytes = 0;
+
+    try {
+      while (uploadedBytes < size) {
+        final remaining = size - uploadedBytes;
+        final nextSize = min(chunkSize, remaining);
+        final bytes = await handle.read(nextSize);
+        if (bytes.isEmpty) {
+          throw const ApiException(
+            statusCode: 500,
+            message: 'Unexpected end of the selected file during upload.',
+          );
+        }
+
+        await _putResumablePart(uploadId, partNumber, bytes);
+        uploadedBytes += bytes.length;
+        partNumber += 1;
+      }
+    } on Object {
+      await _cancelResumableUpload(uploadId);
+      rethrow;
+    } finally {
+      await handle.close();
+    }
+
+    try {
+      final completed = await _api.post('/chat-v2/uploads/$uploadId/complete');
+      return _mapPayload(
+        completed.payload,
+        error: 'Invalid completed upload response.',
+      );
+    } on Object {
+      await _cancelResumableUpload(uploadId);
+      rethrow;
+    }
+  }
+
+  Future<void> _putResumablePart(
+    String uploadId,
+    int partNumber,
+    Uint8List bytes,
+  ) async {
+    Object? lastFailure;
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await _api.sendBytes(
+          'PUT',
+          '/chat-v2/uploads/$uploadId/parts/$partNumber',
+          body: bytes,
+        );
+        return;
+      } on ApiException catch (failure) {
+        lastFailure = failure;
+        final retryable =
+            failure.statusCode == 0 ||
+            failure.statusCode == 408 ||
+            failure.statusCode == 429 ||
+            failure.statusCode >= 500;
+        if (!retryable || attempt == 2) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
+    }
+    if (lastFailure is ApiException) throw lastFailure;
+  }
+
+  Future<void> _cancelResumableUpload(String uploadId) async {
+    try {
+      await _api.delete('/chat-v2/uploads/$uploadId');
+    } on Object {
+      // Cleanup is best-effort; expired sessions are ignored by the backend.
+    }
+  }
+
+  String _attachmentFilename(String filePath, String? filename) {
+    final explicit = filename?.trim() ?? '';
+    if (explicit.isNotEmpty) return explicit;
+    final normalized = filePath.replaceAll('\\', '/');
+    final parts = normalized.split('/');
+    final fallback = parts.isEmpty ? '' : parts.last.trim();
+    return fallback.isEmpty ? 'upload.bin' : fallback;
+  }
+
+  String _mimeHint(String filename) {
+    final normalized = filename.toLowerCase();
+    final dot = normalized.lastIndexOf('.');
+    final ext = dot >= 0 ? normalized.substring(dot + 1) : '';
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'avif':
+        return 'image/avif';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'mp4':
+      case 'm4v':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'webm':
+        return 'video/webm';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      case 'pdf':
+        return 'application/pdf';
+      case 'zip':
+        return 'application/zip';
+      case 'json':
+        return 'application/json';
+      case 'txt':
+      case 'md':
+      case 'csv':
+      case 'log':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
   }
 
   Future<Map<String, dynamic>> sendAttachment({
