@@ -7,6 +7,9 @@ const webpackCliPath = path.join(rootDir, 'node_modules', 'webpack-cli', 'bin', 
 const webpackConfigPath = path.join(rootDir, 'webpack.prod.js');
 const publicRoot = path.join(rootDir, 'client', 'public');
 const pwaSourceRoot = path.join(rootDir, 'pwa');
+const clientIndexPath = path.join(rootDir, 'client', 'index.jsx');
+const chatRoutePath = path.join(rootDir, 'client', 'routes', 'chat.jsx');
+const parityStylePath = path.join(rootDir, 'client', 'styles', 'webDesktopParity.css');
 
 const log = (message, extra = null) => {
   if (extra === null || typeof extra === 'undefined') {
@@ -26,6 +29,21 @@ const fail = (message, extra = null, exitCode = 1) => {
   process.exit(exitCode);
 };
 
+const assertSourceContains = (filePath, requiredTokens, label) => {
+  if (!fs.existsSync(filePath)) {
+    fail(`${label} source is missing.`, { filePath });
+  }
+
+  const source = fs.readFileSync(filePath, 'utf8');
+  const missingTokens = requiredTokens.filter((token) => !source.includes(token));
+  if (missingTokens.length) {
+    fail(`${label} parity contract is incomplete.`, {
+      filePath,
+      missingTokens,
+    });
+  }
+};
+
 if (!fs.existsSync(webpackCliPath)) {
   fail('webpack-cli is not installed. Run npm install first.', {
     webpackCliPath,
@@ -33,6 +51,30 @@ if (!fs.existsSync(webpackCliPath)) {
   });
 }
 
+/*
+ * Web and Tauri Desktop intentionally ship the same frontend/client bundle.
+ * Fail the production build if a future refactor drops the shared messenger
+ * shell or its browser parity styles from the Web entry point.
+ */
+assertSourceContains(
+  clientIndexPath,
+  [
+    "./styles/desktopMessenger.css",
+    "./styles/desktopPages.css",
+    "./styles/webDesktopParity.css",
+  ],
+  'Desktop/Web style'
+);
+assertSourceContains(
+  chatRoutePath,
+  ['data-syncchat-desktop-app', 'data-syncchat-desktop-shell'],
+  'Messenger shell'
+);
+if (!fs.existsSync(parityStylePath)) {
+  fail('Browser desktop parity stylesheet is missing.', { parityStylePath });
+}
+
+log('Desktop/Web messenger parity contract verified.');
 log('Starting production build', {
   node: process.version,
   execPath: process.execPath,
