@@ -8,12 +8,21 @@ export const WALLPAPER_PRESETS = [
   { key: 'forest', label: 'Forest', subtitle: 'Natural green feel' },
 ];
 
-export const DEFAULT_ROOM_APPEARANCE = {
-  wallpaperPreset: 'whatsapp',
-  wallpaperImage: '',
+const LEGACY_DEFAULT_ROOM_APPEARANCE = {
   sentBubbleBg: '#ccecff',
   receivedBubbleBg: '#ffffff',
   sentBubbleText: '#0f172a',
+  receivedBubbleText: '#0f172a',
+};
+
+export const DEFAULT_ROOM_APPEARANCE = {
+  wallpaperPreset: 'whatsapp',
+  wallpaperImage: '',
+  // Approved desktop/web reference uses a soft violet outgoing bubble rather
+  // than the previous cyan default. Users can still customize this per room.
+  sentBubbleBg: '#ede9fe',
+  receivedBubbleBg: '#ffffff',
+  sentBubbleText: '#241b3d',
   receivedBubbleText: '#0f172a',
 };
 
@@ -49,7 +58,7 @@ export const getWallpaperStyle = (appearance = DEFAULT_ROOM_APPEARANCE) => {
   if (appearance.wallpaperPreset === 'plain') {
     return {
       backgroundImage: 'none',
-      backgroundColor: '#e2e8f0',
+      backgroundColor: '#f6f6fa',
     };
   }
   return {};
@@ -73,12 +82,34 @@ const writeStore = (next) => {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 };
 
+const migrateLegacyReferenceDefaults = (stored = {}) => {
+  const next = { ...stored };
+  const usedLegacySentDefault =
+    String(stored?.sentBubbleBg || '').toLowerCase() ===
+    LEGACY_DEFAULT_ROOM_APPEARANCE.sentBubbleBg;
+  const usedLegacySentText =
+    String(stored?.sentBubbleText || '').toLowerCase() ===
+    LEGACY_DEFAULT_ROOM_APPEARANCE.sentBubbleText;
+
+  // Only migrate the old product default. A genuinely customized colour is
+  // left untouched so room appearance preferences remain user-owned.
+  if (usedLegacySentDefault) {
+    next.sentBubbleBg = DEFAULT_ROOM_APPEARANCE.sentBubbleBg;
+    if (!stored.sentBubbleText || usedLegacySentText) {
+      next.sentBubbleText = DEFAULT_ROOM_APPEARANCE.sentBubbleText;
+    }
+  }
+
+  return next;
+};
+
 export const getRoomAppearance = (roomId) => {
   if (!roomId) return { ...DEFAULT_ROOM_APPEARANCE };
   const store = readStore();
+  const stored = migrateLegacyReferenceDefaults(store[roomId] || {});
   return {
     ...DEFAULT_ROOM_APPEARANCE,
-    ...(store[roomId] || {}),
+    ...stored,
   };
 };
 
