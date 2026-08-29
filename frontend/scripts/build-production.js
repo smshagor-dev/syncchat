@@ -9,6 +9,14 @@ const publicRoot = path.join(rootDir, 'client', 'public');
 const pwaSourceRoot = path.join(rootDir, 'pwa');
 const clientIndexPath = path.join(rootDir, 'client', 'index.jsx');
 const chatRoutePath = path.join(rootDir, 'client', 'routes', 'chat.jsx');
+const desktopSidebarPath = path.join(
+  rootDir,
+  'client',
+  'components',
+  'chat',
+  'foreground',
+  'sidebar.jsx'
+);
 const mobileNavPath = path.join(
   rootDir,
   'client',
@@ -17,11 +25,23 @@ const mobileNavPath = path.join(
   'foreground',
   'mobileNav.jsx'
 );
+const roomAppearancePath = path.join(
+  rootDir,
+  'client',
+  'helpers',
+  'roomAppearance.js'
+);
 const localFirstRuntimePath = path.join(
   rootDir,
   'client',
   'helpers',
   'localFirstRuntime.js'
+);
+const desktopStylePath = path.join(
+  rootDir,
+  'client',
+  'styles',
+  'desktopMessenger.css'
 );
 const parityStylePath = path.join(rootDir, 'client', 'styles', 'webDesktopParity.css');
 const mobileStylePath = path.join(rootDir, 'client', 'styles', 'mobileWebMessenger.css');
@@ -69,7 +89,8 @@ if (!fs.existsSync(webpackCliPath)) {
 /*
  * Web and Tauri Desktop intentionally ship the same frontend/client bundle.
  * Fail the production build if a future refactor drops the shared messenger
- * shell, desktop parity styles, mobile Web presentation, or local-first boot.
+ * shell, approved desktop reference layout, mobile Web presentation, or
+ * local-first boot.
  */
 assertSourceContains(
   clientIndexPath,
@@ -102,6 +123,43 @@ assertSourceContains(
   'Messenger shell'
 );
 assertSourceContains(
+  desktopSidebarPath,
+  [
+    'data-syncchat-desktop-sidebar',
+    'desktopPrimaryActions',
+    "label: 'Chats'",
+    "label: 'Status'",
+    "label: 'Communities'",
+    "label: 'Channels'",
+    "label: 'Calls'",
+    "label: 'Contacts'",
+    "label: 'Saved Messages'",
+    "label: 'Settings'",
+    'bg-violet-600 text-white',
+  ],
+  'Approved desktop navigation'
+);
+assertSourceContains(
+  desktopStylePath,
+  [
+    '--syncchat-desktop-rail: 172px',
+    '--syncchat-desktop-list: 324px',
+    '--syncchat-desktop-accent: #7c3aed',
+    'grid-template-columns: var(--syncchat-desktop-rail) minmax(0, 1fr)',
+    'Approved reference: wide, white, icon + text navigation rail.',
+  ],
+  'Approved desktop reference layout'
+);
+assertSourceContains(
+  roomAppearancePath,
+  [
+    "sentBubbleBg: '#ede9fe'",
+    "receivedBubbleBg: '#ffffff'",
+    'migrateLegacyReferenceDefaults',
+  ],
+  'Approved desktop message appearance'
+);
+assertSourceContains(
   mobileNavPath,
   ['data-syncchat-mobile-nav', 'fixed inset-x-0 bottom-0'],
   'Mobile Web navigation'
@@ -113,7 +171,7 @@ if (!fs.existsSync(mobileStylePath)) {
   fail('Mobile Web messenger stylesheet is missing.', { mobileStylePath });
 }
 
-log('Desktop/Web, Mobile Web and local-first startup contracts verified.');
+log('Desktop/Web reference, Mobile Web and local-first startup contracts verified.');
 log('Starting production build', {
   node: process.version,
   execPath: process.execPath,

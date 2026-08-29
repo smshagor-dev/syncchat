@@ -205,7 +205,7 @@ function Header({
         <div className="border-t border-slate-100 bg-white px-3 pb-2.5 pt-2 dark:border-spill-800 dark:bg-spill-900">
           <label
             htmlFor="search"
-            className="flex h-9 items-center gap-2.5 rounded-full bg-slate-100 px-3 text-slate-500 ring-1 ring-transparent transition focus-within:bg-white focus-within:ring-sky-500/40 dark:bg-spill-800 dark:text-spill-300 dark:focus-within:bg-spill-800"
+            className="flex h-9 items-center gap-2.5 rounded-full bg-slate-100 px-3 text-slate-500 ring-1 ring-transparent transition focus-within:bg-white focus-within:ring-violet-500/40 dark:bg-spill-800 dark:text-spill-300 dark:focus-within:bg-spill-800"
           >
             <bi.BiSearchAlt size={17} />
             <input
@@ -252,7 +252,7 @@ function Header({
                     type="button"
                     className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                       chatFilter === item.key
-                        ? 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-500/70 dark:bg-sky-500/15 dark:text-sky-300'
+                        ? 'border-violet-600 bg-violet-600 text-white dark:border-violet-500 dark:bg-violet-500 dark:text-white'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-spill-700 dark:bg-spill-900 dark:text-spill-300 dark:hover:bg-spill-800'
                     }`}
                     onClick={() => setChatFilter(item.key)}
