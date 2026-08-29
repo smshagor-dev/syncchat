@@ -1,27 +1,33 @@
 /*
- * SyncChat desktop messenger presentation.
+ * SyncChat desktop / Tauri messenger presentation.
  *
- * Desktop is intentionally content-first: a narrow navigation rail, a dense
- * inbox/page pane, and a flexible conversation pane. This file only changes
- * presentation; existing routing, realtime, calling, security, and API flows
- * stay untouched.
+ * The approved desktop reference is a true three-pane messenger: a labelled
+ * navigation rail, a compact conversation list, and a flexible chat room.
+ * This stylesheet is presentation-only; routing, realtime, calls, security,
+ * keyboard shortcuts, pages, and message behaviour stay unchanged.
  */
 
 @media (min-width: 768px) {
   [data-syncchat-desktop-app] {
-    --syncchat-desktop-rail: 68px;
-    --syncchat-desktop-list: 352px;
-    --syncchat-desktop-border: #e2e8f0;
-    --syncchat-desktop-muted: #64748b;
-    --syncchat-desktop-hover: #f8fafc;
-    --syncchat-desktop-selected: #eef7fc;
+    --syncchat-desktop-rail: 172px;
+    --syncchat-desktop-list: 324px;
+    --syncchat-desktop-border: #e7e7ee;
+    --syncchat-desktop-muted: #6b7280;
+    --syncchat-desktop-hover: #f7f7fa;
+    --syncchat-desktop-selected: #f2edff;
+    --syncchat-desktop-accent: #7c3aed;
+    --syncchat-desktop-accent-soft: #f3edff;
+    --syncchat-desktop-room: #fbfbfd;
   }
 
   .dark [data-syncchat-desktop-app] {
-    --syncchat-desktop-border: #273645;
+    --syncchat-desktop-border: #263142;
     --syncchat-desktop-muted: #94a3b8;
-    --syncchat-desktop-hover: #1d2935;
-    --syncchat-desktop-selected: rgba(14, 165, 233, 0.12);
+    --syncchat-desktop-hover: #1a2431;
+    --syncchat-desktop-selected: rgba(124, 58, 237, 0.16);
+    --syncchat-desktop-accent: #8b5cf6;
+    --syncchat-desktop-accent-soft: rgba(124, 58, 237, 0.15);
+    --syncchat-desktop-room: #0f1724;
   }
 
   [data-syncchat-desktop-shell] {
@@ -31,8 +37,14 @@
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    background: #fff !important;
   }
 
+  .dark [data-syncchat-desktop-shell] {
+    background: #0d141d !important;
+  }
+
+  /* Foreground = labelled navigation + chat/page list. */
   [data-syncchat-mobile-shell] {
     grid-template-columns: var(--syncchat-desktop-rail) minmax(0, 1fr) !important;
     min-width: 0;
@@ -41,24 +53,139 @@
   }
 
   .dark [data-syncchat-mobile-shell] {
-    background: #141d26 !important;
+    background: #111a24 !important;
   }
 
+  /* Prevent the original blue loading surface from flashing during bootstrap. */
+  [data-syncchat-mobile-shell]
+    > div[class*='absolute'][class*='justify-center'][class*='items-center'] {
+    background: #fff !important;
+    color: #64748b !important;
+  }
+
+  .dark
+    [data-syncchat-mobile-shell]
+    > div[class*='absolute'][class*='justify-center'][class*='items-center'] {
+    background: #111a24 !important;
+    color: #94a3b8 !important;
+  }
+
+  /* Approved reference: wide, white, icon + text navigation rail. */
   [data-syncchat-desktop-sidebar] {
     width: var(--syncchat-desktop-rail) !important;
+    min-width: var(--syncchat-desktop-rail) !important;
     scrollbar-width: none;
+    background: #fff !important;
+    color: #475569 !important;
+    border-color: var(--syncchat-desktop-border) !important;
+  }
+
+  .dark [data-syncchat-desktop-sidebar] {
+    background: #0f1722 !important;
+    color: #cbd5e1 !important;
   }
 
   [data-syncchat-desktop-sidebar]::-webkit-scrollbar {
     display: none;
   }
 
+  [data-syncchat-desktop-sidebar] .syncchat-desktop-brand {
+    height: 58px !important;
+  }
+
+  [data-syncchat-desktop-sidebar] .syncchat-desktop-nav-button {
+    min-height: 38px;
+    border-radius: 8px !important;
+  }
+
+  [data-syncchat-desktop-sidebar]
+    .syncchat-desktop-nav-button.bg-violet-600 {
+    background: var(--syncchat-desktop-accent) !important;
+    color: #fff !important;
+    box-shadow: 0 3px 10px rgba(124, 58, 237, 0.18) !important;
+  }
+
+  /* Chat-list header is compact and visually continuous with the list pane. */
   [data-syncchat-desktop-inbox-header] {
     min-width: 0;
     box-shadow: none !important;
+    background: #fff !important;
+    border-color: var(--syncchat-desktop-border) !important;
   }
 
-  /* Chat/call/starred rows: denser than the previous dashboard cards. */
+  .dark [data-syncchat-desktop-inbox-header] {
+    background: #111a24 !important;
+  }
+
+  [data-syncchat-desktop-inbox-header] > div:first-child {
+    height: 58px !important;
+    padding-inline: 12px !important;
+  }
+
+  [data-syncchat-desktop-inbox-header] h1 {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #111827 !important;
+  }
+
+  .dark [data-syncchat-desktop-inbox-header] h1 {
+    color: #f8fafc !important;
+  }
+
+  [data-syncchat-desktop-inbox-header]
+    > div[class*='border-t'][class*='px-3'] {
+    padding-top: 8px !important;
+    padding-bottom: 9px !important;
+    border-color: #f1f3f6 !important;
+    background: #fff !important;
+  }
+
+  .dark
+    [data-syncchat-desktop-inbox-header]
+    > div[class*='border-t'][class*='px-3'] {
+    border-color: #1f2a38 !important;
+    background: #111a24 !important;
+  }
+
+  [data-syncchat-desktop-inbox-header] label[for='search'] {
+    height: 36px !important;
+    border-radius: 9px !important;
+    background: #f4f5f8 !important;
+    color: #8a93a1 !important;
+  }
+
+  [data-syncchat-desktop-inbox-header] label[for='search']:focus-within {
+    background: #fff !important;
+    box-shadow: 0 0 0 1.5px rgba(124, 58, 237, 0.32) !important;
+  }
+
+  .dark [data-syncchat-desktop-inbox-header] label[for='search'] {
+    background: #182331 !important;
+    color: #94a3b8 !important;
+  }
+
+  [data-syncchat-desktop-inbox-header] button[class*='border-sky-500'] {
+    border-color: var(--syncchat-desktop-accent) !important;
+    background: var(--syncchat-desktop-accent) !important;
+    color: #fff !important;
+  }
+
+  [data-syncchat-desktop-inbox-header]
+    button:not([class*='border-sky-500'])[class*='rounded-full'][class*='border'] {
+    border-color: #e6e8ed !important;
+    color: #687180 !important;
+    background: #fff !important;
+  }
+
+  .dark
+    [data-syncchat-desktop-inbox-header]
+    button:not([class*='border-sky-500'])[class*='rounded-full'][class*='border'] {
+    border-color: #2b3747 !important;
+    color: #b0bac8 !important;
+    background: #111a24 !important;
+  }
+
+  /* Dense list rows like the reference, without dashboard-card spacing. */
   [data-syncchat-mobile-shell] #inbox {
     background: #fff !important;
     overscroll-behavior-y: contain;
@@ -66,17 +193,24 @@
   }
 
   .dark [data-syncchat-mobile-shell] #inbox {
-    background: #0c1116 !important;
+    background: #111a24 !important;
   }
 
   [data-syncchat-mobile-shell]
     #inbox
     > div[class*='grid-cols-[auto_1fr]'][class*='border-b'] {
-    min-height: 68px;
-    padding: 9px 12px !important;
+    min-height: 64px;
+    padding: 8px 11px !important;
     gap: 10px !important;
-    border-color: var(--syncchat-desktop-border) !important;
+    border-color: #f0f1f4 !important;
     background: transparent;
+  }
+
+  .dark
+    [data-syncchat-mobile-shell]
+    #inbox
+    > div[class*='grid-cols-[auto_1fr]'][class*='border-b'] {
+    border-color: #202b39 !important;
   }
 
   [data-syncchat-mobile-shell]
@@ -96,21 +230,21 @@
   }
 
   [data-syncchat-mobile-shell] #inbox img.w-14.h-14 {
-    width: 48px !important;
-    height: 48px !important;
+    width: 44px !important;
+    height: 44px !important;
   }
 
   [data-syncchat-mobile-shell] #inbox img.w-12.h-12 {
-    width: 46px !important;
-    height: 46px !important;
+    width: 42px !important;
+    height: 42px !important;
   }
 
   [data-syncchat-mobile-shell] #inbox p.text-sm,
   [data-syncchat-mobile-shell] #inbox span.text-sm {
-    line-height: 1.25rem;
+    line-height: 1.15rem;
   }
 
-  /* Status rail stays available but behaves like a compact contextual strip. */
+  /* Status strip remains compact and scrollable. */
   [data-syncchat-mobile-shell] #inbox > div[class*='overflow-x-auto'] {
     scrollbar-width: none;
   }
@@ -119,7 +253,7 @@
     display: none;
   }
 
-  /* Foreground feature pages (contacts/settings/status/etc.) use the same pane. */
+  /* Feature pages reuse the middle pane and should not become floating cards. */
   [data-syncchat-mobile-shell]
     > [class*='absolute'][class*='z-20'][class*='overflow-hidden'] {
     background: #fff !important;
@@ -129,7 +263,7 @@
   .dark
     [data-syncchat-mobile-shell]
     > [class*='absolute'][class*='z-20'][class*='overflow-hidden'] {
-    background: #141d26 !important;
+    background: #111a24 !important;
   }
 
   [data-syncchat-mobile-shell]
@@ -144,51 +278,72 @@
   [data-syncchat-mobile-shell]
     > [class*='absolute'][class*='z-20']
     [class*='rounded-3xl'] {
-    border-radius: 14px !important;
+    border-radius: 12px !important;
   }
 
-  /* Inputs throughout desktop side pages follow the compact inbox search shape. */
   [data-syncchat-mobile-shell] input:not([type='checkbox']):not([type='radio']),
   [data-syncchat-mobile-shell] textarea,
   [data-syncchat-mobile-shell] select {
     outline: none;
   }
 
-  /* Conversation pane: restrained surfaces and separators. */
+  /* Conversation pane: white header, soft canvas, white composer. */
   [data-syncchat-desktop-shell] > :nth-child(2) {
     min-width: 0;
     border-left: 0 !important;
-    background: #f8fafc;
-  }
-
-  .dark [data-syncchat-desktop-shell] > :nth-child(2) {
-    background: #0c1116;
+    background: var(--syncchat-desktop-room) !important;
   }
 
   [data-syncchat-desktop-shell] > :nth-child(2) > div[class*='grid-rows'] {
-    background: #f8fafc !important;
+    background: var(--syncchat-desktop-room) !important;
+  }
+
+  [data-syncchat-desktop-shell]
+    > :nth-child(2)
+    > div[class*='grid-rows']
+    > nav:first-child {
+    min-height: 58px !important;
+    padding-block: 8px !important;
+    border-bottom: 1px solid var(--syncchat-desktop-border) !important;
+    background: #fff !important;
   }
 
   .dark
     [data-syncchat-desktop-shell]
     > :nth-child(2)
-    > div[class*='grid-rows'] {
-    background: #141d26 !important;
+    > div[class*='grid-rows']
+    > nav:first-child {
+    background: #111a24 !important;
   }
 
-  /* Empty room should look like a messenger landing state, not a dashboard. */
+  [data-syncchat-desktop-shell]
+    > :nth-child(2)
+    > div[class*='grid-rows']
+    > :last-child {
+    border-top: 1px solid var(--syncchat-desktop-border) !important;
+    background: #fff !important;
+  }
+
+  .dark
+    [data-syncchat-desktop-shell]
+    > :nth-child(2)
+    > div[class*='grid-rows']
+    > :last-child {
+    background: #111a24 !important;
+  }
+
+  /* Empty room is quiet and product-like, not a dashboard placeholder. */
   [data-syncchat-desktop-shell]
     > :nth-child(2)
     > div[class*='justify-center'][class*='items-center'] {
-    background: #f8fafc !important;
-    color: #64748b !important;
+    background: var(--syncchat-desktop-room) !important;
+    color: #7b8492 !important;
   }
 
   .dark
     [data-syncchat-desktop-shell]
     > :nth-child(2)
     > div[class*='justify-center'][class*='items-center'] {
-    background: #0c1116 !important;
     color: #94a3b8 !important;
   }
 
@@ -196,14 +351,21 @@
     > :nth-child(2)
     > div[class*='justify-center'][class*='items-center']
     i {
-    color: #94a3b8;
-    opacity: 0.45 !important;
+    color: #a2a9b5;
+    opacity: 0.36 !important;
   }
 
-  /* Keep message composer and room headers visually distinct without heavy cards. */
   [data-syncchat-desktop-shell] #new-message,
   [data-syncchat-desktop-shell] textarea[name='message'] {
-    border-radius: 18px;
+    border-radius: 18px !important;
+  }
+
+  /* Translate old sky interaction accents to the approved violet desktop brand. */
+  [data-syncchat-desktop-shell] .text-sky-600,
+  [data-syncchat-desktop-shell] .text-sky-700,
+  [data-syncchat-mobile-shell] .text-sky-600,
+  [data-syncchat-mobile-shell] .text-sky-700 {
+    color: var(--syncchat-desktop-accent) !important;
   }
 
   [data-syncchat-desktop-shell] button,
@@ -215,19 +377,28 @@
   [data-syncchat-mobile-shell] button:focus-visible,
   [data-syncchat-desktop-shell] input:focus-visible,
   [data-syncchat-mobile-shell] input:focus-visible {
-    outline: 2px solid rgba(14, 165, 233, 0.55);
+    outline: 2px solid rgba(124, 58, 237, 0.48);
     outline-offset: 2px;
   }
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1024px) {
   [data-syncchat-desktop-app] {
-    --syncchat-desktop-list: 372px;
+    --syncchat-desktop-rail: 188px;
+    --syncchat-desktop-list: 348px;
   }
 }
 
-@media (min-width: 1600px) {
+@media (min-width: 1440px) {
   [data-syncchat-desktop-app] {
-    --syncchat-desktop-list: 392px;
+    --syncchat-desktop-rail: 196px;
+    --syncchat-desktop-list: 368px;
+  }
+}
+
+@media (min-width: 1800px) {
+  [data-syncchat-desktop-app] {
+    --syncchat-desktop-rail: 204px;
+    --syncchat-desktop-list: 384px;
   }
 }
