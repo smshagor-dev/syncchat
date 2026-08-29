@@ -5,6 +5,7 @@ import * as ri from 'react-icons/ri';
 import { setModal } from '../../../redux/features/modal';
 import { setPage } from '../../../redux/features/page';
 import resolveUploadUrl from '../../../helpers/resolveUploadUrl';
+import config from '../../../config';
 
 function Sidebar({
   inboxes,
@@ -89,83 +90,124 @@ function Sidebar({
     });
   };
 
-  const quickActionsTop = [
-    {
-      target: 'chats',
-      label: 'Chats',
-      icon: <bi.BiMessageSquareDetail size={23} />,
-      badge: unreadChats > 0 ? unreadCount : null,
-      active: isChatListActive,
-      onClick: showChatListArea,
-    },
-    {
-      target: 'calls',
-      label: 'Calls',
-      icon: <bi.BiPhoneCall size={22} />,
-      active: !!page.calls,
-      onClick: () => openPagePanel('calls'),
-    },
-    {
-      target: 'status',
-      label: 'Status',
-      icon: <ri.RiDonutChartLine size={22} />,
-      active: !!page.status,
-      onClick: () => openPagePanel('status'),
-    },
-    {
-      target: 'contacts',
-      label: 'Contacts',
-      icon: <bi.BiGroup size={23} />,
-      active: !!page.contact,
-      onClick: () => openPagePanel('contact'),
-    },
-    {
-      target: 'communities',
-      label: 'Communities',
-      icon: <ri.RiCommunityLine size={22} />,
-      active: !!page.communities,
-      onClick: () => openPagePanel('communities'),
-    },
-    {
-      target: 'channels',
-      label: 'Channels',
-      icon: <ri.RiBroadcastLine size={22} />,
-      badge: unreadChannels > 0 ? unreadChannelCount : null,
-      active: !!page.channels,
-      onClick: () => openPagePanel('channels'),
-    },
-    {
-      target: 'archive',
-      label: 'Archive',
-      icon: <bi.BiArchiveIn size={22} />,
-      active: !!page.archive,
-      onClick: () => openPagePanel('archive'),
-    },
-    {
-      target: 'list',
-      label: 'Lists',
-      icon: <bi.BiListUl size={22} />,
-      active: !!page.list,
-      onClick: () => openPagePanel('list'),
-    },
+  const chatsAction = {
+    target: 'chats',
+    label: 'Chats',
+    icon: <bi.BiMessageSquareDetail size={20} />,
+    badge: unreadChats > 0 ? unreadCount : null,
+    active: isChatListActive,
+    onClick: showChatListArea,
+  };
+  const callsAction = {
+    target: 'calls',
+    label: 'Calls',
+    icon: <bi.BiPhoneCall size={20} />,
+    active: !!page.calls,
+    onClick: () => openPagePanel('calls'),
+  };
+  const statusAction = {
+    target: 'status',
+    label: 'Status',
+    icon: <ri.RiDonutChartLine size={20} />,
+    active: !!page.status,
+    onClick: () => openPagePanel('status'),
+  };
+  const contactsAction = {
+    target: 'contacts',
+    label: 'Contacts',
+    icon: <bi.BiGroup size={20} />,
+    active: !!page.contact,
+    onClick: () => openPagePanel('contact'),
+  };
+  const communitiesAction = {
+    target: 'communities',
+    label: 'Communities',
+    icon: <ri.RiCommunityLine size={20} />,
+    active: !!page.communities,
+    onClick: () => openPagePanel('communities'),
+  };
+  const channelsAction = {
+    target: 'channels',
+    label: 'Channels',
+    icon: <ri.RiBroadcastLine size={20} />,
+    badge: unreadChannels > 0 ? unreadChannelCount : null,
+    active: !!page.channels,
+    onClick: () => openPagePanel('channels'),
+  };
+  const archiveAction = {
+    target: 'archive',
+    label: 'Archive',
+    icon: <bi.BiArchiveIn size={20} />,
+    active: !!page.archive,
+    onClick: () => openPagePanel('archive'),
+  };
+  const listsAction = {
+    target: 'list',
+    label: 'Lists',
+    icon: <bi.BiListUl size={20} />,
+    active: !!page.list,
+    onClick: () => openPagePanel('list'),
+  };
+  const mediaAction = {
+    target: 'media',
+    label: 'Media',
+    icon: <bi.BiImageAlt size={20} />,
+    active: !!page.media,
+    onClick: () => openPagePanel('media'),
+  };
+  const feedbackAction = {
+    target: 'feedback',
+    label: 'Feedback',
+    icon: <bi.BiMessageDetail size={20} />,
+    active: false,
+    onClick: () => dispatch(setModal({ target: 'feedback', data: true })),
+  };
+  const savedMessagesAction = {
+    target: 'starred',
+    label: 'Saved Messages',
+    icon: <bi.BiBookmark size={20} />,
+    active: !!page.starred,
+    onClick: () => openPagePanel('starred'),
+  };
+  const settingsAction = {
+    target: 'setting',
+    label: 'Settings',
+    icon: <bi.BiCog size={20} />,
+    active: !!page.setting,
+    onClick: () => openPagePanel('setting'),
+  };
+
+  // Desktop follows the approved reference order. Less-frequent existing tools
+  // remain available under More so no functionality is removed.
+  const desktopPrimaryActions = [
+    chatsAction,
+    statusAction,
+    communitiesAction,
+    channelsAction,
+    callsAction,
+    contactsAction,
+    savedMessagesAction,
+    settingsAction,
+  ];
+  const desktopMoreActions = [
+    archiveAction,
+    listsAction,
+    mediaAction,
+    feedbackAction,
   ];
 
-  const quickActionsBottom = [
-    {
-      target: 'media',
-      label: 'Media',
-      icon: <bi.BiImageAlt size={21} />,
-      active: !!page.media,
-      onClick: () => openPagePanel('media'),
-    },
-    {
-      target: 'feedback',
-      label: 'Feedback',
-      icon: <bi.BiMessageDetail size={21} />,
-      active: false,
-      onClick: () => dispatch(setModal({ target: 'feedback', data: true })),
-    },
+  // Keep the established mobile drawer feature set/order untouched.
+  const quickActionsTop = [
+    chatsAction,
+    callsAction,
+    statusAction,
+    contactsAction,
+    communitiesAction,
+    channelsAction,
+    archiveAction,
+    listsAction,
   ];
+  const quickActionsBottom = [mediaAction, feedbackAction];
 
   const runSidebarAction = (action) => {
     action();
@@ -173,10 +215,10 @@ function Sidebar({
   };
 
   const desktopButtonClass = (active = false) =>
-    `relative grid h-11 w-11 place-items-center rounded-xl transition ${
+    `syncchat-desktop-nav-button relative flex min-h-[38px] w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] font-medium transition ${
       active
-        ? 'bg-sky-500/15 text-sky-400'
-        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100 dark:text-spill-300 dark:hover:bg-spill-700 dark:hover:text-white'
+        ? 'bg-violet-600 text-white shadow-sm'
+        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-spill-300 dark:hover:bg-spill-800 dark:hover:text-white'
     }`;
 
   const mobileButtonClass = (active = false) =>
@@ -201,9 +243,18 @@ function Sidebar({
         item.onClick();
       }}
     >
-      {item.icon}
+      <span className="syncchat-desktop-nav-icon grid h-5 w-5 shrink-0 place-items-center">
+        {item.icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {item.badge && (
-        <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-sky-500 px-1 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">
+        <span
+          className={`min-w-[19px] rounded-full px-1.5 py-0.5 text-center text-[9px] font-bold leading-none ${
+            item.active
+              ? 'bg-white/20 text-white'
+              : 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
+          }`}
+        >
           {item.badge}
         </span>
       )}
@@ -214,46 +265,74 @@ function Sidebar({
     <>
       <aside
         data-syncchat-desktop-sidebar
-        className="hidden md:flex h-full w-[68px] shrink-0 flex-col items-center overflow-y-auto border-r border-slate-200 bg-slate-950 py-2.5 text-slate-300 dark:border-spill-700 dark:bg-spill-950"
+        className="hidden md:flex h-full shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white text-slate-700 dark:border-spill-700 dark:bg-spill-950 dark:text-spill-200"
       >
-        <div className="flex w-full flex-col items-center gap-1.5 px-2">
-          {quickActionsTop.map(desktopAction)}
+        <div className="syncchat-desktop-brand flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-100 px-3 dark:border-spill-800">
+          {config.brandLogo ? (
+            <img
+              src={config.brandLogo}
+              alt=""
+              className="h-7 w-7 rounded-lg object-cover"
+            />
+          ) : (
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-600 text-white">
+              <bi.BiMessageRoundedDots size={18} />
+            </span>
+          )}
+          <span className="truncate text-[14px] font-bold tracking-tight text-slate-900 dark:text-white">
+            {config.brandName}
+          </span>
         </div>
 
-        <div className="my-2 h-px w-8 shrink-0 bg-slate-800 dark:bg-spill-700" />
+        <nav className="flex w-full flex-col gap-1 px-2.5 py-3" aria-label="Desktop navigation">
+          {desktopPrimaryActions.map(desktopAction)}
 
-        <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-2">
-          {quickActionsBottom.map(desktopAction)}
+          <details className="group mt-1">
+            <summary className="syncchat-desktop-nav-button flex min-h-[38px] w-full cursor-pointer list-none items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-spill-400 dark:hover:bg-spill-800 dark:hover:text-white [&::-webkit-details-marker]:hidden">
+              <span className="grid h-5 w-5 shrink-0 place-items-center">
+                <bi.BiDotsHorizontalRounded size={20} />
+              </span>
+              <span className="flex-1">More</span>
+              <bi.BiChevronDown className="transition group-open:rotate-180" size={16} />
+            </summary>
+            <div className="mt-1 grid gap-1 border-l border-slate-200 pl-2 dark:border-spill-700">
+              {desktopMoreActions.map(desktopAction)}
+            </div>
+          </details>
+        </nav>
+
+        <div className="mt-auto border-t border-slate-100 p-2.5 dark:border-spill-800">
           <button
             type="button"
-            title="Settings"
-            aria-label="Settings"
-            className={desktopButtonClass(!!page.setting)}
-            onClick={(e) => {
-              e.stopPropagation();
-              openPagePanel('setting');
-            }}
-          >
-            <bi.BiCog size={21} />
-          </button>
-          <div className="my-1 h-px w-8 shrink-0 bg-slate-800 dark:bg-spill-700" />
-          <button
-            type="button"
-            title="Profile"
-            aria-label="Profile"
-            className={`${desktopButtonClass(!!page.profile)} p-1`}
+            className={`flex w-full items-center gap-2.5 rounded-xl p-2 text-left transition hover:bg-slate-100 dark:hover:bg-spill-800 ${
+              page.profile ? 'bg-violet-50 dark:bg-violet-500/10' : ''
+            }`}
             onClick={(e) => {
               e.stopPropagation();
               openPagePanel('profile', master._id);
             }}
           >
-            <img
-              src={sidebarAvatar}
-              alt=""
-              className={`h-8 w-8 rounded-full object-cover ring-2 ${
-                page.profile ? 'ring-sky-400' : 'ring-slate-700 dark:ring-spill-600'
-              }`}
-            />
+            <span className="relative shrink-0">
+              <img
+                src={sidebarAvatar}
+                alt=""
+                className={`h-9 w-9 rounded-full object-cover ring-2 ${
+                  page.profile
+                    ? 'ring-violet-500'
+                    : 'ring-slate-200 dark:ring-spill-600'
+                }`}
+              />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-spill-950" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-semibold text-slate-900 dark:text-white">
+                {master?.fullname || master?.username || 'Profile'}
+              </span>
+              <span className="block truncate text-[10px] text-slate-400 dark:text-spill-400">
+                Online
+              </span>
+            </span>
+            <bi.BiChevronDown size={15} className="text-slate-400" />
           </button>
         </div>
       </aside>
