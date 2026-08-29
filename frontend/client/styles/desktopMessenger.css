@@ -164,14 +164,14 @@
     color: #94a3b8 !important;
   }
 
-  [data-syncchat-desktop-inbox-header] button[class*='border-sky-500'] {
+  [data-syncchat-desktop-inbox-header] button[class*='border-violet-600'] {
     border-color: var(--syncchat-desktop-accent) !important;
     background: var(--syncchat-desktop-accent) !important;
     color: #fff !important;
   }
 
   [data-syncchat-desktop-inbox-header]
-    button:not([class*='border-sky-500'])[class*='rounded-full'][class*='border'] {
+    button:not([class*='border-violet-600'])[class*='rounded-full'][class*='border'] {
     border-color: #e6e8ed !important;
     color: #687180 !important;
     background: #fff !important;
@@ -179,7 +179,7 @@
 
   .dark
     [data-syncchat-desktop-inbox-header]
-    button:not([class*='border-sky-500'])[class*='rounded-full'][class*='border'] {
+    button:not([class*='border-violet-600'])[class*='rounded-full'][class*='border'] {
     border-color: #2b3747 !important;
     color: #b0bac8 !important;
     background: #111a24 !important;
@@ -366,6 +366,15 @@
   [data-syncchat-mobile-shell] .text-sky-600,
   [data-syncchat-mobile-shell] .text-sky-700 {
     color: var(--syncchat-desktop-accent) !important;
+  }
+
+  [data-syncchat-desktop-shell] .bg-sky-500,
+  [data-syncchat-mobile-shell] .bg-sky-500 {
+    background-color: var(--syncchat-desktop-accent) !important;
+  }
+
+  [data-syncchat-desktop-shell] .accent-sky-500 {
+    accent-color: var(--syncchat-desktop-accent) !important;
   }
 
   [data-syncchat-desktop-shell] button,
