@@ -3,35 +3,29 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('contacts destination preserves current web contracts', () {
+  test('contacts destination uses phone-first messenger contracts', () {
     final entry = File('lib/screens/live_p0_contacts_screen.dart').readAsStringSync();
-    final source = File('lib/screens/live_p0_contacts_web_parity_screen.dart').readAsStringSync();
+    final source = File('lib/screens/live_device_contacts_screen.dart').readAsStringSync();
 
-    expect(entry, contains("export 'live_p0_contacts_web_parity_screen.dart'"));
+    expect(entry, contains("import 'live_device_contacts_screen.dart'"));
+    expect(entry, contains('const LiveDeviceContactsScreen()'));
     for (final contract in [
-      "context.services.api.get('/settings')",
-      "'sortContactByName': !sortByName",
-      'Sync Mobile Contacts',
-      'DeviceIntegrationService.syncAddressBook',
-      'Chat now',
-      'LiveChatRoomScreen',
-      'Create a new Group',
-      'New Contact',
-      "'/contacts/labels'",
-      "'color': result.\$2",
-      'imageUrl:',
-      "profile['canSeeOnline'] != false",
-      "profile['canSeeLastSeen'] != false",
-      'Privacy protected',
-      'Last seen ',
-      'a few seconds ago',
-      'a minute ago',
-      'an hour ago',
-      'a day ago',
+      'DeviceIntegrationService.syncAddressBook(',
+      '_loadSavedRegistered()',
+      '_mergeRegistered(',
+      "'On SyncChat · \${registered.length}'",
+      "'Not on SyncChat · \${unregistered.length}'",
+      "const Text('Chat now')",
+      "label: const Text('Invite')",
+      'context.services.contacts.add',
+      'context.services.contacts.list()',
+      'context.services.inbox.findByRoom(roomId)',
+      'LiveChatRoomScreen(',
+      "'Username, email, or phone number'",
+      "'Also save to phone book'",
     ]) {
       expect(source, contains(contract));
     }
-    expect(source, isNot(contains("profile['updatedAt']")));
   });
 
   test('profile destination uses actual avatar and web editable fields', () {
