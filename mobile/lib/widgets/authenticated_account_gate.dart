@@ -150,7 +150,10 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       );
     }
 
-    if (account['verified'] != true) {
+    final otpVerificationRequired = context.publicAppConfig.featureEnabled(
+      'user_otp_verification_required',
+    );
+    if (otpVerificationRequired && account['verified'] != true) {
       return AccountVerificationScreen(
         account: account,
         onVerified: _reload,
