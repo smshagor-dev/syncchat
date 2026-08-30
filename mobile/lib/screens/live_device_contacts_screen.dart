@@ -45,6 +45,8 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
           final fullname = profile['fullname']?.toString().trim() ?? '';
           final username = profile['username']?.toString().trim() ?? '';
           return <String, dynamic>{
+            'userId': userId,
+            'friendId': userId,
             'contactName': fullname.isNotEmpty
                 ? fullname
                 : username.isNotEmpty
@@ -65,16 +67,40 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
     List<Map<String, dynamic>> savedRows,
   ) {
     final merged = <String, Map<String, dynamic>>{};
-    for (final row in [...phoneRows, ...savedRows]) {
+
+    String keyFor(Map<String, dynamic> row) {
       final userId = _registeredUserId(row).trim();
       final roomId = row['roomId']?.toString().trim() ?? '';
-      final key = userId.isNotEmpty
-          ? 'user:$userId'
-          : roomId.isNotEmpty
-              ? 'room:$roomId'
-              : '';
+      if (userId.isNotEmpty) return 'user:$userId';
+      if (roomId.isNotEmpty) return 'room:$roomId';
+      return '';
+    }
+
+    // Phone sync is useful for the device display name/number, but it may be a
+    // stale unsaved row. Start with those rows and then let the authoritative
+    // server-saved contact replace them so roomId/isSaved can never regress.
+    for (final row in phoneRows) {
+      final key = keyFor(row);
       if (key.isEmpty) continue;
       merged.putIfAbsent(key, () => row);
+    }
+    for (final row in savedRows) {
+      final key = keyFor(row);
+      if (key.isEmpty) continue;
+      final existing = merged[key];
+      merged[key] = existing == null
+          ? row
+          : <String, dynamic>{
+              ...existing,
+              ...row,
+              'profile': <String, dynamic>{
+                if (existing['profile'] is Map)
+                  ...Map<String, dynamic>.from(existing['profile'] as Map),
+                if (row['profile'] is Map)
+                  ...Map<String, dynamic>.from(row['profile'] as Map),
+              },
+              'isSaved': true,
+            };
     }
     return merged.values.toList(growable: false);
   }
@@ -221,9 +247,9 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
               SnackBar(content: Text(message)),
             );
 
-            // Always refresh server-saved contacts. Username/email contacts may
-            // not exist in the phone book, but must still appear immediately and
-            // remain tappable like a normal SyncChat contact.
+            // Refresh the authoritative saved-contact row immediately. The
+            // merge routine gives it priority over a stale phone-sync row so a
+            // just-added user opens the correct private room on first tap.
             await _refreshSavedContacts(surfaceError: true);
             if (phoneSaved && mounted) await sync();
           }
@@ -316,7 +342,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
     final profile = item['profile'] is Map
         ? Map<String, dynamic>.from(item['profile'] as Map)
         : <String, dynamic>{};
-    final userId = profile['userId']?.toString().trim() ?? '';
+    final userId = _registeredUserId(item);
     if (userId.isEmpty || openingUserId != null) return;
 
     setState(() => openingUserId = userId);
@@ -345,7 +371,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
           }
           final contacts = await context.services.contacts.list();
           for (final contact in contacts) {
-            if (contact['friendId']?.toString() == userId) {
+            if (contact['friendId']?.toString().trim() == userId) {
               roomId = contact['roomId']?.toString().trim() ?? '';
               break;
             }
@@ -400,12 +426,15 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
   }
 
   String _registeredUserId(Map<String, dynamic> item) {
+    final topLevelUserId = item['userId']?.toString().trim() ?? '';
+    if (topLevelUserId.isNotEmpty) return topLevelUserId;
+    final friendId = item['friendId']?.toString().trim() ?? '';
+    if (friendId.isNotEmpty) return friendId;
     final profile = item['profile'];
     if (profile is Map) {
-      final userId = profile['userId']?.toString().trim() ?? '';
-      if (userId.isNotEmpty) return userId;
+      return profile['userId']?.toString().trim() ?? '';
     }
-    return item['friendId']?.toString().trim() ?? '';
+    return '';
   }
 
   String _registeredName(
@@ -578,7 +607,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   trailing: FilledButton(
-                    onPressed: openingUserId == null
+                    onPressed: openingUserId == null && userId.isNotEmpty
                         ? () => _openRegisteredChat(item)
                         : null,
                     child: opening
