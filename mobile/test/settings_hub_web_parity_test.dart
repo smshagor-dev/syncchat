@@ -8,6 +8,13 @@ void main() {
     expect(entry, contains("import 'live_settings_hub_web_parity_screen.dart' as parity"));
     expect(entry, contains('ProfessionalMobileSurface'));
     expect(entry, contains('child: parity.LiveSettingsHubScreen('));
+    expect(entry, contains('const dockHeight = 64.0'));
+    expect(entry, contains('MediaQuery.paddingOf(context).bottom'));
+    expect(
+      entry,
+      contains('padding: EdgeInsets.only(bottom: dockHeight + bottomInset)'),
+      reason: 'Settings content must remain above the persistent bottom dock and system navigation inset.',
+    );
     expect(File('lib/screens/live_settings_hub_core_screen.dart').existsSync(), isTrue);
   });
 
