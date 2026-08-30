@@ -26,6 +26,7 @@ const DEFAULT_APP_CONFIG = {
     groups: true,
     channels: true,
     communities: true,
+    user_otp_verification_required: true,
   },
   defaultPrivacy: { ...DEFAULT_PRIVACY },
   defaultChat: {
