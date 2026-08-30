@@ -37,14 +37,28 @@ void main() {
     expect(shell, isNot(contains('LiveHomeTab.channels')));
   });
 
-  test('feature-rich parity behavior stays active through mobile presentation wrappers', () {
-    final contacts = File('lib/screens/live_p0_contacts_screen.dart').readAsStringSync();
+  test('feature-rich production behavior stays active through mobile presentation wrappers', () {
+    final contactsEntry =
+        File('lib/screens/live_p0_contacts_screen.dart').readAsStringSync();
+    final contacts =
+        File('lib/screens/live_device_contacts_screen.dart').readAsStringSync();
     final channels = File('lib/screens/live_channels_screen.dart').readAsStringSync();
     final collections = File('lib/screens/live_collection_screens.dart').readAsStringSync();
     final settings = File('lib/screens/live_settings_hub_screen.dart').readAsStringSync();
     final profile = File('lib/screens/live_full_profile_screen.dart').readAsStringSync();
 
-    expect(contacts, contains("export 'live_p0_contacts_web_parity_screen.dart'"));
+    expect(contactsEntry, contains("import 'live_device_contacts_screen.dart'"));
+    expect(contactsEntry, contains('const LiveDeviceContactsScreen()'));
+    for (final contract in [
+      'DeviceIntegrationService.syncAddressBook(',
+      '_loadSavedRegistered()',
+      '_mergeRegistered(',
+      "const Text('Chat now')",
+      "label: const Text('Invite')",
+      'context.services.inbox.findByRoom(roomId)',
+    ]) {
+      expect(contacts, contains(contract));
+    }
     expect(collections, contains("export 'live_collection_web_parity_screens.dart'"));
 
     for (final source in [channels, settings, profile]) {
@@ -147,6 +161,7 @@ void main() {
       'lib/screens/live_chat_room_core_screen.dart',
       'lib/screens/live_calls_core_screen.dart',
       'lib/screens/live_p0_contacts_core_screen.dart',
+      'lib/screens/live_p0_contacts_web_parity_screen.dart',
       'lib/screens/live_p1_communities_web_parity_screen.dart',
       'lib/screens/live_channels_core_screen.dart',
       'lib/screens/live_collection_core_screens.dart',
