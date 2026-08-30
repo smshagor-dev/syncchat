@@ -15,10 +15,16 @@ class LiveSettingsHubScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const dockHeight = 64.0;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return ProfessionalMobileSurface(
-      child: parity.LiveSettingsHubScreen(
-        onThemeChanged: onThemeChanged,
-        onLogout: onLogout,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: dockHeight + bottomInset),
+        child: parity.LiveSettingsHubScreen(
+          onThemeChanged: onThemeChanged,
+          onLogout: onLogout,
+        ),
       ),
     );
   }
