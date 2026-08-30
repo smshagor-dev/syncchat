@@ -1,1 +1,5 @@
-export 'live_p0_contacts_web_parity_screen.dart';
+import 'live_device_contacts_screen.dart';
+
+class LiveP0ContactsScreen extends LiveDeviceContactsScreen {
+  const LiveP0ContactsScreen({super.key});
+}
