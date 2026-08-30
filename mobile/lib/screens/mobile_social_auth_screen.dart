@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -60,6 +61,17 @@ class _MobileSocialAuthScreenState extends State<MobileSocialAuthScreen> {
   Future<void> _google() async {
     if (_loadingProvider != null || !_googleEnabled) return;
     final clientId = _config['googleClientId'].toString().trim();
+    if (!clientId.endsWith('.apps.googleusercontent.com')) {
+      _fail(
+        const ApiException(
+          statusCode: 500,
+          message:
+              'Google login is enabled, but the configured Google Client ID is invalid.',
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _loadingProvider = 'google';
       _error = null;
@@ -69,7 +81,10 @@ class _MobileSocialAuthScreenState extends State<MobileSocialAuthScreen> {
         scopes: const <String>['email', 'profile'],
         serverClientId: clientId,
       );
-      await signIn.signOut().catchError((_) => null);
+
+      // Do not force a sign-out before every login. Forcing sign-out changes
+      // the native Google account flow and can turn a successful account
+      // selection into a second redirect/callback cycle on some devices.
       final account = await signIn.signIn();
       if (account == null) {
         throw const ApiException(
@@ -90,11 +105,51 @@ class _MobileSocialAuthScreenState extends State<MobileSocialAuthScreen> {
         payload: {'credential': idToken},
       );
       await _finish(result);
+    } on PlatformException catch (failure) {
+      _fail(_googlePlatformException(failure));
     } on Object catch (failure) {
       _fail(failure);
     } finally {
       if (mounted) setState(() => _loadingProvider = null);
     }
+  }
+
+  ApiException _googlePlatformException(PlatformException failure) {
+    final details = [
+      failure.code,
+      failure.message ?? '',
+      failure.details?.toString() ?? '',
+    ].join(' ').toLowerCase();
+
+    final developerError =
+        details.contains('developer_error') ||
+        (failure.code == 'sign_in_failed' &&
+            RegExp(r'(^|\D)10(\D|$)').hasMatch(details));
+    if (developerError) {
+      return const ApiException(
+        statusCode: 500,
+        message:
+            'Google Sign-In is not configured for this Android signing certificate. '
+            'SyncChat uses package com.syncchat.live. Add this APK signing SHA-1 and SHA-256 '
+            'to the Firebase Android app, enable Google sign-in, then replace '
+            'android/app/google-services.json with the newly downloaded file.',
+      );
+    }
+
+    if (details.contains('sign_in_canceled') || details.contains('12501')) {
+      return const ApiException(
+        statusCode: 400,
+        message: 'Google sign-in was cancelled.',
+      );
+    }
+
+    final message = failure.message?.trim() ?? '';
+    return ApiException(
+      statusCode: 500,
+      message: message.isEmpty
+          ? 'Google sign-in failed. Check the Android OAuth configuration and try again.'
+          : 'Google sign-in failed: $message',
+    );
   }
 
   Future<void> _facebook() async {

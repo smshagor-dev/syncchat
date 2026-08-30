@@ -12,7 +12,20 @@
           "package_name": "com.syncchat.live"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "183539740148-08if094tum9f7t6lulblo9ds73i0eccm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.syncchat.live",
+            "certificate_hash": "e7405493529d4272a77d1827d20b6b598afd0ec1"
+          }
+        },
+        {
+          "client_id": "183539740148-k94ntg5dkj2u7j8d45es307o741k495i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCIabLqUfQeyrD5e8D6wQj58ktPKKzKWcg"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "183539740148-k94ntg5dkj2u7j8d45es307o741k495i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
