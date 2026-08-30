@@ -46,4 +46,17 @@ void main() {
       reason: 'Web supports linking a device with a 6-digit short code.',
     );
   });
+
+  test('Google sign-in preserves native callback flow and explains code 10', () {
+    final social =
+        File('lib/screens/mobile_social_auth_screen.dart').readAsStringSync();
+
+    expect(social, contains("import 'package:flutter/services.dart';"));
+    expect(social, contains('on PlatformException catch'));
+    expect(social, contains("failure.code == 'sign_in_failed'"));
+    expect(social, contains("RegExp(r'(^|\\D)10(\\D|\$)')"));
+    expect(social, contains('com.syncchat.live'));
+    expect(social, contains('SHA-1 and SHA-256'));
+    expect(social, isNot(contains('await signIn.signOut()')));
+  });
 }
