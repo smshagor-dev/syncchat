@@ -1,6 +1,7 @@
 const response = require('../helpers/response');
 const UserModel = require('../db/models/user');
 const UserSessionModel = require('../db/models/userSession');
+const { loadAppConfig } = require('../helpers/appConfig');
 const { markSessionSeen, verifyToken } = require('../helpers/userSessions');
 
 const isAllowedBeforeVerification = (req) => {
@@ -18,6 +19,11 @@ const isAllowedBeforeVerification = (req) => {
     return true;
   }
   return false;
+};
+
+const isVerificationRequired = async () => {
+  const config = await loadAppConfig();
+  return config.featureFlags?.user_otp_verification_required !== false;
 };
 
 module.exports = async (req, res, next) => {
@@ -48,14 +54,26 @@ module.exports = async (req, res, next) => {
     req.authUser = user;
     markSessionSeen(session);
 
-    if (!user.verified && !isAllowedBeforeVerification(req)) {
-      response({
-        res,
-        statusCode: 403,
-        success: false,
-        message: 'Email verification required',
-      });
-      return;
+    if (!user.verified) {
+      if (!(await isVerificationRequired())) {
+        await user.update({
+          verified: true,
+          otp: null,
+          otpHash: null,
+          otpExpires: null,
+          otpAttempts: 0,
+          otpLastSentAt: null,
+        });
+        req.authUser = user;
+      } else if (!isAllowedBeforeVerification(req)) {
+        response({
+          res,
+          statusCode: 403,
+          success: false,
+          message: 'Email verification required',
+        });
+        return;
+      }
     }
 
     next();
