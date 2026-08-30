@@ -8,7 +8,7 @@ const response = require('../helpers/response');
 const mailer = require('../helpers/mailer');
 const encrypt = require('../helpers/encrypt');
 const { toPlain } = require('../db/utils');
-const { applyDefaultSettings } = require('../helpers/appConfig');
+const { applyDefaultSettings, loadAppConfig } = require('../helpers/appConfig');
 const {
   createSession,
   notifySuspiciousLogin,
@@ -111,6 +111,11 @@ const assertResendAllowed = (lastSentAt) => {
   }
 };
 
+const isRegistrationOtpRequired = async () => {
+  const config = await loadAppConfig();
+  return config.featureFlags?.user_otp_verification_required !== false;
+};
+
 const sendVerificationMail = async ({ user, otp, subject }) =>
   mailer({
     to: user.email,
@@ -137,23 +142,26 @@ exports.register = async (req, res) => {
     const passwordError = validatePassword(password);
     if (passwordError) throw createError(400, passwordError);
 
-    const otp = generateOtp();
+    const otpRequired = await isRegistrationOtpRequired();
+    const otp = otpRequired ? generateOtp() : null;
     let user = await UserModel.create({
       fullname,
       username,
       email,
       password: encrypt(password),
-      verified: false,
+      verified: !otpRequired,
       status: 'active',
       otp: null,
       otpHash: '',
-      otpExpires: new Date(Date.now() + OTP_TTL_MS),
+      otpExpires: otpRequired ? new Date(Date.now() + OTP_TTL_MS) : null,
       otpAttempts: 0,
-      otpLastSentAt: new Date(),
+      otpLastSentAt: otpRequired ? new Date() : null,
     });
-    await user.update({
-      otpHash: hashOtp({ purpose: 'verify-account', userId: user._id, otp }),
-    });
+    if (otpRequired) {
+      await user.update({
+        otpHash: hashOtp({ purpose: 'verify-account', userId: user._id, otp }),
+      });
+    }
 
     const userId = user._id;
     await SettingModel.create(await applyDefaultSettings({ userId }));
@@ -169,22 +177,26 @@ exports.register = async (req, res) => {
     const token = signUserToken({ userId, sessionId: session._id });
 
     let mailError = null;
-    try {
-      await sendVerificationMail({
-        user,
-        otp,
-        subject: 'Verify your SyncChat account',
-      });
-    } catch (error0) {
-      mailError = error0;
+    if (otpRequired) {
+      try {
+        await sendVerificationMail({
+          user,
+          otp,
+          subject: 'Verify your SyncChat account',
+        });
+      } catch (error0) {
+        mailError = error0;
+      }
     }
 
     response({
       res,
       statusCode: 201,
-      message: mailError
-        ? 'Account created, but the verification email could not be delivered. Use Re-Send OTP after SMTP is corrected.'
-        : 'Account created. A 6-digit verification code was sent to your email.',
+      message: !otpRequired
+        ? 'Account created successfully. Verification is not required.'
+        : mailError
+          ? 'Account created, but the verification email could not be delivered. Use Re-Send OTP after SMTP is corrected.'
+          : 'Account created. A 6-digit verification code was sent to your email.',
       payload: token,
     });
   } catch (error0) {
