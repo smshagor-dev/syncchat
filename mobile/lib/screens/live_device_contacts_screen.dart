@@ -28,12 +28,86 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => sync(automatic: true));
   }
 
+  Future<List<Map<String, dynamic>>> _loadSavedRegistered() async {
+    final contacts = await context.services.contacts.list();
+    return contacts
+        .map((contact) {
+          final profile = contact['profile'] is Map
+              ? Map<String, dynamic>.from(contact['profile'] as Map)
+              : <String, dynamic>{};
+          final userId = profile['userId']?.toString().trim() ??
+              contact['friendId']?.toString().trim() ??
+              '';
+          if (userId.isEmpty) return <String, dynamic>{};
+          if ((profile['userId']?.toString().trim() ?? '').isEmpty) {
+            profile['userId'] = userId;
+          }
+          final fullname = profile['fullname']?.toString().trim() ?? '';
+          final username = profile['username']?.toString().trim() ?? '';
+          return <String, dynamic>{
+            'contactName': fullname.isNotEmpty
+                ? fullname
+                : username.isNotEmpty
+                    ? username
+                    : 'SyncChat user',
+            'contactPhone': profile['phone']?.toString().trim() ?? '',
+            'profile': profile,
+            'isSaved': true,
+            'roomId': contact['roomId']?.toString().trim() ?? '',
+          };
+        })
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _mergeRegistered(
+    List<Map<String, dynamic>> phoneRows,
+    List<Map<String, dynamic>> savedRows,
+  ) {
+    final merged = <String, Map<String, dynamic>>{};
+    for (final row in [...phoneRows, ...savedRows]) {
+      final userId = _registeredUserId(row).trim();
+      final roomId = row['roomId']?.toString().trim() ?? '';
+      final key = userId.isNotEmpty
+          ? 'user:$userId'
+          : roomId.isNotEmpty
+              ? 'room:$roomId'
+              : '';
+      if (key.isEmpty) continue;
+      merged.putIfAbsent(key, () => row);
+    }
+    return merged.values.toList(growable: false);
+  }
+
+  Future<void> _refreshSavedContacts({bool surfaceError = false}) async {
+    try {
+      final saved = await _loadSavedRegistered();
+      if (!mounted) return;
+      setState(() {
+        registered = _mergeRegistered(registered, saved);
+      });
+    } on Object catch (failure) {
+      if (!mounted || !surfaceError) return;
+      setState(() => error = _failureText(failure));
+    }
+  }
+
   Future<void> sync({bool automatic = false}) async {
     if (syncing || !mounted) return;
     setState(() {
       syncing = true;
       error = null;
     });
+
+    List<Map<String, dynamic>> saved = const [];
+    try {
+      saved = await _loadSavedRegistered();
+    } on Object catch (failure) {
+      if (!mounted) return;
+      if (!automatic) {
+        setState(() => error = _failureText(failure));
+      }
+    }
 
     final granted = await AppPermissionManager.ensureContacts(
       context,
@@ -44,9 +118,11 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
     if (!granted) {
       setState(() {
         syncing = false;
+        registered = _mergeRegistered(const [], saved);
+        unregistered = const [];
         error = automatic
-            ? 'Allow Contacts permission to automatically find people from your phone book.'
-            : 'Contacts permission is required to sync your phone book.';
+            ? 'Allow Contacts permission to automatically find people from your phone book. Saved SyncChat contacts are still available below.'
+            : 'Contacts permission is required to sync your phone book. Saved SyncChat contacts are still available below.';
       });
       return;
     }
@@ -58,7 +134,10 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
       if (!mounted) return;
       setState(() {
         syncing = false;
-        registered = mapList(result['registered']);
+        registered = _mergeRegistered(
+          mapList(result['registered']),
+          saved,
+        );
         unregistered = mapList(result['unregistered']);
         error = null;
       });
@@ -66,10 +145,8 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
       if (!mounted) return;
       setState(() {
         syncing = false;
-        error = failure
-            .toString()
-            .replaceFirst('Bad state: ', '')
-            .replaceFirst('Exception: ', '');
+        registered = _mergeRegistered(registered, saved);
+        error = _failureText(failure);
       });
     }
   }
@@ -102,7 +179,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
             try {
               await context.services.contacts.add({'identity': target});
             } on Object catch (failure) {
-              backendError = failure.toString().replaceFirst('Exception: ', '');
+              backendError = _failureText(failure);
             }
 
             if (backendError == null && saveToPhone && phoneLike && mounted) {
@@ -118,10 +195,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
                   );
                   phoneSaved = true;
                 } on Object catch (failure) {
-                  backendError = failure
-                      .toString()
-                      .replaceFirst('Exception: ', '')
-                      .replaceFirst('Bad state: ', '');
+                  backendError = _failureText(failure);
                 }
               } else {
                 phonePermissionDenied = true;
@@ -146,7 +220,12 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(message)),
             );
-            if (phoneSaved) await sync();
+
+            // Always refresh server-saved contacts. Username/email contacts may
+            // not exist in the phone book, but must still appear immediately and
+            // remain tappable like a normal SyncChat contact.
+            await _refreshSavedContacts(surfaceError: true);
+            if (phoneSaved && mounted) await sync();
           }
 
           return AlertDialog(
@@ -322,7 +401,11 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
 
   String _registeredUserId(Map<String, dynamic> item) {
     final profile = item['profile'];
-    return profile is Map ? profile['userId']?.toString() ?? '' : '';
+    if (profile is Map) {
+      final userId = profile['userId']?.toString().trim() ?? '';
+      if (userId.isNotEmpty) return userId;
+    }
+    return item['friendId']?.toString().trim() ?? '';
   }
 
   String _registeredName(
@@ -409,7 +492,7 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  'This page automatically reads and syncs phone contacts after you grant Contacts permission. If you denied it earlier, SyncChat asks again when you use this page.',
+                  'SyncChat automatically matches your phone book. People using SyncChat appear with Chat now; everyone else appears with Invite.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: context.muted, fontSize: 13, height: 1.45),
                 ),
@@ -464,8 +547,10 @@ class _LiveDeviceContactsScreenState extends State<LiveDeviceContactsScreen> {
                   : <String, dynamic>{};
               final name = _registeredName(item, profile);
               final username = profile['username']?.toString().trim() ?? '';
-              final phone = item['contactPhone']?.toString().trim() ?? '';
-              final userId = profile['userId']?.toString() ?? '';
+              final contactPhone = item['contactPhone']?.toString().trim() ?? '';
+              final profilePhone = profile['phone']?.toString().trim() ?? '';
+              final phone = contactPhone.isNotEmpty ? contactPhone : profilePhone;
+              final userId = _registeredUserId(item);
               final opening = openingUserId == userId;
               return Card(
                 color: context.panel,
