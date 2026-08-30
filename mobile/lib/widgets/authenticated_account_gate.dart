@@ -30,6 +30,7 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
   RealtimeClient? _realtime;
   bool _bound = false;
   bool _sessionInactive = false;
+  bool _resolvingAccount = true;
 
   @override
   void didChangeDependencies() {
@@ -51,25 +52,13 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
   }
 
   Future<void> _bootstrap() async {
-    Map<String, dynamic> cached = const {};
-    try {
-      cached = await context.services.chatCache.readCurrentUser().timeout(
-        const Duration(milliseconds: 750),
-        onTimeout: () => const <String, dynamic>{},
-      );
-    } on Object catch (failure) {
-      debugPrint('SyncChat account cache deferred: $failure');
-    }
-
+    // Never paint the authenticated dashboard until the current account has
+    // been resolved from the server. Registration receives an access token
+    // before verification, so rendering the shell first creates a dashboard
+    // flash followed by 403 errors instead of the OTP screen.
+    await _refresh(surfaceError: true);
     if (!mounted) return;
-    if (cached.isNotEmpty) {
-      setState(() => _account = cached);
-    }
-
-    // The authenticated shell is never blocked by account metadata I/O.
-    // Backend authorization remains authoritative while the account snapshot
-    // is reconciled in the background immediately after first paint.
-    unawaited(_refresh(surfaceError: false));
+    setState(() => _resolvingAccount = false);
   }
 
   void _onInactive(dynamic _) {
@@ -105,8 +94,11 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
     setState(() {
       _sessionInactive = false;
       _hardError = null;
+      if (_account == null) _resolvingAccount = true;
     });
     await _refresh(surfaceError: true);
+    if (!mounted) return;
+    setState(() => _resolvingAccount = false);
   }
 
   @override
@@ -128,11 +120,19 @@ class _AuthenticatedAccountGateState extends State<AuthenticatedAccountGate> {
       );
     }
 
-    // Do not hold the first useful frame behind SQLite / secure-storage / API
-    // account metadata. A valid local session is enough to render the shell;
-    // the server refresh above can still replace it immediately for an
-    // unauthorized/inactive account.
-    if (_account == null) return widget.child;
+    if (_resolvingAccount || _account == null) {
+      return Scaffold(
+        backgroundColor: context.page,
+        body: const SafeArea(
+          child: Center(
+            child: SizedBox.square(
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ),
+        ),
+      );
+    }
 
     final account = _account!;
     final status = account['status']?.toString().trim().toLowerCase() ?? 'active';
