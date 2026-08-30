@@ -4,7 +4,8 @@ const ProfileModel = require('../db/models/profile');
 const ContactModel = require('../db/models/contact');
 const ContactLabelModel = require('../db/models/contactLabel');
 const SettingModel = require('../db/models/setting');
-const { toPlain, toPlainMany } = require('../db/utils');
+const InboxModel = require('../db/models/inbox');
+const { asArray, toPlain, toPlainMany } = require('../db/utils');
 const {
   buildPrivacyContext,
   sanitizeProfileForViewer,
@@ -38,6 +39,36 @@ const buildProfilePhones = (profile) => {
   ].filter(Boolean);
 
   return [...new Set(values)];
+};
+
+const ensurePrivateInbox = async ({ roomId, userId, friendId }) => {
+  const ownersId = [...new Set([userId, friendId].filter(Boolean))];
+  if (!roomId || ownersId.length !== 2) return null;
+
+  let inbox = await InboxModel.findOne({ where: { roomId } });
+  if (!inbox) {
+    try {
+      inbox = await InboxModel.create({
+        roomId,
+        ownersId,
+        roomType: 'private',
+      });
+    } catch (error0) {
+      if (error0?.name !== 'SequelizeUniqueConstraintError') throw error0;
+      inbox = await InboxModel.findOne({ where: { roomId } });
+    }
+  }
+
+  if (!inbox) return null;
+  const currentOwners = asArray(inbox.ownersId);
+  const hasExactOwners =
+    currentOwners.length === ownersId.length &&
+    ownersId.every((ownerId) => currentOwners.includes(ownerId));
+  if (inbox.roomType === 'private' && !hasExactOwners) {
+    await inbox.update({ ownersId });
+  }
+
+  return inbox;
 };
 
 const resolveFriendByIdentity = async (identityRaw = '') => {
@@ -81,6 +112,9 @@ exports.insert = async (req, res) => {
     if (!friend) {
       throw asHttpError(401, 'User not found');
     }
+    if (String(friend.userId) === String(req.user._id)) {
+      throw asHttpError(400, 'You cannot add yourself as a contact');
+    }
 
     const existing = await ContactModel.findOne({
       where: {
@@ -90,6 +124,11 @@ exports.insert = async (req, res) => {
     });
 
     if (existing) {
+      await ensurePrivateInbox({
+        roomId: existing.roomId,
+        userId: req.user._id,
+        friendId: friend.userId,
+      });
       throw asHttpError(401, 'You have saved this contact');
     }
 
@@ -100,9 +139,16 @@ exports.insert = async (req, res) => {
       },
     });
 
+    const roomId = ifSavedByFriend?.roomId || uuidv4();
     const contact = await ContactModel.create({
       userId: req.user._id,
-      roomId: ifSavedByFriend ? ifSavedByFriend.roomId : uuidv4(),
+      roomId,
+      friendId: friend.userId,
+    });
+
+    await ensurePrivateInbox({
+      roomId,
+      userId: req.user._id,
       friendId: friend.userId,
     });
 
@@ -160,9 +206,20 @@ exports.search = async (req, res) => {
           attributes: ['friendId', 'roomId'],
         })
       : [];
+    const savedContacts = toPlainMany(savedRaw);
+
+    await Promise.all(
+      savedContacts.map((contact) =>
+        ensurePrivateInbox({
+          roomId: contact.roomId,
+          userId: req.user._id,
+          friendId: contact.friendId,
+        })
+      )
+    );
 
     const savedMap = new Map(
-      toPlainMany(savedRaw).map((contact) => [contact.friendId, contact])
+      savedContacts.map((contact) => [contact.friendId, contact])
     );
 
     const privacy = await buildPrivacyContext({
@@ -280,8 +337,20 @@ exports.mobileSync = async (req, res) => {
           attributes: ['friendId', 'roomId'],
         })
       : [];
+    const savedContacts = toPlainMany(savedRaw);
+
+    await Promise.all(
+      savedContacts.map((contact) =>
+        ensurePrivateInbox({
+          roomId: contact.roomId,
+          userId: req.user._id,
+          friendId: contact.friendId,
+        })
+      )
+    );
+
     const savedMap = new Map(
-      toPlainMany(savedRaw).map((contact) => [contact.friendId, contact])
+      savedContacts.map((contact) => [contact.friendId, contact])
     );
 
     const privacy = await buildPrivacyContext({
@@ -468,6 +537,16 @@ exports.find = async (req, res) => {
       response({ res, payload: [] });
       return;
     }
+
+    await Promise.all(
+      contacts.map((contact) =>
+        ensurePrivateInbox({
+          roomId: contact.roomId,
+          userId: req.user._id,
+          friendId: contact.friendId,
+        })
+      )
+    );
 
     const friendIds = contacts.map((contact) => contact.friendId);
     const profiles = await ProfileModel.findAll({
