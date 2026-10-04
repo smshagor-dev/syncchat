@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
-    "axios": "^1.19.0",
+    "axios": "^1.20.0",
     "basic-ftp": "^5.0.5",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
